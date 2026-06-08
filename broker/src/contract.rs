@@ -238,9 +238,28 @@ mod tests {
     fn metrics_round_trips() {
         let m = Metrics {
             tick: 42,
-            traffic: TrafficMetrics { flow_percent: 73.5, active_vehicles: 120, segment_loads: vec![SegmentLoad { segment_id: 5, density: 0.8 }] },
-            economy: EconomyMetrics { balance: 1000, weekly_income: 500, weekly_expenses: 400, funds: 50000 },
-            population: PopulationMetrics { total: 2000, residential_demand: 50, commercial_demand: 40, industrial_demand: 30, office_demand: 20, employed: 1500 },
+            traffic: TrafficMetrics {
+                flow_percent: 73.5,
+                active_vehicles: 120,
+                segment_loads: vec![SegmentLoad {
+                    segment_id: 5,
+                    density: 0.8,
+                }],
+            },
+            economy: EconomyMetrics {
+                balance: 1000,
+                weekly_income: 500,
+                weekly_expenses: 400,
+                funds: 50000,
+            },
+            population: PopulationMetrics {
+                total: 2000,
+                residential_demand: 50,
+                commercial_demand: 40,
+                industrial_demand: 30,
+                office_demand: 20,
+                employed: 1500,
+            },
             services: ServiceMetrics { happiness: 80 },
         };
         let json = serde_json::to_string(&m).unwrap();

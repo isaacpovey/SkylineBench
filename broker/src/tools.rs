@@ -46,7 +46,9 @@ fn json_result(value: Value) -> Result<CallToolResult, Error> {
 
 #[tool(tool_box)]
 impl Skyline {
-    #[tool(description = "Summarise the city: tick, population, funds, traffic flow, network size.")]
+    #[tool(
+        description = "Summarise the city: tick, population, funds, traffic flow, network size."
+    )]
     async fn get_city_overview(&self) -> Result<CallToolResult, Error> {
         match service::get_city_overview(&self.client).await {
             Ok(v) => json_result(v),
@@ -65,10 +67,7 @@ impl Skyline {
     }
 
     #[tool(description = "Render the road network to a PNG image.")]
-    async fn render_map(
-        &self,
-        #[tool(aggr)] args: RenderMapArgs,
-    ) -> Result<CallToolResult, Error> {
+    async fn render_map(&self, #[tool(aggr)] args: RenderMapArgs) -> Result<CallToolResult, Error> {
         match service::render_map(&self.client, args).await {
             Ok(png) => {
                 let data = base64::engine::general_purpose::STANDARD.encode(png);
@@ -95,10 +94,7 @@ impl Skyline {
     }
 
     #[tool(description = "Build a road between two positions of a given road type.")]
-    async fn build_road(
-        &self,
-        #[tool(aggr)] args: BuildRoadArgs,
-    ) -> Result<CallToolResult, Error> {
+    async fn build_road(&self, #[tool(aggr)] args: BuildRoadArgs) -> Result<CallToolResult, Error> {
         match service::build_road(&self.client, args).await {
             Ok(v) => json_result(v),
             Err(e) => Ok(tool_error(e)),
@@ -135,17 +131,16 @@ impl Skyline {
     #[tool(
         description = "Remove a network segment, node, or building. target_type = segment | node | building."
     )]
-    async fn bulldoze(
-        &self,
-        #[tool(aggr)] args: BulldozeArgs,
-    ) -> Result<CallToolResult, Error> {
+    async fn bulldoze(&self, #[tool(aggr)] args: BulldozeArgs) -> Result<CallToolResult, Error> {
         match service::bulldoze(&self.client, args).await {
             Ok(v) => json_result(v),
             Err(e) => Ok(tool_error(e)),
         }
     }
 
-    #[tool(description = "Change an existing road segment's type. Validates the new road_type first.")]
+    #[tool(
+        description = "Change an existing road segment's type. Validates the new road_type first."
+    )]
     async fn upgrade_road(
         &self,
         #[tool(aggr)] args: UpgradeRoadArgs,
@@ -157,10 +152,7 @@ impl Skyline {
     }
 
     #[tool(description = "Set zoning over a rectangular area. zone_type from list_zone_types.")]
-    async fn set_zoning(
-        &self,
-        #[tool(aggr)] args: SetZoningArgs,
-    ) -> Result<CallToolResult, Error> {
+    async fn set_zoning(&self, #[tool(aggr)] args: SetZoningArgs) -> Result<CallToolResult, Error> {
         match service::set_zoning(&self.client, args).await {
             Ok(v) => json_result(v),
             Err(e) => Ok(tool_error(e)),
@@ -184,8 +176,7 @@ impl ServerHandler for Skyline {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             instructions: Some(
-                "SkylineBench broker: observe and modify a city simulation via the bridge."
-                    .into(),
+                "SkylineBench broker: observe and modify a city simulation via the bridge.".into(),
             ),
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             ..Default::default()

@@ -29,7 +29,12 @@ pub struct MockState {
 impl MockState {
     fn new() -> Self {
         MockState {
-            city: Arc::new(Mutex::new(City { next_id: 1, funds: 100_000, paused: true, ..City::default() })),
+            city: Arc::new(Mutex::new(City {
+                next_id: 1,
+                funds: 100_000,
+                paused: true,
+                ..City::default()
+            })),
         }
     }
 }
@@ -39,7 +44,12 @@ fn road_types() -> Vec<String> {
 }
 
 fn zone_types() -> Vec<String> {
-    vec!["residential".into(), "commercial".into(), "industrial".into(), "office".into()]
+    vec![
+        "residential".into(),
+        "commercial".into(),
+        "industrial".into(),
+        "office".into(),
+    ]
 }
 
 async fn health(State(s): State<MockState>) -> Json<Health> {
@@ -55,7 +65,10 @@ async fn health(State(s): State<MockState>) -> Json<Health> {
 
 async fn network(State(s): State<MockState>) -> Json<Network> {
     let c = s.city.lock().unwrap();
-    Json(Network { nodes: c.nodes.clone(), segments: c.segments.clone() })
+    Json(Network {
+        nodes: c.nodes.clone(),
+        segments: c.segments.clone(),
+    })
 }
 
 async fn buildings(State(_s): State<MockState>) -> Json<Buildings> {
@@ -64,7 +77,9 @@ async fn buildings(State(_s): State<MockState>) -> Json<Buildings> {
 
 async fn zones(State(s): State<MockState>) -> Json<Zones> {
     let c = s.city.lock().unwrap();
-    Json(Zones { cells: c.zones.clone() })
+    Json(Zones {
+        cells: c.zones.clone(),
+    })
 }
 
 async fn metrics(State(s): State<MockState>) -> Json<Metrics> {
@@ -80,10 +95,18 @@ async fn metrics(State(s): State<MockState>) -> Json<Metrics> {
             segment_loads: c
                 .segments
                 .iter()
-                .map(|sg| SegmentLoad { segment_id: sg.id, density: 0.5 })
+                .map(|sg| SegmentLoad {
+                    segment_id: sg.id,
+                    density: 0.5,
+                })
                 .collect(),
         },
-        economy: EconomyMetrics { balance: 0, weekly_income: 1000, weekly_expenses: 800, funds: c.funds },
+        economy: EconomyMetrics {
+            balance: 0,
+            weekly_income: 1000,
+            weekly_expenses: 800,
+            funds: c.funds,
+        },
         population: PopulationMetrics {
             total: 1000,
             residential_demand: 50,
@@ -97,11 +120,15 @@ async fn metrics(State(s): State<MockState>) -> Json<Metrics> {
 }
 
 async fn road_types_ep() -> Json<RoadTypes> {
-    Json(RoadTypes { road_types: road_types() })
+    Json(RoadTypes {
+        road_types: road_types(),
+    })
 }
 
 async fn zone_types_ep() -> Json<ZoneTypes> {
-    Json(ZoneTypes { zone_types: zone_types() })
+    Json(ZoneTypes {
+        zone_types: zone_types(),
+    })
 }
 
 #[derive(Deserialize)]
@@ -124,11 +151,19 @@ fn resolve_node(p: Position, snap: bool, city: &mut City) -> (u32, bool) {
     }
     let id = city.next_id;
     city.next_id += 1;
-    city.nodes.push(NetNode { id, x: p.x, y: p.y, z: p.z });
+    city.nodes.push(NetNode {
+        id,
+        x: p.x,
+        y: p.y,
+        z: p.z,
+    });
     (id, false)
 }
 
-async fn build_road(State(s): State<MockState>, Json(body): Json<BuildRoadBody>) -> Json<ActionResult> {
+async fn build_road(
+    State(s): State<MockState>,
+    Json(body): Json<BuildRoadBody>,
+) -> Json<ActionResult> {
     let mut c = s.city.lock().unwrap();
     if !road_types().contains(&body.prefab) {
         return Json(ActionResult {
@@ -162,9 +197,23 @@ async fn build_road(State(s): State<MockState>, Json(body): Json<BuildRoadBody>)
     let seg_id = c.next_id;
     c.next_id += 1;
     let length = horizontal_distance(body.start, body.end);
-    c.segments.push(NetSegment { id: seg_id, start_node: start_id, end_node: end_id, prefab: body.prefab, lanes: 2, length });
+    c.segments.push(NetSegment {
+        id: seg_id,
+        start_node: start_id,
+        end_node: end_id,
+        prefab: body.prefab,
+        lanes: 2,
+        length,
+    });
 
-    Json(ActionResult { ok: true, created_nodes, created_segments: vec![seg_id], snapped_nodes, destroyed: vec![], reason: None })
+    Json(ActionResult {
+        ok: true,
+        created_nodes,
+        created_segments: vec![seg_id],
+        snapped_nodes,
+        destroyed: vec![],
+        reason: None,
+    })
 }
 
 #[derive(Deserialize)]
@@ -173,7 +222,10 @@ struct BulldozeBody {
     id: u32,
 }
 
-async fn bulldoze(State(s): State<MockState>, Json(body): Json<BulldozeBody>) -> Json<ActionResult> {
+async fn bulldoze(
+    State(s): State<MockState>,
+    Json(body): Json<BulldozeBody>,
+) -> Json<ActionResult> {
     let mut c = s.city.lock().unwrap();
     let removed = match body.target_type.as_str() {
         "segment" => {
@@ -189,9 +241,23 @@ async fn bulldoze(State(s): State<MockState>, Json(body): Json<BulldozeBody>) ->
         _ => false,
     };
     if removed {
-        Json(ActionResult { ok: true, created_nodes: vec![], created_segments: vec![], snapped_nodes: vec![], destroyed: vec![body.id], reason: None })
+        Json(ActionResult {
+            ok: true,
+            created_nodes: vec![],
+            created_segments: vec![],
+            snapped_nodes: vec![],
+            destroyed: vec![body.id],
+            reason: None,
+        })
     } else {
-        Json(ActionResult { ok: false, created_nodes: vec![], created_segments: vec![], snapped_nodes: vec![], destroyed: vec![], reason: Some(ActionError::InvalidArgs) })
+        Json(ActionResult {
+            ok: false,
+            created_nodes: vec![],
+            created_segments: vec![],
+            snapped_nodes: vec![],
+            destroyed: vec![],
+            reason: Some(ActionError::InvalidArgs),
+        })
     }
 }
 
@@ -201,17 +267,41 @@ struct UpgradeBody {
     prefab: String,
 }
 
-async fn upgrade_road(State(s): State<MockState>, Json(body): Json<UpgradeBody>) -> Json<ActionResult> {
+async fn upgrade_road(
+    State(s): State<MockState>,
+    Json(body): Json<UpgradeBody>,
+) -> Json<ActionResult> {
     let mut c = s.city.lock().unwrap();
     if !road_types().contains(&body.prefab) {
-        return Json(ActionResult { ok: false, created_nodes: vec![], created_segments: vec![], snapped_nodes: vec![], destroyed: vec![], reason: Some(ActionError::InvalidPrefab) });
+        return Json(ActionResult {
+            ok: false,
+            created_nodes: vec![],
+            created_segments: vec![],
+            snapped_nodes: vec![],
+            destroyed: vec![],
+            reason: Some(ActionError::InvalidPrefab),
+        });
     }
     match c.segments.iter_mut().find(|sg| sg.id == body.segment_id) {
         Some(sg) => {
             sg.prefab = body.prefab;
-            Json(ActionResult { ok: true, created_nodes: vec![], created_segments: vec![body.segment_id], snapped_nodes: vec![], destroyed: vec![], reason: None })
+            Json(ActionResult {
+                ok: true,
+                created_nodes: vec![],
+                created_segments: vec![body.segment_id],
+                snapped_nodes: vec![],
+                destroyed: vec![],
+                reason: None,
+            })
         }
-        None => Json(ActionResult { ok: false, created_nodes: vec![], created_segments: vec![], snapped_nodes: vec![], destroyed: vec![], reason: Some(ActionError::InvalidArgs) }),
+        None => Json(ActionResult {
+            ok: false,
+            created_nodes: vec![],
+            created_segments: vec![],
+            snapped_nodes: vec![],
+            destroyed: vec![],
+            reason: Some(ActionError::InvalidArgs),
+        }),
     }
 }
 
@@ -224,14 +314,28 @@ struct SetZoneBody {
 async fn set_zone(State(s): State<MockState>, Json(body): Json<SetZoneBody>) -> Json<ActionResult> {
     let mut c = s.city.lock().unwrap();
     if !zone_types().contains(&body.zone_type) {
-        return Json(ActionResult { ok: false, created_nodes: vec![], created_segments: vec![], snapped_nodes: vec![], destroyed: vec![], reason: Some(ActionError::InvalidArgs) });
+        return Json(ActionResult {
+            ok: false,
+            created_nodes: vec![],
+            created_segments: vec![],
+            snapped_nodes: vec![],
+            destroyed: vec![],
+            reason: Some(ActionError::InvalidArgs),
+        });
     }
     c.zones.push(ZoneCell {
         x: (body.rect.min_x + body.rect.max_x) / 2.0,
         z: (body.rect.min_z + body.rect.max_z) / 2.0,
         zone_type: body.zone_type,
     });
-    Json(ActionResult { ok: true, created_nodes: vec![], created_segments: vec![], snapped_nodes: vec![], destroyed: vec![], reason: None })
+    Json(ActionResult {
+        ok: true,
+        created_nodes: vec![],
+        created_segments: vec![],
+        snapped_nodes: vec![],
+        destroyed: vec![],
+        reason: None,
+    })
 }
 
 #[derive(Deserialize)]
@@ -240,14 +344,20 @@ struct LoadSaveBody {
     save_name: String,
 }
 
-async fn load_save(State(s): State<MockState>, Json(_body): Json<LoadSaveBody>) -> Json<LoadResult> {
+async fn load_save(
+    State(s): State<MockState>,
+    Json(_body): Json<LoadSaveBody>,
+) -> Json<LoadResult> {
     let mut c = s.city.lock().unwrap();
     c.nodes.clear();
     c.segments.clear();
     c.zones.clear();
     c.tick = 0;
     c.next_id = 1;
-    Json(LoadResult { ok: true, city_loaded: true })
+    Json(LoadResult {
+        ok: true,
+        city_loaded: true,
+    })
 }
 
 #[derive(Deserialize)]
@@ -266,7 +376,11 @@ async fn clock(State(s): State<MockState>, Json(body): Json<ClockBody>) -> Json<
         "step" => c.tick += body.ticks.unwrap_or(0) as u64,
         _ => {}
     }
-    Json(ClockState { ok: true, paused: c.paused, tick: c.tick })
+    Json(ClockState {
+        ok: true,
+        paused: c.paused,
+        tick: c.tick,
+    })
 }
 
 pub fn router() -> Router {
@@ -318,8 +432,14 @@ mod tests {
         tokio::spawn(server);
         let client = reqwest::Client::new();
 
-        let before: Metrics =
-            client.get(format!("http://{addr}/metrics")).send().await.unwrap().json().await.unwrap();
+        let before: Metrics = client
+            .get(format!("http://{addr}/metrics"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
 
         let body = serde_json::json!({
             "start": {"x": 0.0, "y": 0.0, "z": 0.0},
@@ -339,8 +459,14 @@ mod tests {
         assert!(res.ok);
         assert_eq!(res.created_segments.len(), 1);
 
-        let after: Metrics =
-            client.get(format!("http://{addr}/metrics")).send().await.unwrap().json().await.unwrap();
+        let after: Metrics = client
+            .get(format!("http://{addr}/metrics"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
         assert!(after.traffic.flow_percent < before.traffic.flow_percent);
     }
 }

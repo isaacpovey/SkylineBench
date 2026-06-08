@@ -38,7 +38,19 @@ pub fn in_bounds(p: Position, bounds: Bounds) -> bool {
 pub fn nearest_node_within_tolerance(p: Position, nodes: &[NetNode]) -> Option<u32> {
     nodes
         .iter()
-        .map(|n| (n.id, horizontal_distance(p, Position { x: n.x, y: n.y, z: n.z })))
+        .map(|n| {
+            (
+                n.id,
+                horizontal_distance(
+                    p,
+                    Position {
+                        x: n.x,
+                        y: n.y,
+                        z: n.z,
+                    },
+                ),
+            )
+        })
         .filter(|(_, d)| *d <= SNAP_TOLERANCE_M)
         .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
         .map(|(id, _)| id)
@@ -59,8 +71,16 @@ mod tests {
 
     #[test]
     fn distance_ignores_elevation() {
-        let a = Position { x: 0.0, y: 0.0, z: 0.0 };
-        let b = Position { x: 3.0, y: 100.0, z: 4.0 };
+        let a = Position {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        };
+        let b = Position {
+            x: 3.0,
+            y: 100.0,
+            z: 4.0,
+        };
         assert_eq!(horizontal_distance(a, b), 5.0);
     }
 
@@ -74,15 +94,33 @@ mod tests {
     #[test]
     fn snap_finds_nearest_within_tolerance() {
         let nodes = vec![
-            NetNode { id: 1, x: 5.0, y: 0.0, z: 0.0 },
-            NetNode { id: 2, x: 2.0, y: 0.0, z: 0.0 },
+            NetNode {
+                id: 1,
+                x: 5.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            NetNode {
+                id: 2,
+                x: 2.0,
+                y: 0.0,
+                z: 0.0,
+            },
         ];
-        assert_eq!(nearest_node_within_tolerance(pos(0.0, 0.0), &nodes), Some(2));
+        assert_eq!(
+            nearest_node_within_tolerance(pos(0.0, 0.0), &nodes),
+            Some(2)
+        );
     }
 
     #[test]
     fn snap_returns_none_when_all_too_far() {
-        let nodes = vec![NetNode { id: 1, x: 50.0, y: 0.0, z: 0.0 }];
+        let nodes = vec![NetNode {
+            id: 1,
+            x: 50.0,
+            y: 0.0,
+            z: 0.0,
+        }];
         assert_eq!(nearest_node_within_tolerance(pos(0.0, 0.0), &nodes), None);
     }
 }

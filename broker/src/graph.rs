@@ -35,14 +35,15 @@ impl Connectivity {
 }
 
 pub fn build_connectivity(network: &Network) -> Connectivity {
-    let adjacency = network.segments.iter().fold(
-        BTreeMap::<u32, Vec<u32>>::new(),
-        |mut acc, seg| {
-            acc.entry(seg.start_node).or_default().push(seg.end_node);
-            acc.entry(seg.end_node).or_default().push(seg.start_node);
-            acc
-        },
-    );
+    let adjacency =
+        network
+            .segments
+            .iter()
+            .fold(BTreeMap::<u32, Vec<u32>>::new(), |mut acc, seg| {
+                acc.entry(seg.start_node).or_default().push(seg.end_node);
+                acc.entry(seg.end_node).or_default().push(seg.start_node);
+                acc
+            });
     Connectivity { adjacency }
 }
 
@@ -52,11 +53,23 @@ mod tests {
     use crate::contract::{NetNode, NetSegment};
 
     fn node(id: u32) -> NetNode {
-        NetNode { id, x: id as f32, y: 0.0, z: 0.0 }
+        NetNode {
+            id,
+            x: id as f32,
+            y: 0.0,
+            z: 0.0,
+        }
     }
 
     fn seg(id: u32, a: u32, b: u32) -> NetSegment {
-        NetSegment { id, start_node: a, end_node: b, prefab: "road".into(), lanes: 2, length: 10.0 }
+        NetSegment {
+            id,
+            start_node: a,
+            end_node: b,
+            prefab: "road".into(),
+            lanes: 2,
+            length: 10.0,
+        }
     }
 
     // Network shaped like:  1 - 2 - 3,  2 - 4  (node 2 is a junction; 1,3,4 are dead-ends)
@@ -88,7 +101,10 @@ mod tests {
 
     #[test]
     fn empty_network_has_no_features() {
-        let c = build_connectivity(&Network { nodes: vec![], segments: vec![] });
+        let c = build_connectivity(&Network {
+            nodes: vec![],
+            segments: vec![],
+        });
         assert!(c.intersections().is_empty());
         assert!(c.dead_ends().is_empty());
     }

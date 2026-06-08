@@ -50,7 +50,10 @@ pub struct GetMetricsArgs {
     pub groups: Vec<String>,
 }
 
-pub async fn get_metrics(client: &BridgeClient, args: GetMetricsArgs) -> Result<Value, ServiceError> {
+pub async fn get_metrics(
+    client: &BridgeClient,
+    args: GetMetricsArgs,
+) -> Result<Value, ServiceError> {
     let m = client.metrics().await?;
     let want = |g: &str| args.groups.is_empty() || args.groups.iter().any(|x| x == g);
     let mut out = json!({ "tick": m.tick });
@@ -85,7 +88,10 @@ fn default_size() -> u32 {
 
 /// Returns the rendered PNG bytes (the rmcp layer wraps these as an image
 /// content block).
-pub async fn render_map(client: &BridgeClient, args: RenderMapArgs) -> Result<Vec<u8>, ServiceError> {
+pub async fn render_map(
+    client: &BridgeClient,
+    args: RenderMapArgs,
+) -> Result<Vec<u8>, ServiceError> {
     let net = client.network().await?;
     let opts = RenderOptions {
         bounds: args.bounds.unwrap_or_else(playable_bounds),
@@ -113,7 +119,9 @@ pub async fn build_road(client: &BridgeClient, args: BuildRoadArgs) -> Result<Va
     if let Err(reason) = validate_build_road(args.from, args.to, &args.road_type, &road_types) {
         return Ok(action_error_value(reason));
     }
-    let res = client.build_road(args.from, args.to, &args.road_type, args.snap).await?;
+    let res = client
+        .build_road(args.from, args.to, &args.road_type, args.snap)
+        .await?;
     Ok(serde_json::to_value(res).unwrap())
 }
 
@@ -134,7 +142,10 @@ pub struct ControlTimeArgs {
     pub speed: Option<u8>,
 }
 
-pub async fn control_time(client: &BridgeClient, args: ControlTimeArgs) -> Result<Value, ServiceError> {
+pub async fn control_time(
+    client: &BridgeClient,
+    args: ControlTimeArgs,
+) -> Result<Value, ServiceError> {
     let state = client.clock(&args.op, args.ticks, args.speed).await?;
     Ok(serde_json::to_value(state).unwrap())
 }
@@ -161,7 +172,10 @@ pub struct UpgradeRoadArgs {
     pub road_type: String,
 }
 
-pub async fn upgrade_road(client: &BridgeClient, args: UpgradeRoadArgs) -> Result<Value, ServiceError> {
+pub async fn upgrade_road(
+    client: &BridgeClient,
+    args: UpgradeRoadArgs,
+) -> Result<Value, ServiceError> {
     let road_types = client.road_types().await?.road_types;
     if !road_types.contains(&args.road_type) {
         return Ok(action_error_value(ActionError::InvalidPrefab));
@@ -190,7 +204,10 @@ pub struct ResetScenarioArgs {
     pub save: String,
 }
 
-pub async fn reset_scenario(client: &BridgeClient, args: ResetScenarioArgs) -> Result<Value, ServiceError> {
+pub async fn reset_scenario(
+    client: &BridgeClient,
+    args: ResetScenarioArgs,
+) -> Result<Value, ServiceError> {
     let res = client.load_save(&args.save).await?;
     Ok(serde_json::to_value(res).unwrap())
 }
@@ -221,7 +238,14 @@ mod tests {
     #[tokio::test]
     async fn get_metrics_filters_groups() {
         let c = client().await;
-        let v = get_metrics(&c, GetMetricsArgs { groups: vec!["traffic".into()] }).await.unwrap();
+        let v = get_metrics(
+            &c,
+            GetMetricsArgs {
+                groups: vec!["traffic".into()],
+            },
+        )
+        .await
+        .unwrap();
         assert!(v.get("traffic").is_some());
         assert!(v.get("economy").is_none());
     }
@@ -229,12 +253,25 @@ mod tests {
     #[tokio::test]
     async fn build_road_rejects_unknown_type_before_hitting_mod() {
         let c = client().await;
-        let v = build_road(&c, BuildRoadArgs {
-            from: Position { x: 0.0, y: 0.0, z: 0.0 },
-            to: Position { x: 50.0, y: 0.0, z: 0.0 },
-            road_type: "teleporter".into(),
-            snap: true,
-        }).await.unwrap();
+        let v = build_road(
+            &c,
+            BuildRoadArgs {
+                from: Position {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                to: Position {
+                    x: 50.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                road_type: "teleporter".into(),
+                snap: true,
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(v["ok"], false);
         assert_eq!(v["reason"], "INVALID_PREFAB");
     }
@@ -242,12 +279,25 @@ mod tests {
     #[tokio::test]
     async fn build_road_succeeds_and_observe_sees_it() {
         let c = client().await;
-        let built = build_road(&c, BuildRoadArgs {
-            from: Position { x: 0.0, y: 0.0, z: 0.0 },
-            to: Position { x: 50.0, y: 0.0, z: 0.0 },
-            road_type: "road".into(),
-            snap: true,
-        }).await.unwrap();
+        let built = build_road(
+            &c,
+            BuildRoadArgs {
+                from: Position {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                to: Position {
+                    x: 50.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                road_type: "road".into(),
+                snap: true,
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(built["ok"], true);
         let obs = observe_area(&c).await.unwrap();
         assert_eq!(obs["network"]["segments"].as_array().unwrap().len(), 1);
@@ -256,21 +306,51 @@ mod tests {
     #[tokio::test]
     async fn render_map_returns_png_bytes() {
         let c = client().await;
-        let png = render_map(&c, RenderMapArgs { bounds: None, width_px: 64, height_px: 64 }).await.unwrap();
+        let png = render_map(
+            &c,
+            RenderMapArgs {
+                bounds: None,
+                width_px: 64,
+                height_px: 64,
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(&png[1..4], b"PNG");
     }
 
     #[tokio::test]
     async fn bulldoze_removes_a_segment() {
         let c = client().await;
-        let built = build_road(&c, BuildRoadArgs {
-            from: Position { x: 0.0, y: 0.0, z: 0.0 },
-            to: Position { x: 50.0, y: 0.0, z: 0.0 },
-            road_type: "road".into(),
-            snap: true,
-        }).await.unwrap();
+        let built = build_road(
+            &c,
+            BuildRoadArgs {
+                from: Position {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                to: Position {
+                    x: 50.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                road_type: "road".into(),
+                snap: true,
+            },
+        )
+        .await
+        .unwrap();
         let seg_id = built["created_segments"][0].as_u64().unwrap() as u32;
-        let res = bulldoze(&c, BulldozeArgs { target_type: "segment".into(), id: seg_id }).await.unwrap();
+        let res = bulldoze(
+            &c,
+            BulldozeArgs {
+                target_type: "segment".into(),
+                id: seg_id,
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(res["ok"], true);
         let obs = observe_area(&c).await.unwrap();
         assert_eq!(obs["network"]["segments"].as_array().unwrap().len(), 0);
@@ -279,10 +359,20 @@ mod tests {
     #[tokio::test]
     async fn set_zoning_rejects_unknown_zone() {
         let c = client().await;
-        let res = set_zoning(&c, SetZoningArgs {
-            area: crate::contract::Bounds { min_x: 0.0, min_z: 0.0, max_x: 10.0, max_z: 10.0 },
-            zone_type: "spaceport".into(),
-        }).await.unwrap();
+        let res = set_zoning(
+            &c,
+            SetZoningArgs {
+                area: crate::contract::Bounds {
+                    min_x: 0.0,
+                    min_z: 0.0,
+                    max_x: 10.0,
+                    max_z: 10.0,
+                },
+                zone_type: "spaceport".into(),
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(res["ok"], false);
         assert_eq!(res["reason"], "INVALID_ARGS");
     }
@@ -290,14 +380,93 @@ mod tests {
     #[tokio::test]
     async fn reset_scenario_clears_the_city() {
         let c = client().await;
-        build_road(&c, BuildRoadArgs {
-            from: Position { x: 0.0, y: 0.0, z: 0.0 },
-            to: Position { x: 50.0, y: 0.0, z: 0.0 },
-            road_type: "road".into(),
-            snap: true,
-        }).await.unwrap();
-        reset_scenario(&c, ResetScenarioArgs { save: "anything".into() }).await.unwrap();
+        build_road(
+            &c,
+            BuildRoadArgs {
+                from: Position {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                to: Position {
+                    x: 50.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                road_type: "road".into(),
+                snap: true,
+            },
+        )
+        .await
+        .unwrap();
+        reset_scenario(
+            &c,
+            ResetScenarioArgs {
+                save: "anything".into(),
+            },
+        )
+        .await
+        .unwrap();
         let obs = observe_area(&c).await.unwrap();
         assert_eq!(obs["network"]["segments"].as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn upgrade_road_changes_segment_type_over_the_wire() {
+        let c = client().await;
+        let built = build_road(
+            &c,
+            BuildRoadArgs {
+                from: Position {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                to: Position {
+                    x: 50.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                road_type: "road".into(),
+                snap: true,
+            },
+        )
+        .await
+        .unwrap();
+        let seg_id = built["created_segments"][0].as_u64().unwrap() as u32;
+        let res = upgrade_road(
+            &c,
+            UpgradeRoadArgs {
+                segment: seg_id,
+                road_type: "highway".into(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(res["ok"], true);
+        let obs = observe_area(&c).await.unwrap();
+        assert_eq!(obs["network"]["segments"][0]["prefab"], "highway");
+    }
+
+    #[tokio::test]
+    async fn set_zoning_adds_a_zone_cell_over_the_wire() {
+        let c = client().await;
+        let res = set_zoning(
+            &c,
+            SetZoningArgs {
+                area: crate::contract::Bounds {
+                    min_x: 0.0,
+                    min_z: 0.0,
+                    max_x: 16.0,
+                    max_z: 16.0,
+                },
+                zone_type: "residential".into(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(res["ok"], true);
+        let obs = observe_area(&c).await.unwrap();
+        assert_eq!(obs["zones"].as_array().unwrap().len(), 1);
     }
 }

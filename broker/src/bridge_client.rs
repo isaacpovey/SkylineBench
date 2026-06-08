@@ -32,11 +32,21 @@ struct ClockBody<'a> {
 
 impl BridgeClient {
     pub fn new(base_url: impl Into<String>) -> Self {
-        BridgeClient { base: base_url.into(), http: reqwest::Client::new() }
+        BridgeClient {
+            base: base_url.into(),
+            http: reqwest::Client::new(),
+        }
     }
 
     async fn get_json<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, BridgeError> {
-        Ok(self.http.get(format!("{}{path}", self.base)).send().await?.error_for_status()?.json().await?)
+        Ok(self
+            .http
+            .get(format!("{}{path}", self.base))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
     }
 
     pub async fn health(&self) -> Result<Health, BridgeError> {
@@ -67,34 +77,106 @@ impl BridgeClient {
         self.get_json("/zone-types").await
     }
 
-    pub async fn build_road(&self, start: Position, end: Position, prefab: &str, snap: bool) -> Result<ActionResult, BridgeError> {
-        let body = BuildRoadBody { start, end, prefab, snap_to_existing_nodes: snap };
-        Ok(self.http.post(format!("{}/action/build-road", self.base)).json(&body).send().await?.error_for_status()?.json().await?)
+    pub async fn build_road(
+        &self,
+        start: Position,
+        end: Position,
+        prefab: &str,
+        snap: bool,
+    ) -> Result<ActionResult, BridgeError> {
+        let body = BuildRoadBody {
+            start,
+            end,
+            prefab,
+            snap_to_existing_nodes: snap,
+        };
+        Ok(self
+            .http
+            .post(format!("{}/action/build-road", self.base))
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
     }
 
     pub async fn bulldoze(&self, target_type: &str, id: u32) -> Result<ActionResult, BridgeError> {
         let body = serde_json::json!({ "target_type": target_type, "id": id });
-        Ok(self.http.post(format!("{}/action/bulldoze", self.base)).json(&body).send().await?.error_for_status()?.json().await?)
+        Ok(self
+            .http
+            .post(format!("{}/action/bulldoze", self.base))
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
     }
 
-    pub async fn upgrade_road(&self, segment_id: u32, prefab: &str) -> Result<ActionResult, BridgeError> {
+    pub async fn upgrade_road(
+        &self,
+        segment_id: u32,
+        prefab: &str,
+    ) -> Result<ActionResult, BridgeError> {
         let body = serde_json::json!({ "segment_id": segment_id, "prefab": prefab });
-        Ok(self.http.post(format!("{}/action/upgrade-road", self.base)).json(&body).send().await?.error_for_status()?.json().await?)
+        Ok(self
+            .http
+            .post(format!("{}/action/upgrade-road", self.base))
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
     }
 
-    pub async fn set_zone(&self, rect: Bounds, zone_type: &str) -> Result<ActionResult, BridgeError> {
+    pub async fn set_zone(
+        &self,
+        rect: Bounds,
+        zone_type: &str,
+    ) -> Result<ActionResult, BridgeError> {
         let body = serde_json::json!({ "rect": rect, "zone_type": zone_type });
-        Ok(self.http.post(format!("{}/action/set-zone", self.base)).json(&body).send().await?.error_for_status()?.json().await?)
+        Ok(self
+            .http
+            .post(format!("{}/action/set-zone", self.base))
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
     }
 
     pub async fn load_save(&self, save_name: &str) -> Result<LoadResult, BridgeError> {
         let body = serde_json::json!({ "save_name": save_name });
-        Ok(self.http.post(format!("{}/load-save", self.base)).json(&body).send().await?.error_for_status()?.json().await?)
+        Ok(self
+            .http
+            .post(format!("{}/load-save", self.base))
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
     }
 
-    pub async fn clock(&self, op: &str, ticks: Option<u32>, speed: Option<u8>) -> Result<ClockState, BridgeError> {
+    pub async fn clock(
+        &self,
+        op: &str,
+        ticks: Option<u32>,
+        speed: Option<u8>,
+    ) -> Result<ClockState, BridgeError> {
         let body = ClockBody { op, ticks, speed };
-        Ok(self.http.post(format!("{}/clock", self.base)).json(&body).send().await?.error_for_status()?.json().await?)
+        Ok(self
+            .http
+            .post(format!("{}/clock", self.base))
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
     }
 }
 
@@ -120,7 +202,20 @@ mod tests {
     async fn builds_a_road_and_sees_it_in_network() {
         let client = BridgeClient::new(start_mock().await);
         let res = client
-            .build_road(Position { x: 0.0, y: 0.0, z: 0.0 }, Position { x: 50.0, y: 0.0, z: 0.0 }, "road", true)
+            .build_road(
+                Position {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Position {
+                    x: 50.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                "road",
+                true,
+            )
             .await
             .unwrap();
         assert!(res.ok);
@@ -133,7 +228,20 @@ mod tests {
     async fn rejects_invalid_prefab_with_reason() {
         let client = BridgeClient::new(start_mock().await);
         let res = client
-            .build_road(Position { x: 0.0, y: 0.0, z: 0.0 }, Position { x: 50.0, y: 0.0, z: 0.0 }, "monorail", true)
+            .build_road(
+                Position {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Position {
+                    x: 50.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                "monorail",
+                true,
+            )
             .await
             .unwrap();
         assert!(!res.ok);

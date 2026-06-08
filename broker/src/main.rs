@@ -4,7 +4,10 @@ use skylinebench::mock;
 use skylinebench::tools::Skyline;
 
 #[derive(Parser)]
-#[command(name = "skylinebench", about = "Cities: Skylines 1 MCP harness (broker)")]
+#[command(
+    name = "skylinebench",
+    about = "Cities: Skylines 1 MCP harness (broker)"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,

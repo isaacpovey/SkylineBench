@@ -30,13 +30,25 @@ pub fn render_network(network: &Network, opts: &RenderOptions) -> Vec<u8> {
     let node_pos = network
         .nodes
         .iter()
-        .map(|n| (n.id, Position { x: n.x, y: n.y, z: n.z }))
+        .map(|n| {
+            (
+                n.id,
+                Position {
+                    x: n.x,
+                    y: n.y,
+                    z: n.z,
+                },
+            )
+        })
         .collect::<std::collections::HashMap<_, _>>();
 
     let mut road_paint = Paint::default();
     road_paint.set_color(Color::from_rgba8(230, 230, 120, 255));
     road_paint.anti_alias = true;
-    let stroke = Stroke { width: 2.0, ..Stroke::default() };
+    let stroke = Stroke {
+        width: 2.0,
+        ..Stroke::default()
+    };
 
     for seg in &network.segments {
         if let (Some(a), Some(b)) = (node_pos.get(&seg.start_node), node_pos.get(&seg.end_node)) {
@@ -51,7 +63,9 @@ pub fn render_network(network: &Network, opts: &RenderOptions) -> Vec<u8> {
         }
     }
 
-    pixmap.encode_png().expect("PNG encoding never fails for a valid pixmap")
+    pixmap
+        .encode_png()
+        .expect("PNG encoding never fails for a valid pixmap")
 }
 
 #[cfg(test)]
@@ -62,20 +76,54 @@ mod tests {
     fn sample_network() -> Network {
         Network {
             nodes: vec![
-                NetNode { id: 1, x: -50.0, y: 0.0, z: -50.0 },
-                NetNode { id: 2, x: 50.0, y: 0.0, z: -50.0 },
-                NetNode { id: 3, x: 50.0, y: 0.0, z: 50.0 },
+                NetNode {
+                    id: 1,
+                    x: -50.0,
+                    y: 0.0,
+                    z: -50.0,
+                },
+                NetNode {
+                    id: 2,
+                    x: 50.0,
+                    y: 0.0,
+                    z: -50.0,
+                },
+                NetNode {
+                    id: 3,
+                    x: 50.0,
+                    y: 0.0,
+                    z: 50.0,
+                },
             ],
             segments: vec![
-                NetSegment { id: 10, start_node: 1, end_node: 2, prefab: "road".into(), lanes: 2, length: 100.0 },
-                NetSegment { id: 11, start_node: 2, end_node: 3, prefab: "road".into(), lanes: 2, length: 100.0 },
+                NetSegment {
+                    id: 10,
+                    start_node: 1,
+                    end_node: 2,
+                    prefab: "road".into(),
+                    lanes: 2,
+                    length: 100.0,
+                },
+                NetSegment {
+                    id: 11,
+                    start_node: 2,
+                    end_node: 3,
+                    prefab: "road".into(),
+                    lanes: 2,
+                    length: 100.0,
+                },
             ],
         }
     }
 
     fn opts() -> RenderOptions {
         RenderOptions {
-            bounds: Bounds { min_x: -100.0, min_z: -100.0, max_x: 100.0, max_z: 100.0 },
+            bounds: Bounds {
+                min_x: -100.0,
+                min_z: -100.0,
+                max_x: 100.0,
+                max_z: 100.0,
+            },
             width_px: 128,
             height_px: 128,
         }

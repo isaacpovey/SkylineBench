@@ -42,7 +42,10 @@ mod tests {
 
     #[test]
     fn accepts_a_valid_segment() {
-        assert_eq!(validate_build_road(pos(0.0, 0.0), pos(50.0, 0.0), "road", &road_types()), Ok(()));
+        assert_eq!(
+            validate_build_road(pos(0.0, 0.0), pos(50.0, 0.0), "road", &road_types()),
+            Ok(())
+        );
     }
 
     #[test]
@@ -72,7 +75,12 @@ mod tests {
     #[test]
     fn rejects_too_long_segment() {
         assert_eq!(
-            validate_build_road(pos(0.0, 0.0), pos(MAX_SEGMENT_LENGTH_M + 1.0, 0.0), "road", &road_types()),
+            validate_build_road(
+                pos(0.0, 0.0),
+                pos(MAX_SEGMENT_LENGTH_M + 1.0, 0.0),
+                "road",
+                &road_types()
+            ),
             Err(ActionError::SegmentTooLong)
         );
     }

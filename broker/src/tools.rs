@@ -17,7 +17,8 @@ use serde_json::Value;
 
 use crate::bridge_client::BridgeClient;
 use crate::service::{
-    self, BuildRoadArgs, ControlTimeArgs, GetMetricsArgs, RenderMapArgs, ServiceError,
+    self, BuildRoadArgs, BulldozeArgs, ControlTimeArgs, GetMetricsArgs, RenderMapArgs,
+    ResetScenarioArgs, ServiceError, SetZoningArgs, UpgradeRoadArgs,
 };
 
 #[derive(Clone)]
@@ -130,6 +131,52 @@ impl Skyline {
             Err(e) => Ok(tool_error(e)),
         }
     }
+
+    #[tool(
+        description = "Remove a network segment, node, or building. target_type = segment | node | building."
+    )]
+    async fn bulldoze(
+        &self,
+        #[tool(aggr)] args: BulldozeArgs,
+    ) -> Result<CallToolResult, Error> {
+        match service::bulldoze(&self.client, args).await {
+            Ok(v) => json_result(v),
+            Err(e) => Ok(tool_error(e)),
+        }
+    }
+
+    #[tool(description = "Change an existing road segment's type. Validates the new road_type first.")]
+    async fn upgrade_road(
+        &self,
+        #[tool(aggr)] args: UpgradeRoadArgs,
+    ) -> Result<CallToolResult, Error> {
+        match service::upgrade_road(&self.client, args).await {
+            Ok(v) => json_result(v),
+            Err(e) => Ok(tool_error(e)),
+        }
+    }
+
+    #[tool(description = "Set zoning over a rectangular area. zone_type from list_zone_types.")]
+    async fn set_zoning(
+        &self,
+        #[tool(aggr)] args: SetZoningArgs,
+    ) -> Result<CallToolResult, Error> {
+        match service::set_zoning(&self.client, args).await {
+            Ok(v) => json_result(v),
+            Err(e) => Ok(tool_error(e)),
+        }
+    }
+
+    #[tool(description = "Reload a named savegame — the benchmark reset primitive.")]
+    async fn reset_scenario(
+        &self,
+        #[tool(aggr)] args: ResetScenarioArgs,
+    ) -> Result<CallToolResult, Error> {
+        match service::reset_scenario(&self.client, args).await {
+            Ok(v) => json_result(v),
+            Err(e) => Ok(tool_error(e)),
+        }
+    }
 }
 
 #[tool(tool_box)]
@@ -151,7 +198,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registers_all_eight_tools() {
+    fn registers_all_twelve_tools() {
         let tools = Skyline::tool_box().list();
         let mut names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
         names.sort_unstable();
@@ -159,6 +206,7 @@ mod tests {
             names,
             vec![
                 "build_road",
+                "bulldoze",
                 "control_time",
                 "get_city_overview",
                 "get_metrics",
@@ -166,6 +214,9 @@ mod tests {
                 "list_zone_types",
                 "observe_area",
                 "render_map",
+                "reset_scenario",
+                "set_zoning",
+                "upgrade_road",
             ]
         );
     }

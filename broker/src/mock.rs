@@ -14,6 +14,7 @@ use crate::geometry::{horizontal_distance, nearest_node_within_tolerance};
 struct City {
     nodes: Vec<NetNode>,
     segments: Vec<NetSegment>,
+    zones: Vec<ZoneCell>,
     next_id: u32,
     tick: u64,
     paused: bool,
@@ -61,8 +62,9 @@ async fn buildings(State(_s): State<MockState>) -> Json<Buildings> {
     Json(Buildings { buildings: vec![] })
 }
 
-async fn zones(State(_s): State<MockState>) -> Json<Zones> {
-    Json(Zones { cells: vec![] })
+async fn zones(State(s): State<MockState>) -> Json<Zones> {
+    let c = s.city.lock().unwrap();
+    Json(Zones { cells: c.zones.clone() })
 }
 
 async fn metrics(State(s): State<MockState>) -> Json<Metrics> {
@@ -166,6 +168,89 @@ async fn build_road(State(s): State<MockState>, Json(body): Json<BuildRoadBody>)
 }
 
 #[derive(Deserialize)]
+struct BulldozeBody {
+    target_type: String,
+    id: u32,
+}
+
+async fn bulldoze(State(s): State<MockState>, Json(body): Json<BulldozeBody>) -> Json<ActionResult> {
+    let mut c = s.city.lock().unwrap();
+    let removed = match body.target_type.as_str() {
+        "segment" => {
+            let before = c.segments.len();
+            c.segments.retain(|sg| sg.id != body.id);
+            before != c.segments.len()
+        }
+        "node" => {
+            let before = c.nodes.len();
+            c.nodes.retain(|n| n.id != body.id);
+            before != c.nodes.len()
+        }
+        _ => false,
+    };
+    if removed {
+        Json(ActionResult { ok: true, created_nodes: vec![], created_segments: vec![], snapped_nodes: vec![], destroyed: vec![body.id], reason: None })
+    } else {
+        Json(ActionResult { ok: false, created_nodes: vec![], created_segments: vec![], snapped_nodes: vec![], destroyed: vec![], reason: Some(ActionError::InvalidArgs) })
+    }
+}
+
+#[derive(Deserialize)]
+struct UpgradeBody {
+    segment_id: u32,
+    prefab: String,
+}
+
+async fn upgrade_road(State(s): State<MockState>, Json(body): Json<UpgradeBody>) -> Json<ActionResult> {
+    let mut c = s.city.lock().unwrap();
+    if !road_types().contains(&body.prefab) {
+        return Json(ActionResult { ok: false, created_nodes: vec![], created_segments: vec![], snapped_nodes: vec![], destroyed: vec![], reason: Some(ActionError::InvalidPrefab) });
+    }
+    match c.segments.iter_mut().find(|sg| sg.id == body.segment_id) {
+        Some(sg) => {
+            sg.prefab = body.prefab;
+            Json(ActionResult { ok: true, created_nodes: vec![], created_segments: vec![body.segment_id], snapped_nodes: vec![], destroyed: vec![], reason: None })
+        }
+        None => Json(ActionResult { ok: false, created_nodes: vec![], created_segments: vec![], snapped_nodes: vec![], destroyed: vec![], reason: Some(ActionError::InvalidArgs) }),
+    }
+}
+
+#[derive(Deserialize)]
+struct SetZoneBody {
+    rect: Bounds,
+    zone_type: String,
+}
+
+async fn set_zone(State(s): State<MockState>, Json(body): Json<SetZoneBody>) -> Json<ActionResult> {
+    let mut c = s.city.lock().unwrap();
+    if !zone_types().contains(&body.zone_type) {
+        return Json(ActionResult { ok: false, created_nodes: vec![], created_segments: vec![], snapped_nodes: vec![], destroyed: vec![], reason: Some(ActionError::InvalidArgs) });
+    }
+    c.zones.push(ZoneCell {
+        x: (body.rect.min_x + body.rect.max_x) / 2.0,
+        z: (body.rect.min_z + body.rect.max_z) / 2.0,
+        zone_type: body.zone_type,
+    });
+    Json(ActionResult { ok: true, created_nodes: vec![], created_segments: vec![], snapped_nodes: vec![], destroyed: vec![], reason: None })
+}
+
+#[derive(Deserialize)]
+struct LoadSaveBody {
+    #[allow(dead_code)]
+    save_name: String,
+}
+
+async fn load_save(State(s): State<MockState>, Json(_body): Json<LoadSaveBody>) -> Json<LoadResult> {
+    let mut c = s.city.lock().unwrap();
+    c.nodes.clear();
+    c.segments.clear();
+    c.zones.clear();
+    c.tick = 0;
+    c.next_id = 1;
+    Json(LoadResult { ok: true, city_loaded: true })
+}
+
+#[derive(Deserialize)]
 struct ClockBody {
     op: String,
     ticks: Option<u32>,
@@ -194,6 +279,10 @@ pub fn router() -> Router {
         .route("/road-types", get(road_types_ep))
         .route("/zone-types", get(zone_types_ep))
         .route("/action/build-road", post(build_road))
+        .route("/action/bulldoze", post(bulldoze))
+        .route("/action/upgrade-road", post(upgrade_road))
+        .route("/action/set-zone", post(set_zone))
+        .route("/load-save", post(load_save))
         .route("/clock", post(clock))
         .with_state(MockState::new())
 }

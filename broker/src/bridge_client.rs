@@ -72,6 +72,26 @@ impl BridgeClient {
         Ok(self.http.post(format!("{}/action/build-road", self.base)).json(&body).send().await?.error_for_status()?.json().await?)
     }
 
+    pub async fn bulldoze(&self, target_type: &str, id: u32) -> Result<ActionResult, BridgeError> {
+        let body = serde_json::json!({ "target_type": target_type, "id": id });
+        Ok(self.http.post(format!("{}/action/bulldoze", self.base)).json(&body).send().await?.error_for_status()?.json().await?)
+    }
+
+    pub async fn upgrade_road(&self, segment_id: u32, prefab: &str) -> Result<ActionResult, BridgeError> {
+        let body = serde_json::json!({ "segment_id": segment_id, "prefab": prefab });
+        Ok(self.http.post(format!("{}/action/upgrade-road", self.base)).json(&body).send().await?.error_for_status()?.json().await?)
+    }
+
+    pub async fn set_zone(&self, rect: Bounds, zone_type: &str) -> Result<ActionResult, BridgeError> {
+        let body = serde_json::json!({ "rect": rect, "zone_type": zone_type });
+        Ok(self.http.post(format!("{}/action/set-zone", self.base)).json(&body).send().await?.error_for_status()?.json().await?)
+    }
+
+    pub async fn load_save(&self, save_name: &str) -> Result<LoadResult, BridgeError> {
+        let body = serde_json::json!({ "save_name": save_name });
+        Ok(self.http.post(format!("{}/load-save", self.base)).json(&body).send().await?.error_for_status()?.json().await?)
+    }
+
     pub async fn clock(&self, op: &str, ticks: Option<u32>, speed: Option<u8>) -> Result<ClockState, BridgeError> {
         let body = ClockBody { op, ticks, speed };
         Ok(self.http.post(format!("{}/clock", self.base)).json(&body).send().await?.error_for_status()?.json().await?)

@@ -139,6 +139,60 @@ pub async fn control_time(client: &BridgeClient, args: ControlTimeArgs) -> Resul
     Ok(serde_json::to_value(state).unwrap())
 }
 
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct BulldozeArgs {
+    pub target_type: String,
+    pub id: u32,
+}
+
+pub async fn bulldoze(client: &BridgeClient, args: BulldozeArgs) -> Result<Value, ServiceError> {
+    if !matches!(args.target_type.as_str(), "segment" | "node" | "building") {
+        return Ok(action_error_value(ActionError::InvalidArgs));
+    }
+    let res = client.bulldoze(&args.target_type, args.id).await?;
+    Ok(serde_json::to_value(res).unwrap())
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct UpgradeRoadArgs {
+    pub segment: u32,
+    pub road_type: String,
+}
+
+pub async fn upgrade_road(client: &BridgeClient, args: UpgradeRoadArgs) -> Result<Value, ServiceError> {
+    let road_types = client.road_types().await?.road_types;
+    if !road_types.contains(&args.road_type) {
+        return Ok(action_error_value(ActionError::InvalidPrefab));
+    }
+    let res = client.upgrade_road(args.segment, &args.road_type).await?;
+    Ok(serde_json::to_value(res).unwrap())
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct SetZoningArgs {
+    pub area: Bounds,
+    pub zone_type: String,
+}
+
+pub async fn set_zoning(client: &BridgeClient, args: SetZoningArgs) -> Result<Value, ServiceError> {
+    let zone_types = client.zone_types().await?.zone_types;
+    if !zone_types.contains(&args.zone_type) {
+        return Ok(action_error_value(ActionError::InvalidArgs));
+    }
+    let res = client.set_zone(args.area, &args.zone_type).await?;
+    Ok(serde_json::to_value(res).unwrap())
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct ResetScenarioArgs {
+    pub save: String,
+}
+
+pub async fn reset_scenario(client: &BridgeClient, args: ResetScenarioArgs) -> Result<Value, ServiceError> {
+    let res = client.load_save(&args.save).await?;
+    Ok(serde_json::to_value(res).unwrap())
+}
+
 fn action_error_value(reason: ActionError) -> Value {
     json!({ "ok": false, "reason": reason })
 }
@@ -202,5 +256,46 @@ mod tests {
         let c = client().await;
         let png = render_map(&c, RenderMapArgs { bounds: None, width_px: 64, height_px: 64 }).await.unwrap();
         assert_eq!(&png[1..4], b"PNG");
+    }
+
+    #[tokio::test]
+    async fn bulldoze_removes_a_segment() {
+        let c = client().await;
+        let built = build_road(&c, BuildRoadArgs {
+            from: Position { x: 0.0, y: 0.0, z: 0.0 },
+            to: Position { x: 50.0, y: 0.0, z: 0.0 },
+            road_type: "road".into(),
+            snap: true,
+        }).await.unwrap();
+        let seg_id = built["created_segments"][0].as_u64().unwrap() as u32;
+        let res = bulldoze(&c, BulldozeArgs { target_type: "segment".into(), id: seg_id }).await.unwrap();
+        assert_eq!(res["ok"], true);
+        let obs = observe_area(&c).await.unwrap();
+        assert_eq!(obs["network"]["segments"].as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn set_zoning_rejects_unknown_zone() {
+        let c = client().await;
+        let res = set_zoning(&c, SetZoningArgs {
+            area: crate::contract::Bounds { min_x: 0.0, min_z: 0.0, max_x: 10.0, max_z: 10.0 },
+            zone_type: "spaceport".into(),
+        }).await.unwrap();
+        assert_eq!(res["ok"], false);
+        assert_eq!(res["reason"], "INVALID_ARGS");
+    }
+
+    #[tokio::test]
+    async fn reset_scenario_clears_the_city() {
+        let c = client().await;
+        build_road(&c, BuildRoadArgs {
+            from: Position { x: 0.0, y: 0.0, z: 0.0 },
+            to: Position { x: 50.0, y: 0.0, z: 0.0 },
+            road_type: "road".into(),
+            snap: true,
+        }).await.unwrap();
+        reset_scenario(&c, ResetScenarioArgs { save: "anything".into() }).await.unwrap();
+        let obs = observe_area(&c).await.unwrap();
+        assert_eq!(obs["network"]["segments"].as_array().unwrap().len(), 0);
     }
 }

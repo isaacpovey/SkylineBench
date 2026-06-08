@@ -174,6 +174,12 @@ pub struct ClockState {
     pub tick: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LoadResult {
+    pub ok: bool,
+    pub city_loaded: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

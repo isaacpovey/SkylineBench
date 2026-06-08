@@ -146,6 +146,8 @@ pub struct BulldozeArgs {
 }
 
 pub async fn bulldoze(client: &BridgeClient, args: BulldozeArgs) -> Result<Value, ServiceError> {
+    // "building" is valid against the real mod even though the mock has no
+    // buildings to remove (it returns INVALID_ARGS for an unknown id).
     if !matches!(args.target_type.as_str(), "segment" | "node" | "building") {
         return Ok(action_error_value(ActionError::InvalidArgs));
     }

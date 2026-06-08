@@ -1,3 +1,7 @@
+// Regenerates fixtures/golden_map.png for the render::tests::render_matches_golden
+// test. The network and RenderOptions below MUST stay identical to
+// render::tests::sample_network() and render::tests::opts() — if they diverge,
+// regenerating from this example produces a golden the test no longer matches.
 use skylinebench::contract::{Bounds, NetNode, NetSegment, Network};
 use skylinebench::render::{render_network, RenderOptions};
 

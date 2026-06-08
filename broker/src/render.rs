@@ -20,7 +20,11 @@ fn to_pixel(p: Position, bounds: Bounds, w: u32, h: u32) -> (f32, f32) {
 
 /// Render the network to PNG bytes.
 pub fn render_network(network: &Network, opts: &RenderOptions) -> Vec<u8> {
-    let mut pixmap = Pixmap::new(opts.width_px, opts.height_px).expect("non-zero dimensions");
+    // Clamp to at least 1px: dimensions arrive from MCP tool args, and
+    // Pixmap::new returns None (→ panic) on a zero dimension.
+    let w = opts.width_px.max(1);
+    let h = opts.height_px.max(1);
+    let mut pixmap = Pixmap::new(w, h).expect("dimensions are clamped to at least 1");
     pixmap.fill(Color::from_rgba8(20, 20, 28, 255));
 
     let node_pos = network
@@ -36,8 +40,8 @@ pub fn render_network(network: &Network, opts: &RenderOptions) -> Vec<u8> {
 
     for seg in &network.segments {
         if let (Some(a), Some(b)) = (node_pos.get(&seg.start_node), node_pos.get(&seg.end_node)) {
-            let (ax, ay) = to_pixel(*a, opts.bounds, opts.width_px, opts.height_px);
-            let (bx, by) = to_pixel(*b, opts.bounds, opts.width_px, opts.height_px);
+            let (ax, ay) = to_pixel(*a, opts.bounds, w, h);
+            let (bx, by) = to_pixel(*b, opts.bounds, w, h);
             let mut pb = PathBuilder::new();
             pb.move_to(ax, ay);
             pb.line_to(bx, by);

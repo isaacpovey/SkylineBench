@@ -200,6 +200,35 @@ mod tests {
     }
 
     #[test]
+    fn action_result_error_serializes_reason() {
+        let err = ActionResult {
+            ok: false,
+            created_nodes: vec![],
+            created_segments: vec![],
+            snapped_nodes: vec![],
+            destroyed: vec![],
+            reason: Some(ActionError::Collision),
+        };
+        let json = serde_json::to_string(&err).unwrap();
+        assert!(json.contains("\"reason\":\"COLLISION\""), "got {json}");
+        let parsed: ActionResult = serde_json::from_str(&json).unwrap();
+        assert_eq!(err, parsed);
+    }
+
+    #[test]
+    fn action_result_deserializes_from_sparse_payload() {
+        // A mod success payload that omits the diff arrays and reason must
+        // default the Vecs to empty and reason to None (exercises #[serde(default)]).
+        let parsed: ActionResult = serde_json::from_str("{\"ok\":true}").unwrap();
+        assert!(parsed.ok);
+        assert!(parsed.created_nodes.is_empty());
+        assert!(parsed.created_segments.is_empty());
+        assert!(parsed.snapped_nodes.is_empty());
+        assert!(parsed.destroyed.is_empty());
+        assert_eq!(parsed.reason, None);
+    }
+
+    #[test]
     fn metrics_round_trips() {
         let m = Metrics {
             tick: 42,

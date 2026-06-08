@@ -1,11 +1,13 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::contract::Network;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Connectivity {
-    /// node id -> ids of directly connected nodes (via a segment)
-    pub adjacency: HashMap<u32, Vec<u32>>,
+    /// node id -> ids of directly connected nodes (via a segment). A `BTreeMap`
+    /// so iteration is key-sorted, giving `intersections`/`dead_ends`
+    /// deterministic ascending output without a separate sort step.
+    pub adjacency: BTreeMap<u32, Vec<u32>>,
 }
 
 impl Connectivity {
@@ -15,32 +17,26 @@ impl Connectivity {
 
     /// Nodes with three or more connections — junctions.
     pub fn intersections(&self) -> Vec<u32> {
-        let mut out: Vec<u32> = self
-            .adjacency
+        self.adjacency
             .iter()
             .filter(|(_, neighbours)| neighbours.len() >= 3)
             .map(|(id, _)| *id)
-            .collect();
-        out.sort_unstable();
-        out
+            .collect()
     }
 
     /// Nodes with exactly one connection — dead-ends.
     pub fn dead_ends(&self) -> Vec<u32> {
-        let mut out: Vec<u32> = self
-            .adjacency
+        self.adjacency
             .iter()
             .filter(|(_, neighbours)| neighbours.len() == 1)
             .map(|(id, _)| *id)
-            .collect();
-        out.sort_unstable();
-        out
+            .collect()
     }
 }
 
 pub fn build_connectivity(network: &Network) -> Connectivity {
     let adjacency = network.segments.iter().fold(
-        HashMap::<u32, Vec<u32>>::new(),
+        BTreeMap::<u32, Vec<u32>>::new(),
         |mut acc, seg| {
             acc.entry(seg.start_node).or_default().push(seg.end_node);
             acc.entry(seg.end_node).or_default().push(seg.start_node);

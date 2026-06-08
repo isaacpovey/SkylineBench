@@ -2300,3 +2300,14 @@ This delivers the entire broker against the contract. The **next plan** implemen
 
 - `ActionError` adds two broker-side pre-validation reasons (`DEGENERATE_SEGMENT`, `INVALID_ARGS`) beyond spec §5's six mod-side codes. Fold this into the spec on next review.
 - The contract adds `GET /road-types` and `GET /zone-types` (implied by spec §4's `list_road_types`/`list_zone_types` tools but not enumerated in §3). The mod plan must implement these.
+
+## Deferred to the mod plan (raised by the final review, intentionally not fixed here)
+
+These need validation against the *real* game's behavior, so guessing a value/code now would be premature:
+
+- **Degenerate self-loop within snap tolerance.** `validate_build_road` currently rejects only bit-identical endpoints (`length < f32::EPSILON`). With `snap: true`, two endpoints closer than `SNAP_TOLERANCE_M` (8 m) can both resolve to the same node, producing a `start_node == end_node` self-loop. Spec §5 says reject when "`from ≈ to`". When the real mod is in place, either tighten the broker threshold toward `SNAP_TOLERANCE_M`, or have the post-snap result detect `start_id == end_id` and normalise to `DEGENERATE_SEGMENT`. Confirm the real game's minimum segment length first.
+- **Zone-type error code.** `set_zoning` maps an unknown `zone_type` to `INVALID_ARGS`, whereas `build_road`/`upgrade_road` map an unknown road type to `INVALID_PREFAB`. Decide on a consistent scheme (e.g. add `INVALID_ZONE_TYPE`, or reuse `INVALID_PREFAB`) when finalising the mod contract; sync the chosen code into spec §5.
+
+## Implementation status
+
+Executed via subagent-driven development on the `skylinebench-broker` branch (per-task spec + code-quality review, plus a final whole-implementation review). All 13 tasks complete: 37 tests pass (36 unit + 1 e2e), `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check` are clean. Final review verdict: READY TO MERGE; faithful, complete Phase-1 broker scope — Phase 2 and the C# mod plan build on this tool surface with no broker changes.

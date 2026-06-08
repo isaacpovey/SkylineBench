@@ -5,6 +5,6 @@ pub mod graph;
 pub mod validate;
 pub mod render;
 pub mod bridge_client;
-// pub mod service;
+pub mod service;
 pub mod mock;
 // pub mod tools;

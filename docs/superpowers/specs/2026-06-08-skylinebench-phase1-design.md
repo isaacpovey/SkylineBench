@@ -158,7 +158,32 @@ A single `/metrics` snapshot is taken **on the sim thread at a consistent tick**
 
 ---
 
-## 7. Setup & cross-platform story
+## 7. Project layout (high-level)
+
+The repo has two top-level build artifacts and supporting directories. This is the *skeleton only* — concrete crate names, module files, `.csproj`/MSBuild details, and dependency versions are decided in the implementation plan, not here.
+
+```
+SkylineBench/
+├── broker/          # Rust workspace — the `skylinebench` binary
+│                    #   single entry point for both serving and tooling:
+│                    #     skylinebench serve   (MCP server over stdio)
+│                    #     skylinebench setup   (locate game, build+install mod)
+│                    #     skylinebench doctor  (health-check the full chain)
+│                    #   internal modules from §4: graph, geometry, render,
+│                    #     bridge_client, validate
+├── mod/             # C# net35 project → the bridge DLL (HTTP listener + verbs)
+├── fixtures/        # captured real-mod responses for the mock-mod tests (§9)
+└── docs/            # this spec + the setup README
+```
+
+**Notes:**
+- The **Rust binary is the single entry point** for both serving the MCP tools and the setup/doctor tooling (no separate shell scripts) — making the setup flow in §8 explicit at the structure level.
+- The **mod is one C# project** producing a single DLL; its thinness (§2.1, §9) means it stays small.
+- Anything finer-grained — module-to-file mapping, the HTTP server/listener crate choices, `rmcp`/`tiny-skia`/`raqote` versions, the C# HTTP listener choice — lands in the plan.
+
+---
+
+## 8. Setup & cross-platform story
 
 The harness makes setup turnkey for a modding newcomer across all three OSes.
 
@@ -185,7 +210,7 @@ The harness makes setup turnkey for a modding newcomer across all three OSes.
 
 ---
 
-## 8. Testing strategy
+## 9. Testing strategy
 
 CS1 cannot run in CI, so the strategy is to make **most of the system testable without the game** and keep the untestable part tiny.
 
@@ -204,7 +229,7 @@ CS1 cannot run in CI, so the strategy is to make **most of the system testable w
 
 ---
 
-## 9. Phase 1 definition of done
+## 10. Phase 1 definition of done
 
 Phase 1 is complete when **an agent, through MCP alone, can observe, act, and see the consequence** — the loop Phase 2 will score.
 

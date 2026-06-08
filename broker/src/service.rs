@@ -43,7 +43,7 @@ pub async fn observe_area(client: &BridgeClient) -> Result<Value, ServiceError> 
     }))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 pub struct GetMetricsArgs {
     /// Optional subset of groups: "traffic","economy","population","services".
     #[serde(default)]
@@ -69,7 +69,7 @@ pub async fn get_metrics(client: &BridgeClient, args: GetMetricsArgs) -> Result<
     Ok(out)
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 pub struct RenderMapArgs {
     #[serde(default)]
     pub bounds: Option<Bounds>,
@@ -95,7 +95,7 @@ pub async fn render_map(client: &BridgeClient, args: RenderMapArgs) -> Result<Ve
     Ok(render_network(&net, &opts))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 pub struct BuildRoadArgs {
     pub from: Position,
     pub to: Position,
@@ -125,7 +125,7 @@ pub async fn list_zone_types(client: &BridgeClient) -> Result<Value, ServiceErro
     Ok(json!({ "zone_types": client.zone_types().await?.zone_types }))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 pub struct ControlTimeArgs {
     pub op: String,
     #[serde(default)]

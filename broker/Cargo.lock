@@ -1405,9 +1405,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "base64 0.21.7",
  "clap",
  "reqwest",
  "rmcp",
+ "schemars",
  "serde",
  "serde_json",
  "thiserror 1.0.69",

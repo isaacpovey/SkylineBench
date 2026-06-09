@@ -1,0 +1,259 @@
+//! Instrumented benchmark MCP server (spec §7).
+//!
+//! Parallels [`crate::tools::Skyline`] but delegates to the same `service::*`
+//! functions while attaching a `benchmark_progress` telemetry block to every
+//! response, counting mutating actions via [`RunState`], adding
+//! `submit_solution`, and omitting `reset_scenario`.
+
+use std::sync::Arc;
+
+use base64::Engine;
+use rmcp::{
+    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
+    model::{CallToolResult, Content, ServerCapabilities, ServerInfo},
+    tool, tool_handler, tool_router, ErrorData, ServerHandler,
+};
+use serde::Deserialize;
+use serde_json::Value;
+use tokio::sync::Mutex;
+
+use crate::benchmark::record::EndReason;
+use crate::benchmark::state::RunState;
+use crate::bridge_client::BridgeClient;
+use crate::geometry::horizontal_distance;
+use crate::service::{
+    self, BuildRoadArgs, BulldozeArgs, ControlTimeArgs, GetMetricsArgs, RenderMapArgs,
+    SetZoningArgs, UpgradeRoadArgs,
+};
+
+#[derive(Clone)]
+pub struct BenchmarkServer {
+    client: Arc<BridgeClient>,
+    state: Arc<Mutex<RunState>>,
+    tool_router: ToolRouter<Self>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct SubmitArgs {
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+/// Merge the agent-facing telemetry block into a JSON object result (spec §7).
+pub fn with_progress(mut value: Value, state: &RunState) -> Value {
+    if let Value::Object(ref mut map) = value {
+        map.insert("benchmark_progress".into(), state.progress());
+    }
+    value
+}
+
+impl BenchmarkServer {
+    pub fn new(client: Arc<BridgeClient>, state: Arc<Mutex<RunState>>) -> Self {
+        Self { client, state, tool_router: Self::tool_router() }
+    }
+
+    async fn finish(&self, value: Value) -> Result<CallToolResult, ErrorData> {
+        let mut s = self.state.lock().await;
+        s.check_timeout();
+        let merged = with_progress(value, &s);
+        Ok(CallToolResult::success(vec![Content::text(merged.to_string())]))
+    }
+}
+
+#[tool_router]
+impl BenchmarkServer {
+    #[tool(description = "Summarise the city: tick, population, funds, traffic flow, network size.")]
+    async fn get_city_overview(&self) -> Result<CallToolResult, ErrorData> {
+        match service::get_city_overview(&self.client).await {
+            Ok(v) => self.finish(v).await,
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    #[tool(description = "Observe the playable area: network, buildings, zones, intersections, dead ends.")]
+    async fn observe_area(&self) -> Result<CallToolResult, ErrorData> {
+        match service::observe_area(&self.client).await {
+            Ok(v) => self.finish(v).await,
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    #[tool(description = "Get city metrics, optionally filtered to groups: traffic, economy, population, services.")]
+    async fn get_metrics(&self, Parameters(args): Parameters<GetMetricsArgs>) -> Result<CallToolResult, ErrorData> {
+        match service::get_metrics(&self.client, args).await {
+            Ok(v) => {
+                if let Some(flow) = v.get("traffic").and_then(|t| t.get("flow_percent")).and_then(|f| f.as_f64()) {
+                    self.state.lock().await.push_flow(flow);
+                }
+                self.finish(v).await
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    #[tool(description = "List the available road types (with construction cost).")]
+    async fn list_road_types(&self) -> Result<CallToolResult, ErrorData> {
+        match service::list_road_types(&self.client).await {
+            Ok(v) => self.finish(v).await,
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    #[tool(description = "List the available zone types.")]
+    async fn list_zone_types(&self) -> Result<CallToolResult, ErrorData> {
+        match service::list_zone_types(&self.client).await {
+            Ok(v) => self.finish(v).await,
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    #[tool(description = "Render the road network to a PNG image.")]
+    async fn render_map(&self, Parameters(args): Parameters<RenderMapArgs>) -> Result<CallToolResult, ErrorData> {
+        match service::render_map(&self.client, args).await {
+            Ok(png) => {
+                let data = base64::engine::general_purpose::STANDARD.encode(png);
+                let progress = {
+                    let s = self.state.lock().await;
+                    s.progress()
+                };
+                Ok(CallToolResult::success(vec![
+                    Content::image(data, "image/png".to_string()),
+                    Content::text(serde_json::json!({ "benchmark_progress": progress }).to_string()),
+                ]))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    #[tool(description = "Control simulation time: pause, resume, step, or set speed.")]
+    async fn control_time(&self, Parameters(args): Parameters<ControlTimeArgs>) -> Result<CallToolResult, ErrorData> {
+        match service::control_time(&self.client, args).await {
+            Ok(v) => {
+                if let Ok(m) = self.client.metrics().await {
+                    self.state.lock().await.push_flow(m.traffic.flow_percent as f64);
+                }
+                self.finish(v).await
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    #[tool(description = "Build a road between two positions of a given road type.")]
+    async fn build_road(&self, Parameters(args): Parameters<BuildRoadArgs>) -> Result<CallToolResult, ErrorData> {
+        let length = horizontal_distance(args.from, args.to);
+        let road_type = args.road_type.clone();
+        match service::build_road(&self.client, args).await {
+            Ok(v) => {
+                if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
+                    let cost = self.state.lock().await.build_cost(&road_type, length);
+                    self.state.lock().await.record_mutation("build_road", cost);
+                }
+                self.finish(v).await
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    #[tool(description = "Change an existing road segment's type. Validates the new road_type first.")]
+    async fn upgrade_road(&self, Parameters(args): Parameters<UpgradeRoadArgs>) -> Result<CallToolResult, ErrorData> {
+        let segment_id = args.segment;
+        let road_type = args.road_type.clone();
+        let length = self
+            .client
+            .network()
+            .await
+            .ok()
+            .and_then(|n| n.segments.into_iter().find(|s| s.id == segment_id).map(|s| s.length))
+            .unwrap_or(0.0);
+        match service::upgrade_road(&self.client, args).await {
+            Ok(v) => {
+                if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
+                    let cost = self.state.lock().await.build_cost(&road_type, length);
+                    self.state.lock().await.record_mutation("upgrade_road", cost);
+                }
+                self.finish(v).await
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    #[tool(description = "Remove a network segment, node, or building. target_type = segment | node | building.")]
+    async fn bulldoze(&self, Parameters(args): Parameters<BulldozeArgs>) -> Result<CallToolResult, ErrorData> {
+        match service::bulldoze(&self.client, args).await {
+            Ok(v) => {
+                if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
+                    self.state.lock().await.record_mutation("bulldoze", 0);
+                }
+                self.finish(v).await
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    #[tool(description = "Set zoning over a rectangular area. zone_type from list_zone_types.")]
+    async fn set_zoning(&self, Parameters(args): Parameters<SetZoningArgs>) -> Result<CallToolResult, ErrorData> {
+        match service::set_zoning(&self.client, args).await {
+            Ok(v) => {
+                if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
+                    self.state.lock().await.record_mutation("set_zoning", 0);
+                }
+                self.finish(v).await
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    #[tool(description = "Declare the run finished. The harness then scores the city. Call when satisfied.")]
+    async fn submit_solution(&self, Parameters(_args): Parameters<SubmitArgs>) -> Result<CallToolResult, ErrorData> {
+        {
+            let mut s = self.state.lock().await;
+            if s.end_reason.is_none() {
+                s.end_reason = Some(EndReason::Submit);
+            }
+        }
+        self.finish(serde_json::json!({ "ok": true, "submitted": true })).await
+    }
+}
+
+#[tool_handler(router = self.tool_router)]
+impl ServerHandler for BenchmarkServer {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
+            "SkylineBench benchmark: improve city traffic, then call submit_solution. \
+             Each response includes benchmark_progress (resources + goal).",
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn registers_twelve_tools_including_submit_excluding_reset() {
+        let tools = BenchmarkServer::tool_router().list_all();
+        let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
+        assert!(names.contains(&"submit_solution"), "has submit_solution");
+        assert!(names.contains(&"build_road"));
+        assert!(names.contains(&"get_metrics"));
+        assert!(!names.contains(&"reset_scenario"), "no reset_scenario");
+        assert_eq!(tools.len(), 12);
+    }
+
+    #[test]
+    fn attaches_progress_to_json_value() {
+        use crate::benchmark::config::BenchConfig;
+        use crate::benchmark::record::WindowStats;
+        use crate::benchmark::state::RunState;
+        use std::collections::HashMap;
+
+        let state = RunState::new(
+            BenchConfig::default(),
+            WindowStats { flow_mean: 0.0, active_vehicles_mean: 0.0, population: 0 },
+            HashMap::new(),
+        );
+        let merged = with_progress(serde_json::json!({"ok": true}), &state);
+        assert_eq!(merged["ok"], true);
+        assert!(merged["benchmark_progress"]["flow_target"].is_number());
+    }
+}

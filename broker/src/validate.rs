@@ -36,8 +36,7 @@ mod tests {
         Position { x, y: 0.0, z }
     }
 
-    fn road_types() -> Vec<crate::contract::RoadType> {
-        use crate::contract::RoadType;
+    fn road_types() -> Vec<RoadType> {
         vec![
             RoadType { name: "road".into(), construction_cost: 1000 },
             RoadType { name: "highway".into(), construction_cost: 5000 },

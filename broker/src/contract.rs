@@ -250,10 +250,9 @@ mod tests {
             ],
         };
         let json = serde_json::to_string(&original).unwrap();
-        assert!(
-            json.contains("\"name\":\"Basic Road\",\"construction_cost\":1200"),
-            "got {json}"
-        );
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(v["road_types"][0]["name"], "Basic Road");
+        assert_eq!(v["road_types"][0]["construction_cost"], 1200);
         let parsed: RoadTypes = serde_json::from_str(&json).unwrap();
         assert_eq!(original, parsed);
     }

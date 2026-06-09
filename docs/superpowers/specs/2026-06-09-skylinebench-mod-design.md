@@ -6,6 +6,8 @@
 
 Builds on: `docs/superpowers/specs/2026-06-08-skylinebench-phase1-design.md` (the authoritative Phase-1 spec; §3 defines the HTTP contract, §5 the error set, §6 the metrics, §8 setup, §9 testing). The broker's `contract.rs` is the concrete, frozen source of truth for the wire format.
 
+**Research basis:** the concrete CS1 API signatures this spec relies on were pinned ahead of implementation by a multi-source, adversarially-verified research pass, recorded in `docs/superpowers/research/2026-06-09-cs1-modding-api.md` (the "API reference"). That document is the source of truth for what is **CONFIRMED** (cited signatures) vs **OPEN** (must be confirmed by the in-game discovery spike). This spec defers to it: where it says CONFIRMED, the implementation uses the cited call; where OPEN, the spike resolves it first. The research narrowed the spike substantially — the riskiest structural area (network read/create/release), the lifecycle hooks, clock control, prefab enumeration, and the build/install path are all confirmed; the spike now focuses on the OPEN list below.
+
 ---
 
 ## 1. Goal & constraints
@@ -62,16 +64,21 @@ mod/
 
 The spike is built first and is the foundation the real mod keeps. It proves load + HTTP + manager access simultaneously and resolves every flagged unknown against the actual game before endpoints are implemented.
 
-**What it is:** a minimal mod with the `http/` scaffolding, `SimThread`, and one endpoint — `GET /probe` — that returns (and also writes to the mod log file, as a fallback if HTTP isn't working yet) a structured dump of:
+Because the research pass already confirmed the structural API (lifecycle, sim-thread hooks, clock control, network read/create/release, prefab enumeration, build/install), the spike is now **narrow** — it confirms only the **OPEN** items from the API reference. The probe mod still builds the full `http/` scaffolding + `SimThread` + lifecycle (using the CONFIRMED hooks), so it doubles as the foundation.
 
-- **HTTP viability:** whether `HttpListener` works in CS1's Mono, or we use the `TcpListener` fallback. **This decision is made here, for real.**
-- **Manager surface** for each contract need: `NetManager` (node/segment arrays, segment length, lane counts, prefab access), `BuildingManager`, `ZoneManager`, `SimulationManager` (tick, pause, speed), `VehicleManager` (active count), `EconomyManager`, and whatever exposes **traffic flow %** and **per-segment density/load** (the two metrics §6 flagged).
-- **Prefab/zone identifier lists:** the real road-type (`NetCollection`/`NetInfo`) and zone-type names `list_road_types`/`list_zone_types` must return and that `build_road`/`set_zoning` accept.
-- **Constants:** real **playable extent** (vs the ±8,640 m assumption), real **single-segment length limit**, zone cell size, the exact game-bundle `Managed/` path and assembly names.
-- **Sample reads:** a few live nodes/segments/buildings and a metrics snapshot, to see real value ranges and shapes.
-- **Paused-queue behavior:** whether `SimulationManager.AddAction` drains while the sim is paused (critical for step mode — see §4).
+**What it is:** a minimal mod with the `http/` scaffolding, `SimThread`, lifecycle, and one endpoint — `GET /probe` — that returns (and also writes to the mod log file, as a fallback if HTTP isn't working yet) a structured dump resolving each OPEN item:
 
-**Output:** `mod/DISCOVERY.md` records the confirmed API, the HTTP decision, prefab/zone lists, and constants. Every subsequent endpoint references it instead of guessing. The broker's deferred items (playable extent, segment-length threshold, per-segment flow-vs-density, the two extra error codes) are resolved here with real values and **synced back into the Phase-1 spec**.
+- **HTTP viability:** whether `HttpListener` works in CS1's Mono, or we use the `TcpListener` fallback (incl. macOS firewall-prompt behavior on first bind). **Decision made here.**
+- **Traffic source:** does `NetSegment.m_trafficDensity` exist and what does it mean? If usable, emit it; otherwise the mod computes a TM:PE-style per-segment load from the lane chain (`m_lanes`→`NetLane.m_nextLane`) and a city aggregate. (No vanilla "flow %" field exists — confirmed by research.)
+- **Manager field names** not pinned by research: `VehicleManager` active count, `BuildingManager.m_buildings` + `BuildingInfo` name/category (`ItemClass.Service`/`SubService`), `EconomyManager` money/income/expense, population + RCI demand fields.
+- **Zoning:** how zones are represented (`ZoneBlock`, the cell grid), how to read a cell's type, how to **set** zoning over an area, and the cell size (assumed 8 m).
+- **`load-save` mid-session:** whether a save can be loaded from a running game via the API, or only from the menu — and constraints for `reset_scenario`.
+- **Constants:** real **playable extent** (vs the ±8,640 m assumption), real **single-segment length limit**, the exact macOS `Managed/` path + assembly names on the user's install.
+- **Paused-action behavior:** whether work queued for the sim thread runs while `simulationPaused == true`; if not, confirm the flush approach (briefly toggling `simulationPaused`) — critical for step-mode build-then-step (§4).
+- **Prefab/zone lists:** dump the real road-type and zone-type identifier strings (`PrefabCollection<NetInfo>` enumeration is confirmed; the spike captures the actual names).
+- **Sample reads:** a few live nodes/segments/buildings + a metrics snapshot, to see real value ranges and shapes.
+
+**Output:** `mod/DISCOVERY.md` records the resolved OPEN items (HTTP decision, traffic source, field names, zoning API, load-save constraints, constants, prefab/zone lists). Every subsequent endpoint references the API reference (for CONFIRMED calls) and `DISCOVERY.md` (for the resolved OPEN ones) instead of guessing. The broker's deferred items (playable extent, segment-length threshold, per-segment flow-vs-density, the two extra error codes) are resolved here with real values and **synced back into the Phase-1 spec**.
 
 **User loop:** documented exact steps to build the spike DLL, drop it in the mods folder, enable it in Content Manager, load a city, and either hit `/probe` or paste the log; we iterate from that output.
 
@@ -93,9 +100,11 @@ CS1 runs its simulation on a dedicated thread; the HTTP listener runs on its own
 - **Mutations** (build/bulldoze/upgrade/set-zone, clock ops) always go through `SimThread.Run`.
 - **Reads:** the spike confirms which manager reads are safe to snapshot directly vs which must run on the sim thread. `/metrics` (and likely `/network`) run inside one `SimThread.Run` closure that copies out plain data before returning, guaranteeing a **single consistent snapshot at one tick** (no torn numbers), as §6 requires.
 
-**Paused-queue interaction:** in step mode the sim is paused between turns. The spike verifies whether `AddAction` work drains while paused; if it does not, `SimThread.Run` briefly single-steps the simulation to flush the queue. This is an explicit spike check because the whole step-mode loop depends on it.
+**Clock control (CONFIRMED API):** `/clock` ops use `IThreading` (reachable from a `ThreadingExtensionBase`): `pause`/`resume` ↔ `simulationPaused`, `set-speed` ↔ `simulationSpeed` (clamped to **1..3**), and the current tick is read from `simulationTick` (valid even while paused). The mod registers a `ThreadingExtensionBase` for this access and as the sim-thread execution context.
 
-**Lifecycle:** `Mod.cs` starts the HTTP server only once a city is loaded (managers exist) and stops it on unload/disable, via the CS1 loading hook confirmed in the spike.
+**Paused-action interaction (OPEN):** in step mode the sim is paused between turns. The spike verifies whether `SimulationManager.AddAction` work (or the threading-extension frame hook) drains while `simulationPaused == true`; if it does not, `SimThread.Run` briefly toggles `simulationPaused` to flush the queued mutation, then restores the paused state. The whole step-mode build-then-step loop depends on this, so it's an explicit spike check.
+
+**Lifecycle (CONFIRMED API):** `Mod.cs`/`LoadingExtensionBase` starts the HTTP server in `OnLevelLoaded(LoadMode.LoadGame|NewGame)` (managers exist) and stops it in `OnLevelUnloading`.
 
 ---
 
@@ -104,20 +113,20 @@ CS1 runs its simulation on a dedicated thread; the HTTP listener runs on its own
 Each endpoint is one thin handler that parses the request and calls one `GameBridge` method returning plain data. The mapping below is the *intended* CS1 source; every entry marked "spike confirms" is verified against `DISCOVERY.md` before that endpoint is implemented. Any endpoint whose real API differs materially is re-scoped at that point rather than guessed here.
 
 **Reads:**
-- `GET /health` → mod/game version, `SimulationManager` tick + paused/speed, city-loaded flag. (Low risk.)
-- `GET /network` → iterate `NetManager` nodes/segments → id, position, start/end node, prefab name, lane count, length; optional `bounds`/`types` filter in `GameBridge`. *(Spike confirms array access, prefab-name + lane-count reads.)*
-- `GET /buildings` → `BuildingManager` buildings → id, prefab name, category, position, footprint, level. *(Spike confirms category derivation.)*
-- `GET /zones` → `ZoneManager` grid cells → cell coords + zone type. *(Spike confirms cell representation + cell size.)*
-- `GET /metrics` → one sim-thread snapshot: traffic flow %, active vehicle count, per-segment density/load, economy, population, happiness headline. **The two flagged unknowns (flow % source, per-segment flow-vs-density) are resolved in the spike;** if a clean per-segment *flow* isn't exposed, emit density and document that.
-- `GET /road-types`, `GET /zone-types` → the identifier lists from `DISCOVERY.md`.
+- `GET /health` → mod/game version, `simulationTick` + `simulationPaused`/`simulationSpeed` (CONFIRMED via `IThreading`), city-loaded flag. (Low risk.)
+- `GET /network` → iterate `NetManager.m_segments.m_buffer`/`m_nodes.m_buffer` (CONFIRMED Array16 pattern) → id, `NetNode` position, `m_startNode`/`m_endNode`, prefab name via `m_infoIndex`→`.Info.name`, length, lane count (traverse the `m_lanes`→`NetLane.m_nextLane` chain); optional `bounds`/`types` filter in `GameBridge`. *(All reads CONFIRMED by research; the spike just sanity-checks value ranges.)*
+- `GET /buildings` → `BuildingManager` buildings → id, prefab name, category, position, footprint, level. *(OPEN: exact `m_buildings` access + `BuildingInfo` name/category derivation via `ItemClass.Service`/`SubService` confirmed in the spike.)*
+- `GET /zones` → `ZoneManager` grid cells → cell coords + zone type. *(OPEN: cell representation + cell size confirmed in the spike.)*
+- `GET /metrics` → one sim-thread snapshot: traffic load, active vehicle count, per-segment load, economy, population, happiness headline. **There is no vanilla "traffic flow %" field (CONFIRMED by research)** — the mod computes a TM:PE-style per-segment load from the lane chain and a city aggregate, unless the spike finds `NetSegment.m_trafficDensity` usable. *(OPEN: traffic source + `VehicleManager`/`EconomyManager`/population field names resolved in the spike.)*
+- `GET /road-types`, `GET /zone-types` → enumerate via `PrefabCollection<NetInfo>.GetPrefab`/`PrefabCount` (CONFIRMED); the actual identifier strings are dumped by the spike into `DISCOVERY.md`.
 
 **Mutations (all via `SimThread.Run`):**
-- `POST /action/build-road` → resolve/create start & end nodes (honoring `snap_to_existing_nodes`), create a straight segment of the given prefab; return created/snapped ids. *(Spike confirms `NetManager.CreateNode`/`CreateSegment` and snapping.)*
-- `POST /action/bulldoze` → release segment/node/building by id. *(Spike confirms release calls.)*
-- `POST /action/upgrade-road` → replace the segment with a new prefab, preserving endpoints.
-- `POST /action/set-zone` → write zone type over the rect's cells.
-- `POST /clock` → `pause`/`resume`/`set-speed`/`step` via `SimulationManager` (paused-queue per §4).
-- `POST /load-save` → load a named savegame (the reset primitive). *(Spike confirms whether mid-session loading is possible via the API; if constrained, the limitation is documented for the broker's `reset_scenario` rather than faked.)*
+- `POST /action/build-road` → resolve/create start & end nodes (honoring `snap_to_existing_nodes`), create a straight segment. **CONFIRMED:** `NetManager.CreateNode(out id, ref Randomizer, NetInfo, Vector3, buildIndex)` then `CreateSegment(...) → bool` with `startDir = NormalizeXZ(end-start)`, `endDir = -startDir`, `buildIndex = SimulationManager.instance.m_currentBuildIndex` (`+= 2` on success). Return created/snapped ids; snapping logic is the mod's own (find/reuse a nearby node).
+- `POST /action/bulldoze` → `NetManager.ReleaseSegment(id, keepNodes)` (CONFIRMED, returns void → verify by effect), node/building release. *(ReleaseNode signature is medium-confidence; spike confirms node/building release.)*
+- `POST /action/upgrade-road` → set `m_segments.m_buffer[id].m_infoIndex` to the new prefab index, preserving endpoints (CONFIRMED pattern from boformer; spike confirms it's sufficient vs requiring recreate).
+- `POST /action/set-zone` → write zone type over the rect's cells. *(OPEN: zoning write API confirmed in the spike.)*
+- `POST /clock` → `pause`/`resume` ↔ `simulationPaused`, `set-speed` ↔ `simulationSpeed` (1..3), `step` advances N ticks then re-pauses (CONFIRMED clock API via `IThreading`; paused-action flush per §4).
+- `POST /load-save` → load a named savegame (the reset primitive). *(OPEN: spike confirms whether mid-session loading is possible via the API; if constrained, the limitation is documented for the broker's `reset_scenario` rather than faked.)*
 
 **Diff results:** every mutation returns the contract's `{ ok, created_nodes, created_segments, snapped_nodes, destroyed, reason }` — the same `ActionResult` the broker parses.
 
@@ -157,8 +166,10 @@ Both minimal, since the contract is small and fixed.
 
 **Toolchain:** mods target **.NET Framework 3.5 / Unity Mono**. On macOS the reliable compiler is **Mono's `msbuild`** (the .NET SDK's net35 support on Mac is finicky). `build.sh` checks for Mono and, if missing, prints the exact install step (`brew install mono`) rather than failing cryptically.
 
-**Reference assemblies** (`<HintPath>` in the `.csproj`), from the Mac bundle:
-`…/steamapps/common/Cities_Skylines/Cities.app/Contents/Resources/Data/Managed/` — `ICities.dll`, `ColossalManaged.dll`, `Assembly-CSharp.dll`, `UnityEngine*.dll`. The spike confirms the exact path and assembly names on the user's install.
+**Reference assemblies** (CONFIRMED set; `<HintPath>` in the `.csproj`), from the Mac bundle:
+`…/steamapps/common/Cities_Skylines/Cities.app/Contents/Resources/Data/Managed/` — `ICities.dll`, `ColossalManaged.dll`, `Assembly-CSharp.dll`, `UnityEngine.dll` (optionally `UnityEngine.UI.dll`, `System.Core`). Research confirmed this net35 reference set (TM:PE's `.csproj`); the spike confirms the exact macOS `Managed/` path + precise assembly filenames on the user's install.
+
+**No Harmony / no patching.** The mod reads state and calls public `NetManager`/`SimulationManager` APIs rather than intercepting game methods, so it needs **no `CitiesHarmony` dependency** — just the game assemblies above. (Revisit only if the spike finds a needed capability that requires patching.)
 
 **`build.sh` (macOS-first):** detects the Steam game path (with an override env var), verifies the `Managed/` assemblies exist, runs `msbuild` to produce `SkylineBenchMod.dll`, and copies it into:
 `~/Library/Application Support/Colossal Order/Cities_Skylines/Addons/Mods/SkylineBench/`.

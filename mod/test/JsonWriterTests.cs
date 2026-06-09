@@ -13,6 +13,15 @@ namespace SkylineBench.Tests
             tests.Add(new KeyValuePair<string, Action>("writer: numbers are invariant", Numbers));
             tests.Add(new KeyValuePair<string, Action>("writer: nested array of objects", Nested));
             tests.Add(new KeyValuePair<string, Action>("writer: bool and null", BoolNull));
+            tests.Add(new KeyValuePair<string, Action>("writer: float precision (no double widening)", FloatPrecision));
+        }
+
+        static void FloatPrecision()
+        {
+            var w = new JsonWriter();
+            // 0.3f widened to double would print 0.30000001192...; the float overload keeps it tight.
+            w.BeginObject().Name("d").Value(0.3f).EndObject();
+            Assert.Equal("{\"d\":0.3}", w.ToString());
         }
 
         static void FlatObject()

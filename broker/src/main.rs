@@ -95,7 +95,7 @@ async fn main() -> anyhow::Result<()> {
             let watch_client = client.clone();
             let watch_state = state.clone();
             let game_version = health.game_version.clone();
-            let started_at_clone = started_at.clone();
+            let started_at = started_at.clone();
             tokio::spawn(async move {
                 loop {
                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -105,18 +105,23 @@ async fn main() -> anyhow::Result<()> {
                         s.end_reason.is_some()
                     };
                     if ended {
+                        let ended_at = epoch_secs();
                         let map_info = MapInfo {
                             id: map.clone(),
                             source: map_source.clone(),
                             game_version: game_version.clone(),
                         };
-                        let ended_at = epoch_secs();
-                        if let Err(e) = finalize(&watch_client, watch_state.clone(), &out, map_info, started_at_clone.clone(), ended_at).await {
-                            eprintln!("benchmark: finalize error: {e}");
-                        } else {
-                            eprintln!("benchmark: wrote artifacts to {}", out.display());
-                        }
-                        std::process::exit(0);
+                        let code = match finalize(&watch_client, watch_state.clone(), &out, map_info, started_at.clone(), ended_at).await {
+                            Ok(()) => {
+                                eprintln!("benchmark: wrote artifacts to {}", out.display());
+                                0
+                            }
+                            Err(e) => {
+                                eprintln!("benchmark: finalize error: {e}");
+                                1
+                            }
+                        };
+                        std::process::exit(code);
                     }
                 }
             });

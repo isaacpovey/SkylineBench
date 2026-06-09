@@ -32,7 +32,8 @@ fn render_block(block: &Value) -> Option<String> {
         "tool_use" => {
             let name = block.get("name")?.as_str()?;
             let input = block.get("input").cloned().unwrap_or(Value::Null);
-            Some(format!("**→ {name}**\n```json\n{input}\n```"))
+            let pretty = serde_json::to_string_pretty(&input).unwrap_or_else(|_| input.to_string());
+            Some(format!("**→ {name}**\n```json\n{pretty}\n```"))
         }
         "tool_result" => {
             let inner = block.get("content")?.as_array()?;
@@ -69,6 +70,6 @@ mod tests {
     #[test]
     fn skips_malformed_lines() {
         let md = render_transcript("not json\n{}\n");
-        assert!(md.is_empty() || !md.contains("panic"));
+        assert!(md.is_empty(), "malformed-only input should render nothing, got: {md}");
     }
 }

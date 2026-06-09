@@ -35,6 +35,7 @@
     <Compile Include="src\bridge\GameReads.cs" />
     <Compile Include="src\bridge\GameActions.cs" />
     <Compile Include="src\bridge\ZoneWriter.cs" />
+    <Compile Include="src\bridge\SaveLoader.cs" />
     <Compile Include="src\probe\Probe.cs" />
     <Compile Include="src\dto\Dtos.cs" />
     <Compile Include="src\Mod.cs" />

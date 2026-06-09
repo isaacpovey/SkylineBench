@@ -14,9 +14,9 @@
     <Reference Include="System.Core" />
   </ItemGroup>
   <ItemGroup>
-    <!-- Pure source under test (no game deps). COMMENTED OUT until Tasks 2-4 create these files. -->
-    <!--
+    <!-- Pure source under test (no game deps). -->
     <Compile Include="..\src\json\JsonWriter.cs"><Link>src\JsonWriter.cs</Link></Compile>
+    <!--
     <Compile Include="..\src\json\JsonValue.cs"><Link>src\JsonValue.cs</Link></Compile>
     <Compile Include="..\src\http\HttpQuery.cs"><Link>src\HttpQuery.cs</Link></Compile>
     -->

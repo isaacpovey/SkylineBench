@@ -64,4 +64,13 @@ mod tests {
         w.push(96.0);
         assert!(w.target_reached(95.0));
     }
+
+    #[test]
+    fn zero_capacity_is_promoted_to_one() {
+        let mut w = FlowWindow::new(0);
+        assert!(!w.is_full());
+        w.push(50.0);
+        assert!(w.is_full());
+        assert_eq!(w.mean(), 50.0);
+    }
 }

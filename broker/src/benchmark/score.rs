@@ -2,10 +2,14 @@ use crate::benchmark::config::BenchConfig;
 use crate::benchmark::record::{RunRecord, Score, ScoreNorms};
 
 fn clamp01(x: f64) -> f64 {
-    x.max(0.0).min(1.0)
+    x.clamp(0.0, 1.0)
 }
 
 pub fn score_run(record: &RunRecord, cfg: &BenchConfig) -> Score {
+    debug_assert!(
+        cfg.target_gain > 0.0 && cfg.budget > 0.0 && cfg.change_cap > 0.0,
+        "BenchConfig normalization denominators must be positive"
+    );
     let delta_flow = record.final_stats.flow_mean - record.baseline.flow_mean;
     let norm = ScoreNorms {
         flow: clamp01(delta_flow / cfg.target_gain),

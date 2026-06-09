@@ -1,7 +1,7 @@
 use crate::benchmark::config::BenchConfig;
 
 /// Cost charged for building `length_m` of a road whose NetInfo
-/// `construction_cost` is `construction_cost` (spec §8). Computed from the
+/// `construction_cost` is the NetInfo unit cost (spec §8). Computed from the
 /// action, never from in-game funds (money is unlimited in benchmark mode).
 pub fn road_cost(construction_cost: i64, length_m: f32, cfg: &BenchConfig) -> i64 {
     let raw = construction_cost as f64 * (length_m as f64) / cfg.cost_base_length_m;
@@ -11,7 +11,6 @@ pub fn road_cost(construction_cost: i64, length_m: f32, cfg: &BenchConfig) -> i6
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::benchmark::config::BenchConfig;
 
     #[test]
     fn cost_scales_with_length() {
@@ -26,5 +25,11 @@ mod tests {
         assert_eq!(road_cost(1000, 32.0, &cfg), 500);
         assert_eq!(road_cost(0, 100.0, &cfg), 0);
         assert_eq!(road_cost(1000, 0.0, &cfg), 0);
+    }
+
+    #[test]
+    fn negative_construction_cost_returns_zero() {
+        let cfg = BenchConfig::default();
+        assert_eq!(road_cost(-1000, 64.0, &cfg), 0);
     }
 }

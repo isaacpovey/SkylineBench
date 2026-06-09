@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Release</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <OutputType>Library</OutputType>
+    <RootNamespace>SkylineBench</RootNamespace>
+    <AssemblyName>SkylineBenchMod</AssemblyName>
+    <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(ManagedDLLPath)' == '' ">
+    <ManagedDLLPath>$(HOME)/Library/Application Support/Steam/steamapps/common/Cities_Skylines/Cities.app/Contents/Resources/Data/Managed</ManagedDLLPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="ICities"><HintPath>$(ManagedDLLPath)/ICities.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="ColossalManaged"><HintPath>$(ManagedDLLPath)/ColossalManaged.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Assembly-CSharp"><HintPath>$(ManagedDLLPath)/Assembly-CSharp.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine"><HintPath>$(ManagedDLLPath)/UnityEngine.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="src\json\JsonWriter.cs" />
+    <Compile Include="src\json\JsonValue.cs" />
+    <Compile Include="src\http\HttpQuery.cs" />
+    <Compile Include="src\http\HttpServer.cs" />
+    <Compile Include="src\http\Router.cs" />
+    <Compile Include="src\http\Handlers.cs" />
+    <Compile Include="src\bridge\SimThread.cs" />
+    <Compile Include="src\bridge\GameAccess.cs" />
+    <Compile Include="src\probe\Probe.cs" />
+    <Compile Include="src\Mod.cs" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

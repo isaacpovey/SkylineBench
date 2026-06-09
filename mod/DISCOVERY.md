@@ -16,6 +16,7 @@ This resolves the OPEN items from the API reference (`docs/superpowers/research/
 - **`simulationTick` advances even while paused** (6030222 → 6030224 across two calls, both while paused) — consistent with the "60×/sec even when paused" note.
 - **`ThreadingExtensionBase.OnBeforeSimulationTick` fires even while paused** — proven because `ModRuntime.Threading` (set only inside `OnBeforeSimulationTick`) was non-null and the clock values were live during a paused probe. Since `SimThread.DrainOnSimThread()` is called from that same hook, **queued sim-thread jobs DO drain while paused.**
   → **Plan 2b does NOT need the unpause-to-flush workaround.** `SimThread.Run` works as-is in step mode (build while paused, then `step`).
+- **⚠️ `step` overshoots by ~2 ticks (D1):** `{"op":"step","ticks":256}` advanced `1442553 → 1442811` = **258** ticks, then correctly re-paused. The step polls the tick on the HTTP thread and stops at the first tick **≥** target, so it lands a frame or two past N. For a benchmark measuring over thousands of ticks this ±2 is noise; exact-N stepping would require an `OnBeforeSimulationTick` counter hook (more invasive). **Documented as a known imprecision, not fixed.**
 
 ## Road prefab identifiers (for `list_road_types` / `build_road`) — RESOLVED ✅
 331 `NetInfo` prefabs enumerated. The relevant *buildable surface road* names (note: names contain spaces; match exactly or strip spaces):
@@ -46,22 +47,26 @@ The API reference flagged "no single vanilla traffic flow field." The probe foun
 - **Read** `/zones`: decode `m_zone1`/`m_zone2` nibbles per valid cell of each block → `ItemClass.Zone` enum value.
 - **Write** `/action/set-zone`: set the cell nibbles in `m_zone1`/`m_zone2` and mark the block updated. **2b note:** this is the fiddliest write — implement carefully against `ZoneBlock` semantics; verify in-game.
 
-## Economy — RESOLVED ✅ (funds) / partial (income/expenses)
-- `EconomyManager.LastCashAmount : Int64` (displayed cash) and `InternalCashAmount : Int64` (internal, money×100). → `/metrics` `economy.funds` = `LastCashAmount` (or `InternalCashAmount/100`).
-- **Income/expenses — still open:** not exposed as a simple field. CS1 provides `EconomyManager.GetIncomeAndExpenses(...)` (a method; the probe dumped fields/properties only). → **2b must probe methods** for the weekly income/expense accessor, or derive from `m_finalCashCollecting`/`m_finalMonthlyEarned`. Non-blocking: funds + balance are available now.
+## Economy — RESOLVED ✅ (runtime-verified D1)
+- `EconomyManager.LastCashAmount : Int64` → `/metrics` `economy.funds`. **D1 note:** under the *Unlimited Money* mod this returns `Int64.MaxValue` (`9223372036854775807`) — that is expected, not a bug; agents must treat a maxed `funds` as "money is not a constraint."
+- **Income/expenses — now RESOLVED:** `EconomyManager.GetIncomeAndExpenses(Service.None, SubService.None, Level.None, out income, out expenses)` works. The mod computes `weekly_expenses = expenses + GetLoanExpenses() + GetPolicyExpenses()`. **D1 verified:** `weekly_income 1347518`, `weekly_expenses 1172296`.
+- **⚠️ `balance` semantics:** `/metrics` `economy.balance` is the **weekly net** (`income − weekly_expenses`, e.g. `175222`), **NOT** cash-on-hand. Cash-on-hand is `funds`. This is a deliberate naming quirk worth keeping in mind — `balance` ≠ bank balance.
 
 ## Population & RCI demand — RESOLVED ✅ with a contract mismatch ⚠️
 - `ZoneManager.m_actualResidentialDemand : Int32`, `m_actualCommercialDemand : Int32`, `m_actualWorkplaceDemand : Int32` (and non-actual `m_residentialDemand`/`m_commercialDemand`/`m_workplaceDemand`).
 - **Contract mismatch:** the broker's `PopulationMetrics` assumed **four** demands (residential/commercial/industrial/office). CS1 exposes **three** (residential/commercial/**workplace**), where workplace = industrial+office combined. → **Spec-sync decision for 2b:** change the contract's `PopulationMetrics` to `residential_demand` / `commercial_demand` / `workplace_demand` (drop the industrial/office split), and update `broker/src/contract.rs` + the mock accordingly. (Total population itself lives elsewhere — `2b` reads it via the standard `CitizenManager`/district population; confirm the accessor in 2b.)
-- **2b note:** total population field/accessor wasn't in this probe's manager set — add `DistrictManager`/`CitizenManager` to a follow-up probe in 2b, or read `DistrictManager.m_districts.m_buffer[0].m_populationData` (community-known) and confirm.
+- **Total population — now RESOLVED:** `DistrictManager.m_districts.m_buffer[0].m_populationData.m_finalCount` works (**D1 verified:** `total 3380`). Happiness via `m_districts.m_buffer[0].m_finalHappiness`. **D1 verified** R/C/W demand `87 / 0 / 13`.
+- **⚠️ `employed` is hardcoded to 0:** no single clean manager field exposes employment; the mod documents this gap rather than computing it from `CitizenManager`. Agents should ignore `population.employed` for now (Phase-2 candidate to compute properly).
 
 ## Network create/release — CONFIRMED (from research, build-verified)
 - `int PrefabCollection<NetInfo>.PrefabCount()` (returns **int**, not uint — corrected during the foundation build), `GetPrefab(uint)`.
 - `NetManager.CreateNode/CreateSegment(...)→bool`, `ReleaseSegment(ushort, bool keepNodes)`, buffer pattern `m_segments.m_buffer[id]` with `m_infoIndex`→`.Info.name`, `m_startNode`/`m_endNode`, lane chain `m_lanes`→`NetLane.m_nextLane`. (All compiled clean against 1.21.1-f9 assemblies.)
 
-## Mid-session `load-save` — STILL OPEN ⚠️
-- `LoadingManager` fields are all loading-*state* flags (`m_currentlyLoading`, `m_loadingComplete`, `m_loadedEnvironment`, …) — no load-a-save *method* appears in the field/property dump (methods weren't dumped).
-- CS1 loads saves via a metadata + `LoadingManager`/`SimulationManager` flow (community approach: build `SaveGameMetaData` + call the load), typically only cleanly from the main menu. → **2b: probe `LoadingManager`/`SimulationManager` methods**; if mid-session load isn't cleanly supported, **document the constraint** for the broker's `reset_scenario` (e.g. it may require returning to a known autosave, or be a no-op that the harness handles by relaunching) rather than faking it.
+## Mid-session `load-save` — IMPLEMENTED but UNSTABLE ⚠️ (experimental)
+- The mod resolves a save by name (`PackageManager.FilterAssets(UserAssetType.SaveGameMetaData)`, matching `asset.name`/cityName/fullName) and triggers a mid-session load.
+- **D1 result:** `/load-save` with a real save name returned `{"ok":true,"city_loaded":true}` — i.e. the call path works — **but the game CRASHED shortly after** during the mid-session `LoadLevel`. Mid-session loading is therefore **not reliable**.
+- **Decision (Phase 1):** keep the endpoint but mark it **experimental/unstable**. The harness should prefer loading a city from the **main menu**, not via this endpoint. A robust scenario-reset (relaunch-to-known-save, or load-at-startup) is **Phase 2's** concern — that's where the benchmark needs a dependable reset, and it can own the more careful approach.
+- **No-city guard (new D1 finding):** when `health.city_loaded == false`, sim-thread jobs (build/bulldoze/metrics/etc.) **time out after 8000 ms** (`"internal: sim-thread job timed out"`) rather than failing fast, because `SimThread.DrainOnSimThread` never runs without a live simulation. **Agents must check `/health` for `city_loaded:true` before issuing actions.** A fast-fail guard when no city is loaded is a reasonable Phase-1.1 polish.
 
 ## Constants — partially open ⚠️
 - **Map extent / max segment length were NOT measured by this probe** (the probe didn't compute them). Working values stand: playable extent ≈ **±8,640 m** (consistent with a 9×9 grid of 1,920 m tiles → 17,280 m full span) and broker's `MAX_SEGMENT_LENGTH_M = 200` is a conservative guess. → **2b: measure** (e.g. `TerrainManager`/`NetManager` extents, and the game's segment-length limit) or accept the working values and tune from build failures.
@@ -75,3 +80,25 @@ The API reference flagged "no single vanilla traffic flow field." The probe foun
 **Needs a small follow-up methods-probe in 2b (non-blocking):** income/expense accessor; total population accessor; mid-session `load-save` method (or document the constraint); map extent + max segment length (or accept working values).
 
 **Spec-sync (fold back into the broker/contract):** change `PopulationMetrics` demands to residential/commercial/**workplace** (3, not 4); record `MAX_SEGMENT_LENGTH_M`/playable extent once measured; the `int` `PrefabCount()` correction.
+
+---
+
+## Runtime verification (D1) — 2026-06-09, game 1.21.1-f9, live city
+
+Every wire endpoint exercised against the running game via raw HTTP to `127.0.0.1:8787`:
+
+| Endpoint | Result |
+|---|---|
+| `GET /health` | ✅ exact `Health` shape; `city_loaded` flag reliable |
+| `GET /metrics` | ✅ traffic + economy + population + services all populated (flow 6.1%, 240 vehicles, pop 3380, happiness 82) |
+| `GET /network` | ✅ 994 nodes / 1005 segments enumerated |
+| `GET /road-types` | ✅ road-class prefabs only (Basic/Medium/Large/Oneway/Highway/…) |
+| `GET /zones` | ✅ decoded cells, geometry correct (see set-zone) |
+| `POST /action/build-road` | ✅ returns `created_nodes`/`created_segments`; snapping honored |
+| `POST /action/bulldoze` | ✅ `{"target_type":"segment"\|"node"\|"building","id":N}` → `destroyed:[N]`; malformed body → `INVALID_ARGS` |
+| `POST /action/upgrade-road` | ✅ in-place swap: `destroyed:[old]`, `created_segments:[new]` |
+| `POST /action/set-zone` | ✅ painted 64×64 m → 80 `residential_low` cells read back at expected coords |
+| `POST /clock` (pause/step) | ✅ exact `ClockState` shape; step re-pauses (overshoot +2, documented above) |
+| `POST /load-save` | ⚠️ returns `ok:true` then **crashes** mid-session — experimental (see load-save section) |
+
+**Critical-fix confirmed:** `/clock` and `/load-save` return their dedicated `ClockState`/`LoadResult` shapes (not the generic `ActionResult`), so the broker — which has no serde defaults on those — deserializes them correctly. This was the one Critical finding from the final pre-merge review; it round-trips against the real game.

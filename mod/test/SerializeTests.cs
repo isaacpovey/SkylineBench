@@ -13,6 +13,8 @@ namespace SkylineBench.Tests
             tests.Add(new KeyValuePair<string, Action>("serialize: metrics shape", Metrics));
             tests.Add(new KeyValuePair<string, Action>("serialize: action ok", ActionOk));
             tests.Add(new KeyValuePair<string, Action>("serialize: action error omits diff", ActionErr));
+            tests.Add(new KeyValuePair<string, Action>("serialize: clock state", Clock));
+            tests.Add(new KeyValuePair<string, Action>("serialize: load result", Load));
         }
 
         static void Network()
@@ -49,6 +51,18 @@ namespace SkylineBench.Tests
         static void ActionErr()
         {
             Assert.Equal("{\"ok\":false,\"reason\":\"INVALID_PREFAB\"}", Serialize.Action(ActionResultDto.Fail("INVALID_PREFAB")));
+        }
+
+        static void Clock()
+        {
+            Assert.Equal("{\"ok\":true,\"paused\":false,\"tick\":42}",
+                Serialize.Clock(new ClockStateDto { Ok = true, Paused = false, Tick = 42 }));
+        }
+
+        static void Load()
+        {
+            Assert.Equal("{\"ok\":true,\"city_loaded\":true}",
+                Serialize.Load(new LoadResultDto { Ok = true, CityLoaded = true }));
         }
     }
 }

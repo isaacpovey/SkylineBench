@@ -129,19 +129,19 @@ namespace SkylineBench.Bridge
             }
         }
 
-        public static ActionResultDto Clock(ClockReq req)
+        public static ClockStateDto Clock(ClockReq req)
         {
             var t = ModRuntime.Threading;
-            if (t == null) return ActionResultDto.Fail(ErrorCode.Unknown);
+            if (t == null) return new ClockStateDto { Ok = false, Paused = false, Tick = 0 };
             switch (req.Op)
             {
                 case "pause": t.simulationPaused = true; break;
                 case "resume": t.simulationPaused = false; break;
                 case "set-speed": t.simulationSpeed = Mathf.Clamp(req.Speed, 1, 3); break;
                 case "step": Step(t, req.Ticks); break;
-                default: return ActionResultDto.Fail(ErrorCode.InvalidArgs);
+                default: return new ClockStateDto { Ok = false, Paused = t.simulationPaused, Tick = t.simulationTick };
             }
-            return new ActionResultDto { Ok = true };
+            return new ClockStateDto { Ok = true, Paused = t.simulationPaused, Tick = t.simulationTick };
         }
 
         private static void Step(ICities.IThreading t, int ticks)

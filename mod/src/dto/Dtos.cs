@@ -33,4 +33,7 @@ namespace SkylineBench.Dto
         public string Reason; // null when Ok
         public static ActionResultDto Fail(string reason) { return new ActionResultDto { Ok = false, Reason = reason }; }
     }
+
+    public sealed class ClockStateDto { public bool Ok; public bool Paused; public ulong Tick; }
+    public sealed class LoadResultDto { public bool Ok; public bool CityLoaded; }
 }

@@ -80,6 +80,20 @@ namespace SkylineBench.Json
             return w.ToString();
         }
 
+        public static string Clock(ClockStateDto c)
+        {
+            var w = new JsonWriter();
+            w.BeginObject().Name("ok").Value(c.Ok).Name("paused").Value(c.Paused).Name("tick").Value((long)c.Tick).EndObject();
+            return w.ToString();
+        }
+
+        public static string Load(LoadResultDto l)
+        {
+            var w = new JsonWriter();
+            w.BeginObject().Name("ok").Value(l.Ok).Name("city_loaded").Value(l.CityLoaded).EndObject();
+            return w.ToString();
+        }
+
         private static void WriteUintArray(JsonWriter w, string name, System.Collections.Generic.List<uint> xs)
         {
             w.Name(name).BeginArray();

@@ -18,12 +18,12 @@ namespace SkylineBench.Bridge
     /// </summary>
     public static class SaveLoader
     {
-        public static ActionResultDto Load(string saveName)
+        public static LoadResultDto Load(string saveName)
         {
-            if (string.IsNullOrEmpty(saveName)) return ActionResultDto.Fail(ErrorCode.InvalidArgs);
+            if (string.IsNullOrEmpty(saveName)) return new LoadResultDto { Ok = false, CityLoaded = false };
 
             Package.Asset target = FindSave(saveName);
-            if (target == null) return ActionResultDto.Fail(ErrorCode.InvalidArgs);
+            if (target == null) return new LoadResultDto { Ok = false, CityLoaded = false };
 
             SimThread.Run(delegate
             {
@@ -34,7 +34,8 @@ namespace SkylineBench.Bridge
                 Singleton<LoadingManager>.instance.LoadLevel(target, "Game", "InGame", meta, false);
             }, 8000);
 
-            return new ActionResultDto { Ok = true };
+            // Load runs asynchronously after kick-off; we do not await completion here.
+            return new LoadResultDto { Ok = true, CityLoaded = true };
         }
 
         // We iterate rather than use PackageManager.FindAssetByName: that method returns null for

@@ -47,7 +47,7 @@ namespace SkylineBench.Http
         public static HttpReply Bulldoze(string body) { return HttpReply.Json(200, Serialize.Action(GameActions.Bulldoze(RequestParse.Bulldoze(JsonReader.Parse(body))))); }
         public static HttpReply UpgradeRoad(string body) { return HttpReply.Json(200, Serialize.Action(GameActions.UpgradeRoad(RequestParse.UpgradeRoad(JsonReader.Parse(body))))); }
         public static HttpReply SetZone(string body) { return HttpReply.Json(200, Serialize.Action(GameActions.SetZone(RequestParse.SetZone(JsonReader.Parse(body))))); }
-        public static HttpReply Clock(string body) { return HttpReply.Json(200, Serialize.Action(GameActions.Clock(RequestParse.Clock(JsonReader.Parse(body))))); }
-        public static HttpReply LoadSave(string body) { return HttpReply.Json(200, Serialize.Action(SaveLoader.Load(RequestParse.LoadSave(JsonReader.Parse(body)).SaveName))); }
+        public static HttpReply Clock(string body) { return HttpReply.Json(200, Serialize.Clock(GameActions.Clock(RequestParse.Clock(JsonReader.Parse(body))))); }
+        public static HttpReply LoadSave(string body) { return HttpReply.Json(200, Serialize.Load(SaveLoader.Load(RequestParse.LoadSave(JsonReader.Parse(body)).SaveName))); }
     }
 }

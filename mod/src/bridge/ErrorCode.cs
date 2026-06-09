@@ -29,16 +29,21 @@ namespace SkylineBench.Bridge
             return null;
         }
 
-        /// <summary>Names of road-service prefabs (excludes rail/metro/pedestrian/canal/etc).</summary>
-        public static System.Collections.Generic.List<string> RoadNames()
+        public struct RoadInfo { public string Name; public long ConstructionCost; }
+
+        /// <summary>Road-service prefabs with their NetInfo construction cost.</summary>
+        public static System.Collections.Generic.List<RoadInfo> Roads()
         {
-            var list = new System.Collections.Generic.List<string>();
+            var list = new System.Collections.Generic.List<RoadInfo>();
             int count = PrefabCollection<NetInfo>.PrefabCount();
             for (uint i = 0; i < count; i++)
             {
                 var p = PrefabCollection<NetInfo>.GetPrefab(i);
                 if (p != null && p.name != null && p.m_class != null && p.m_class.m_service == ItemClass.Service.Road)
-                    list.Add(p.name);
+                {
+                    var ai = p.m_netAI as PlayerNetAI;
+                    list.Add(new RoadInfo { Name = p.name, ConstructionCost = ai != null ? ai.m_constructionCost : 0 });
+                }
             }
             return list;
         }

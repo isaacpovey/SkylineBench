@@ -133,7 +133,8 @@ namespace SkylineBench.Bridge
             float a = block.m_angle;
             Vector3 right = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a));
             Vector3 forward = new Vector3(-Mathf.Sin(a), 0f, Mathf.Cos(a));
-            for (int row = 0; row < rows && row < 8; row++)
+            // A block holds up to 16 rows (m_zone1 rows 0-7, m_zone2 rows 8-15).
+            for (int row = 0; row < rows && row < 16; row++)
                 for (int col = 0; col < 4; col++)
                 {
                     ItemClass.Zone z = block.GetZone(col, row);

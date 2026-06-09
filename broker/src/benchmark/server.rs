@@ -23,7 +23,7 @@ use crate::bridge_client::BridgeClient;
 use crate::geometry::horizontal_distance;
 use crate::service::{
     self, BuildRoadArgs, BulldozeArgs, ControlTimeArgs, GetMetricsArgs, RenderMapArgs,
-    SetZoningArgs, UpgradeRoadArgs,
+    ServiceError, SetZoningArgs, UpgradeRoadArgs,
 };
 
 #[derive(Clone)]
@@ -35,6 +35,8 @@ pub struct BenchmarkServer {
 
 #[derive(Deserialize, schemars::JsonSchema)]
 pub struct SubmitArgs {
+    /// Optional free-text rationale from the agent. Accepted so the agent can
+    /// explain its solution; not used in scoring.
     #[serde(default)]
     pub note: Option<String>,
 }
@@ -45,6 +47,10 @@ pub fn with_progress(mut value: Value, state: &RunState) -> Value {
         map.insert("benchmark_progress".into(), state.progress());
     }
     value
+}
+
+fn tool_err(err: ServiceError) -> CallToolResult {
+    CallToolResult::error(vec![Content::text(err.to_string())])
 }
 
 impl BenchmarkServer {
@@ -66,7 +72,7 @@ impl BenchmarkServer {
     async fn get_city_overview(&self) -> Result<CallToolResult, ErrorData> {
         match service::get_city_overview(&self.client).await {
             Ok(v) => self.finish(v).await,
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+            Err(e) => Ok(tool_err(e)),
         }
     }
 
@@ -74,7 +80,7 @@ impl BenchmarkServer {
     async fn observe_area(&self) -> Result<CallToolResult, ErrorData> {
         match service::observe_area(&self.client).await {
             Ok(v) => self.finish(v).await,
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+            Err(e) => Ok(tool_err(e)),
         }
     }
 
@@ -87,7 +93,7 @@ impl BenchmarkServer {
                 }
                 self.finish(v).await
             }
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+            Err(e) => Ok(tool_err(e)),
         }
     }
 
@@ -95,7 +101,7 @@ impl BenchmarkServer {
     async fn list_road_types(&self) -> Result<CallToolResult, ErrorData> {
         match service::list_road_types(&self.client).await {
             Ok(v) => self.finish(v).await,
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+            Err(e) => Ok(tool_err(e)),
         }
     }
 
@@ -103,7 +109,7 @@ impl BenchmarkServer {
     async fn list_zone_types(&self) -> Result<CallToolResult, ErrorData> {
         match service::list_zone_types(&self.client).await {
             Ok(v) => self.finish(v).await,
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+            Err(e) => Ok(tool_err(e)),
         }
     }
 
@@ -113,7 +119,8 @@ impl BenchmarkServer {
             Ok(png) => {
                 let data = base64::engine::general_purpose::STANDARD.encode(png);
                 let progress = {
-                    let s = self.state.lock().await;
+                    let mut s = self.state.lock().await;
+                    s.check_timeout();
                     s.progress()
                 };
                 Ok(CallToolResult::success(vec![
@@ -121,7 +128,7 @@ impl BenchmarkServer {
                     Content::text(serde_json::json!({ "benchmark_progress": progress }).to_string()),
                 ]))
             }
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+            Err(e) => Ok(tool_err(e)),
         }
     }
 
@@ -129,12 +136,14 @@ impl BenchmarkServer {
     async fn control_time(&self, Parameters(args): Parameters<ControlTimeArgs>) -> Result<CallToolResult, ErrorData> {
         match service::control_time(&self.client, args).await {
             Ok(v) => {
+                // A transient metrics fetch failure just skips this flow sample; the
+                // next get_metrics/control_time call will resample. Non-fatal.
                 if let Ok(m) = self.client.metrics().await {
                     self.state.lock().await.push_flow(m.traffic.flow_percent as f64);
                 }
                 self.finish(v).await
             }
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+            Err(e) => Ok(tool_err(e)),
         }
     }
 
@@ -145,12 +154,13 @@ impl BenchmarkServer {
         match service::build_road(&self.client, args).await {
             Ok(v) => {
                 if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
-                    let cost = self.state.lock().await.build_cost(&road_type, length);
-                    self.state.lock().await.record_mutation("build_road", cost);
+                    let mut s = self.state.lock().await;
+                    let cost = s.build_cost(&road_type, length);
+                    s.record_mutation("build_road", cost);
                 }
                 self.finish(v).await
             }
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+            Err(e) => Ok(tool_err(e)),
         }
     }
 
@@ -168,12 +178,13 @@ impl BenchmarkServer {
         match service::upgrade_road(&self.client, args).await {
             Ok(v) => {
                 if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
-                    let cost = self.state.lock().await.build_cost(&road_type, length);
-                    self.state.lock().await.record_mutation("upgrade_road", cost);
+                    let mut s = self.state.lock().await;
+                    let cost = s.build_cost(&road_type, length);
+                    s.record_mutation("upgrade_road", cost);
                 }
                 self.finish(v).await
             }
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+            Err(e) => Ok(tool_err(e)),
         }
     }
 
@@ -186,7 +197,7 @@ impl BenchmarkServer {
                 }
                 self.finish(v).await
             }
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+            Err(e) => Ok(tool_err(e)),
         }
     }
 
@@ -199,7 +210,7 @@ impl BenchmarkServer {
                 }
                 self.finish(v).await
             }
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+            Err(e) => Ok(tool_err(e)),
         }
     }
 
@@ -232,12 +243,25 @@ mod tests {
     #[test]
     fn registers_twelve_tools_including_submit_excluding_reset() {
         let tools = BenchmarkServer::tool_router().list_all();
-        let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
-        assert!(names.contains(&"submit_solution"), "has submit_solution");
-        assert!(names.contains(&"build_road"));
-        assert!(names.contains(&"get_metrics"));
-        assert!(!names.contains(&"reset_scenario"), "no reset_scenario");
-        assert_eq!(tools.len(), 12);
+        let mut names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
+        names.sort_unstable();
+        assert_eq!(
+            names,
+            vec![
+                "build_road",
+                "bulldoze",
+                "control_time",
+                "get_city_overview",
+                "get_metrics",
+                "list_road_types",
+                "list_zone_types",
+                "observe_area",
+                "render_map",
+                "set_zoning",
+                "submit_solution",
+                "upgrade_road",
+            ]
+        );
     }
 
     #[test]

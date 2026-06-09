@@ -39,8 +39,12 @@ impl MockState {
     }
 }
 
-fn road_types() -> Vec<String> {
-    vec!["road".into(), "highway".into(), "oneway".into()]
+fn road_types() -> Vec<crate::contract::RoadType> {
+    use crate::contract::RoadType;
+    vec![
+        RoadType { name: "road".into(), construction_cost: 1000 },
+        RoadType { name: "highway".into(), construction_cost: 5000 },
+    ]
 }
 
 fn zone_types() -> Vec<String> {
@@ -119,9 +123,7 @@ async fn metrics(State(s): State<MockState>) -> Json<Metrics> {
 }
 
 async fn road_types_ep() -> Json<RoadTypes> {
-    Json(RoadTypes {
-        road_types: road_types(),
-    })
+    Json(RoadTypes { road_types: road_types() })
 }
 
 async fn zone_types_ep() -> Json<ZoneTypes> {
@@ -164,7 +166,7 @@ async fn build_road(
     Json(body): Json<BuildRoadBody>,
 ) -> Json<ActionResult> {
     let mut c = s.city.lock().unwrap();
-    if !road_types().contains(&body.prefab) {
+    if !road_types().iter().any(|r| r.name == body.prefab) {
         return Json(ActionResult {
             ok: false,
             created_nodes: vec![],
@@ -271,7 +273,7 @@ async fn upgrade_road(
     Json(body): Json<UpgradeBody>,
 ) -> Json<ActionResult> {
     let mut c = s.city.lock().unwrap();
-    if !road_types().contains(&body.prefab) {
+    if !road_types().iter().any(|r| r.name == body.prefab) {
         return Json(ActionResult {
             ok: false,
             created_nodes: vec![],
@@ -414,6 +416,24 @@ pub async fn bind(addr: SocketAddr) -> (SocketAddr, impl std::future::Future<Out
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn road_types_endpoint_includes_costs() {
+        let (addr, server) = bind("127.0.0.1:0".parse().unwrap()).await;
+        tokio::spawn(server);
+        let body: crate::contract::RoadTypes = reqwest::Client::new()
+            .get(format!("http://{addr}/road-types"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let road = body.road_types.iter().find(|r| r.name == "road").unwrap();
+        assert!(road.construction_cost > 0);
+        let highway = body.road_types.iter().find(|r| r.name == "highway").unwrap();
+        assert!(highway.construction_cost > road.construction_cost);
+    }
 
     #[tokio::test]
     async fn mock_serves_health() {

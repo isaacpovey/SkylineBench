@@ -30,6 +30,7 @@
     <Compile Include="src\bridge\SimThread.cs" />
     <Compile Include="src\bridge\GameAccess.cs" />
     <Compile Include="src\probe\Probe.cs" />
+    <Compile Include="src\dto\Dtos.cs" />
     <Compile Include="src\Mod.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

@@ -125,8 +125,14 @@ pub struct Metrics {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RoadType {
+    pub name: String,
+    pub construction_cost: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RoadTypes {
-    pub road_types: Vec<String>,
+    pub road_types: Vec<RoadType>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -233,6 +239,23 @@ mod tests {
         assert!(parsed.snapped_nodes.is_empty());
         assert!(parsed.destroyed.is_empty());
         assert_eq!(parsed.reason, None);
+    }
+
+    #[test]
+    fn road_types_round_trips_with_cost() {
+        let original = RoadTypes {
+            road_types: vec![
+                RoadType { name: "Basic Road".into(), construction_cost: 1200 },
+                RoadType { name: "Highway".into(), construction_cost: 8000 },
+            ],
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        assert!(
+            json.contains("\"name\":\"Basic Road\",\"construction_cost\":1200"),
+            "got {json}"
+        );
+        let parsed: RoadTypes = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, parsed);
     }
 
     #[test]

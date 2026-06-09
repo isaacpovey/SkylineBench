@@ -76,6 +76,7 @@ pub async fn finalize(
     };
     let score = score_run(&record, &cfg);
 
+    // Blocking I/O is acceptable here — finalize runs once at end of run.
     std::fs::create_dir_all(out_dir)?;
     std::fs::write(out_dir.join("run-record.json"), serde_json::to_string_pretty(&record)?)?;
     std::fs::write(out_dir.join("score.json"), serde_json::to_string_pretty(&score)?)?;
@@ -115,12 +116,7 @@ mod tests {
         let c = client().await;
         let cfg = BenchConfig::default();
         let baseline = WindowStats { flow_mean: 80.0, active_vehicles_mean: 0.0, population: 0 };
-        let state = Arc::new(Mutex::new(RunState::new(
-            cfg.clone(),
-            "gridlock-v1".into(),
-            baseline,
-            HashMap::new(),
-        )));
+        let state = Arc::new(Mutex::new(RunState::new(cfg.clone(), baseline, HashMap::new())));
         state.lock().await.end_reason = Some(EndReason::Submit);
 
         let dir = std::env::temp_dir().join(format!("sb-finalize-{}", std::process::id()));

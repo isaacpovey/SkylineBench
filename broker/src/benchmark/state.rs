@@ -10,7 +10,6 @@ use crate::benchmark::record::{ActionEntry, EndReason, WindowStats};
 
 pub struct RunState {
     pub config: BenchConfig,
-    pub map_id: String,
     pub baseline: WindowStats,
     pub road_costs: HashMap<String, i64>,
     pub num_changes: u32,
@@ -24,14 +23,12 @@ pub struct RunState {
 impl RunState {
     pub fn new(
         config: BenchConfig,
-        map_id: String,
         baseline: WindowStats,
         road_costs: HashMap<String, i64>,
     ) -> Self {
         let window = config.window_samples as usize;
         Self {
             config,
-            map_id,
             baseline,
             road_costs,
             num_changes: 0,
@@ -80,13 +77,13 @@ impl RunState {
     }
 
     /// Agent-facing telemetry (spec §7): resources + goal, never the score.
-    pub fn progress(&self, seconds_remaining: u64) -> Value {
+    pub fn progress(&self) -> Value {
         json!({
             "money_spent": self.money_spent,
             "num_changes": self.num_changes,
             "flow_current": self.flow.mean(),
             "flow_target": self.config.flow_target,
-            "seconds_remaining": seconds_remaining,
+            "seconds_remaining": self.seconds_remaining(),
         })
     }
 }
@@ -103,7 +100,6 @@ mod tests {
         costs.insert("road".to_string(), 1000i64);
         RunState::new(
             BenchConfig::default(),
-            "gridlock-v1".into(),
             WindowStats { flow_mean: 6.0, active_vehicles_mean: 240.0, population: 3380 },
             costs,
         )
@@ -123,9 +119,9 @@ mod tests {
     #[test]
     fn progress_omits_score_fields() {
         let s = state();
-        let p = s.progress(900);
+        let p = s.progress();
         assert_eq!(p["flow_target"], 95.0);
-        assert_eq!(p["seconds_remaining"], 900);
+        assert!(p["seconds_remaining"].as_u64().unwrap() <= 10_800);
         assert!(p.get("score").is_none());
         assert!(p.get("composite_score").is_none());
         assert!(p.get("weights").is_none());

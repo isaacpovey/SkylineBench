@@ -66,6 +66,7 @@ namespace SkylineBench.Tests
                 Serialize.Load(new LoadResultDto { Ok = true, CityLoaded = true }));
         }
 
+        // Verifies the JSON object shape the handler emits; built directly with JsonWriter because game prefabs can't be loaded in the no-game test harness.
         public static void RoadTypesShape()
         {
             var w = new SkylineBench.Json.JsonWriter();

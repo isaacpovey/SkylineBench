@@ -31,6 +31,7 @@ namespace SkylineBench.Tests
             JsonWriterTests.Register(tests);
             JsonReaderTests.Register(tests);
             HttpQueryTests.Register(tests);
+            SerializeTests.Register(tests);
 
             int passed = 0, failed = 0;
             foreach (var t in tests)

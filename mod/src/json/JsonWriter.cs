@@ -48,6 +48,17 @@ namespace SkylineBench.Json
             return this;
         }
 
+        /// <summary>Float overload so f32 values serialize at float precision
+        /// (e.g. 0.3f → "0.3"), not the widened-double noise ("0.30000001192").
+        /// Call sites passing a float bind here (exact match) rather than widening.</summary>
+        public JsonWriter Value(float f)
+        {
+            Pre();
+            _sb.Append(f.ToString("R", CultureInfo.InvariantCulture));
+            _needComma = true;
+            return this;
+        }
+
         public JsonWriter Value(bool b) { Pre(); _sb.Append(b ? "true" : "false"); _needComma = true; return this; }
         public JsonWriter Null() { Pre(); _sb.Append("null"); _needComma = true; return this; }
 

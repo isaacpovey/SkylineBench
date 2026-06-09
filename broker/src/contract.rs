@@ -104,8 +104,9 @@ pub struct PopulationMetrics {
     pub total: u32,
     pub residential_demand: u8,
     pub commercial_demand: u8,
-    pub industrial_demand: u8,
-    pub office_demand: u8,
+    /// CS1 exposes a single combined industrial+office ("workplace") demand,
+    /// not separate industrial/office values — see mod DISCOVERY.md.
+    pub workplace_demand: u8,
     pub employed: u32,
 }
 
@@ -256,8 +257,7 @@ mod tests {
                 total: 2000,
                 residential_demand: 50,
                 commercial_demand: 40,
-                industrial_demand: 30,
-                office_demand: 20,
+                workplace_demand: 30,
                 employed: 1500,
             },
             services: ServiceMetrics { happiness: 80 },

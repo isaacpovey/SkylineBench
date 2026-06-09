@@ -81,7 +81,7 @@ Small and stable. Localhost-only. JSON in/out. The mod returns **data, not image
 
 **Clock & lifecycle:**
 - `POST /clock` → `{ op: "pause"|"resume"|"set-speed"|"step", ticks?, speed? }`.
-- `POST /load-save` → `{ saveName }` → loads a named savegame (the reset primitive).
+- `POST /load-save` → `{ saveName }` → loads a named savegame (the reset primitive). **⚠️ Experimental (D1):** the call resolves the save and returns `{ ok:true, city_loaded:true }`, but mid-session `LoadLevel` proved **unstable and crashed the game** in runtime testing. Treat as best-effort; prefer loading from the main menu. A dependable scenario reset is deferred to **Phase 2** (the benchmark harness owns reset).
 - `POST /screenshot` *(deferred, behind a flag)* → game-camera PNG; stubbed in Phase 1.
 
 **Contracts:**
@@ -108,7 +108,7 @@ Fewer, higher-level tools than the raw mod verbs; the broker does assembly, vali
 
 **Control:**
 - `control_time({ op, ticks?, speed? })` → pause / resume / set_speed / step. Supports both **step mode** (benchmark) and **free-running mode** (exploration).
-- `reset_scenario({ save })` → reload a named save.
+- `reset_scenario({ save })` → reload a named save. **⚠️ Experimental** — wraps the unstable `/load-save` (see §3); reliable reset is a Phase-2 deliverable.
 - `list_road_types()` / `list_zone_types()` → enumerate valid prefab identifiers so agents use correct internal names (which they cannot otherwise know).
 
 **Internal modules (the testable core, not tools):**

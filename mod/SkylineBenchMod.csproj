@@ -22,14 +22,22 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="src\json\JsonWriter.cs" />
+    <Compile Include="src\json\Serialize.cs" />
     <Compile Include="src\json\JsonValue.cs" />
+    <Compile Include="src\json\RequestParse.cs" />
     <Compile Include="src\http\HttpQuery.cs" />
     <Compile Include="src\http\HttpServer.cs" />
     <Compile Include="src\http\Router.cs" />
     <Compile Include="src\http\Handlers.cs" />
+    <Compile Include="src\bridge\ErrorCode.cs" />
     <Compile Include="src\bridge\SimThread.cs" />
     <Compile Include="src\bridge\GameAccess.cs" />
+    <Compile Include="src\bridge\GameReads.cs" />
+    <Compile Include="src\bridge\GameActions.cs" />
+    <Compile Include="src\bridge\ZoneWriter.cs" />
+    <Compile Include="src\bridge\SaveLoader.cs" />
     <Compile Include="src\probe\Probe.cs" />
+    <Compile Include="src\dto\Dtos.cs" />
     <Compile Include="src\Mod.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

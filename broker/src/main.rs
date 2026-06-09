@@ -25,6 +25,13 @@ enum Command {
         #[arg(long, default_value = "127.0.0.1:8787")]
         addr: String,
     },
+    /// Render a captured stream-json transcript to readable markdown.
+    RenderTranscript {
+        #[arg(long)]
+        input: std::path::PathBuf,
+        #[arg(long)]
+        out: std::path::PathBuf,
+    },
     /// Run a benchmark session: serve MCP (instrumented) against the mod and
     /// score the run when the agent finishes.
     Benchmark {
@@ -54,6 +61,10 @@ async fn main() -> anyhow::Result<()> {
                 .serve((tokio::io::stdin(), tokio::io::stdout()))
                 .await?;
             server.waiting().await?;
+        }
+        Command::RenderTranscript { input, out } => {
+            let jsonl = std::fs::read_to_string(&input)?;
+            std::fs::write(&out, skylinebench::benchmark::render_transcript(&jsonl))?;
         }
         Command::Benchmark { mod_url, map, map_source, out } => {
             use std::collections::HashMap;

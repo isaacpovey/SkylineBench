@@ -17,7 +17,7 @@ A minimal, rigorous benchmark that scores an AI coding agent (Claude Code, Codex
 1. **Operator** loads the pinned bad-traffic save from CS1's main menu; confirms `GET /health` → `city_loaded:true`.
 2. **Operator** starts `broker benchmark --map <id>`. The broker serves MCP exactly as in `serve` mode, plus instruments the run and controls the clock.
 3. **Baseline window.** Broker ensures the sim is paused, then steps it across `W` ticks, sampling `flow_percent` and `active_vehicles`; records baseline means and `population`.
-4. **Agent phase.** The agent connects over MCP and works using the existing tools (`observe_area`, `get_metrics`, `build_road`, `bulldoze`, `upgrade_road`, `set_zoning`, `control_time`, `render_map`, …). The broker tallies every tool call, counts mutating actions, and sums per-action `cost`. Every response carries a `benchmark_progress` block (§7).
+4. **Agent phase.** The agent connects over MCP and works using the existing tools (`observe_area`, `get_metrics`, `build_road`, `bulldoze`, `upgrade_road`, `set_zoning`, `control_time`, `render_map`, …). The broker counts mutating actions and computes the cost of each from the action itself (§8). Reads are unrestricted and unscored. Every response carries a `benchmark_progress` block (§7).
 5. **Run ends on the first of three outs:**
    - the agent calls **`submit_solution`** (voluntary);
    - the **windowed `flow_percent` ≥ `FLOW_TARGET`** (auto-win);
@@ -26,29 +26,26 @@ A minimal, rigorous benchmark that scores an AI coding agent (Claude Code, Codex
 7. **Final window.** Broker steps `W` ticks sampling `flow_percent` and `active_vehicles`; records final means and `population`.
 8. **Guard + score.** Apply the throughput guard (§5), compute the score (§4) from the run-record, and emit `run-record.json` + `score.json`.
 
-The scored **time** term is tool-call count, not wall-clock — reproducible across hardware/model/latency. The 3h wall-clock is only a kill-switch and never enters the score.
+The 3h wall-clock is only a kill-switch and never enters the score. Reads are unscored — only built work (flow gain), money spent, and the number of write actions matter.
 
 ## 4. Scoring
 
-Pure, deterministic function of the run-record (replayable). Four terms, each normalized to `[0, 1]` against fixed bounds, combined as a flow-dominant weighted sum (weights sum to 1).
+Pure, deterministic function of the run-record (replayable). Three terms, each normalized to `[0, 1]` against fixed bounds, combined as a flow-dominant weighted sum (weights sum to 1).
 
 ```
 Δflow        = final_flow_mean − baseline_flow_mean        # flow %-points
-norm_flow    = clamp(Δflow / TARGET_GAIN,    0, 1)
-norm_money   = clamp(money_spent / BUDGET,   0, 1)
-norm_calls   = clamp(tool_calls / CALL_CAP,  0, 1)
+norm_flow    = clamp(Δflow / TARGET_GAIN,      0, 1)
+norm_money   = clamp(money_spent / BUDGET,     0, 1)
 norm_changes = clamp(num_changes / CHANGE_CAP, 0, 1)
 
-score = 0.55 * norm_flow
-      + 0.15 * (1 − norm_money)
-      + 0.15 * (1 − norm_changes)
-      + 0.15 * (1 − norm_calls)
+score = 0.60 * norm_flow
+      + 0.20 * (1 − norm_money)
+      + 0.20 * (1 − norm_changes)
 ```
 
 **Definitions:**
-- `num_changes` = count of **mutating tool calls** (`build_road`, `bulldoze`, `upgrade_road`, `set_zoning`). One call is one change regardless of how many segments/cells it touches.
-- `tool_calls` = count of all agent MCP tool invocations during the **agent phase** (read and write). Broker-internal metric reads during baseline/final windows do not count. `submit_solution` counts as one call (negligible).
-- `money_spent` = Σ of per-action `cost` over the agent phase (negative costs / refunds reduce the total).
+- `num_changes` = count of **mutating tool calls** (`build_road`, `bulldoze`, `upgrade_road`, `set_zoning`) during the agent phase. One call is one change regardless of how many segments/cells it touches. Read-only tools (`observe_area`, `get_metrics`, `render_map`, …) are never counted.
+- `money_spent` = Σ of broker-computed per-action `cost` over the agent phase (§8); refunds reduce the total.
 
 ## 5. Anti-cheat guard
 
@@ -68,8 +65,7 @@ Tunable; calibrated against the chosen map during the implementation verify step
 | Constant | Meaning | Placeholder |
 |---|---|---|
 | `TARGET_GAIN` | Δflow (%-points) that maxes the flow term | 40 |
-| `BUDGET` | the save's starting balance (spend it all → `norm_money` = 1) | = save balance |
-| `CALL_CAP` | tool-call ceiling for normalization | 300 |
+| `BUDGET` | money-spent normalization ceiling (spend this much → `norm_money` = 1); a scoring constant, not an in-game cash limit | TBD at calibration |
 | `CHANGE_CAP` | mutating-action ceiling for normalization | 100 |
 | `FLOW_TARGET` | auto-win flow % (closest achievable to 100) | 95 |
 | `W` | measurement-window length (ticks) | 2048 |
@@ -77,7 +73,7 @@ Tunable; calibrated against the chosen map during the implementation verify step
 | `WALL_CLOCK_CAP_S` | hard backstop | 10800 (3h) |
 | guard ratio | min final/baseline `active_vehicles` | 0.9 |
 
-Weights (`0.55 / 0.15 / 0.15 / 0.15`) are configurable but default flow-dominant.
+Weights (`0.60 / 0.20 / 0.20`) are configurable but default flow-dominant. `BUDGET` is a normalization ceiling only — money is unlimited in-game (§9), so it never blocks building; it is purely a scoring penalty calibrated against a typical solution's spend.
 
 ## 7. Agent-facing progress telemetry
 
@@ -86,8 +82,6 @@ In benchmark mode, every tool response carries a piggybacked block (so checking 
 ```json
 "benchmark_progress": {
   "money_spent": 0,
-  "budget_remaining": 0,
-  "tool_calls_used": 0,
   "num_changes": 0,
   "flow_current": 0.0,
   "flow_target": 95.0,
@@ -95,7 +89,7 @@ In benchmark mode, every tool response carries a piggybacked block (so checking 
 }
 ```
 
-The agent sees its **resources and goal**, never the composite score, weights, or normalization — exposing the aggregate would invite Goodharting (stopping exactly at the target, hugging the guard floor). The agent is told the rules in its task prompt (the three outs, the throughput guard, and that lower spend/changes/calls scores better); game state (`flow_percent`, `active_vehicles`, …) remains available via `get_metrics`.
+The agent sees its **resources and goal**, never the composite score, weights, or normalization — exposing the aggregate would invite Goodharting (stopping exactly at the target, hugging the guard floor). The agent is told the rules in its task prompt (the three outs, the throughput guard, and that lower spend and fewer write actions score better); game state (`flow_percent`, `active_vehicles`, …) remains available via `get_metrics`. Reads are free, so there is no read counter to expose.
 
 `flow_current` is a **rolling windowed mean** of `flow_percent` sampled whenever the agent advances the sim via `control_time` — raw post-edit flow is too noisy to compare against `FLOW_TARGET`. The `flow_target` out fires (at the next tool boundary) when this rolling mean over the most recent `W` ticks reaches `FLOW_TARGET`.
 
@@ -103,17 +97,24 @@ The agent sees its **resources and goal**, never the composite score, weights, o
 
 `broker/src/contract.rs` is the frozen wire format; changes touch both sides and the mock.
 
-- **Add `cost: i64` to `ActionResult`.** The mod reads `EconomyManager.LastCashAmount` immediately before and after each marshaled `build_road` / `bulldoze` / `upgrade_road` on the sim thread and returns the delta (negative = refund). Income over a single instantaneous action is ≈ 0, so this isolates construction cost from economy drift. Keeps the mod thin (a before/after read, no business logic). `set_zoning` → `cost: 0`.
+- **Add `construction_cost` to the road-type DTO.** The mod reflects `NetInfo.m_constructionCost` and surfaces it on the road-type listing so the broker has accurate, data-driven per-type costs (rather than a static table that can drift). This keeps the mod thin (one more reflected field) and is the only contract addition for cost.
 - **New MCP tool `submit_solution`** (optional `note: string`), registered only in benchmark mode → triggers the voluntary out.
+
+**Cost model (broker-side, computed from the action — not from funds).** Because money is unlimited in-game, `EconomyManager` funds never change; the broker computes spend itself from what it built:
+- `build_road` → `construction_cost × built_length` (broker already knows the road type and computes segment length during geometry/assembly).
+- `upgrade_road` → construction cost of the new road type × length (in-place swap).
+- `bulldoze` → `0` for the minimal phase (no refund modeling); the `num_changes` term already penalizes the action. Refund modeling is a possible later refinement.
+- `set_zoning` → `0`.
+
+The exact length-scaling of `m_constructionCost` (CS1 charges per unit length off a base) is confirmed/calibrated during the verify step.
 
 ## 9. The starting map
 
-Reuse an existing congested city, with these constraints:
-- **Base-game assets only** (or explicitly-pinned DLC) so it loads without Workshop dependencies.
-- **Limited money with a fixed starting balance** (not unlimited-money mode) so per-action `cost` is non-zero and `BUDGET` is defined.
-- A copy **pinned in `benchmark/maps/`** with its source, game version, and the starting balance documented.
+Reuse an existing congested city. **Unlimited Money + Unlock All are enabled**, so cash never blocks building and all tiles/features are available — money is purely a *scoring* penalty (the broker computes spend per §8; `BUDGET` is just the normalization ceiling). Map sourcing is therefore unconstrained beyond:
+- A copy **pinned in `benchmark/maps/`** with its source and game version documented.
+- The save configured with Unlimited Money + Unlock All active.
 
-If a suitable existing city proves hard to source under these constraints, revisit (hand-built or scripted-degradation were the alternatives considered).
+Hand-built or scripted-degradation remain fallbacks if no suitable congested city is found.
 
 ## 10. Run-record & score artifacts
 
@@ -121,23 +122,23 @@ If a suitable existing city proves hard to source under these constraints, revis
 
 ```
 schema_version
-map:        { id, source, game_version, starting_balance }
-config:     { weights, TARGET_GAIN, BUDGET, CALL_CAP, CHANGE_CAP,
+map:        { id, source, game_version }
+config:     { weights, TARGET_GAIN, BUDGET, CHANGE_CAP,
               FLOW_TARGET, W, S, WALL_CLOCK_CAP_S, guard_ratio }
 started_at, ended_at
 end_reason: "submit" | "flow_target" | "timeout"
 baseline:   { flow_mean, active_vehicles_mean, population }
 final:      { flow_mean, active_vehicles_mean, population }
-tally:      { tool_calls, num_changes, money_spent }
-actions:    [ { seq, tool, cost } ]            # per-action audit log
+tally:      { num_changes, money_spent }
+actions:    [ { seq, tool, cost } ]            # per-action audit log (broker-computed cost)
 flow_samples: { baseline: [...], final: [...] }
 ```
 
 `score.json`:
 
 ```
-norm:     { flow, money, calls, changes }
-weighted: { flow, money, changes, calls }
+norm:     { flow, money, changes }
+weighted: { flow, money, changes }
 invalid:  bool        # true if guard failed
 score:    0.0 .. 1.0  # 0 if invalid
 ```

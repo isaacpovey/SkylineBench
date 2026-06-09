@@ -16,8 +16,8 @@
   <ItemGroup>
     <!-- Pure source under test (no game deps). -->
     <Compile Include="..\src\json\JsonWriter.cs"><Link>src\JsonWriter.cs</Link></Compile>
-    <!--
     <Compile Include="..\src\json\JsonValue.cs"><Link>src\JsonValue.cs</Link></Compile>
+    <!--
     <Compile Include="..\src\http\HttpQuery.cs"><Link>src\HttpQuery.cs</Link></Compile>
     -->
     <Compile Include="TestRunner.cs" />

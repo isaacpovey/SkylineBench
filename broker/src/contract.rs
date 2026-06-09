@@ -104,8 +104,7 @@ pub struct PopulationMetrics {
     pub total: u32,
     pub residential_demand: u8,
     pub commercial_demand: u8,
-    pub industrial_demand: u8,
-    pub office_demand: u8,
+    pub workplace_demand: u8,
     pub employed: u32,
 }
 
@@ -256,8 +255,7 @@ mod tests {
                 total: 2000,
                 residential_demand: 50,
                 commercial_demand: 40,
-                industrial_demand: 30,
-                office_demand: 20,
+                workplace_demand: 30,
                 employed: 1500,
             },
             services: ServiceMetrics { happiness: 80 },

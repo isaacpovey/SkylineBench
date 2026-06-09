@@ -37,9 +37,34 @@ namespace SkylineBench.Bridge
             return new ActionResultDto { Ok = true };
         }
 
+        // We iterate rather than use PackageManager.FindAssetByName: that method returns null for
+        // any name without a '.' and otherwise only matches the package-qualified fullName
+        // (e.g. "packageName.assetName"), never the bare save name or city name. Since the
+        // agent/broker passes a human-friendly name (e.g. "MyCity"), we match flexibly instead.
         private static Package.Asset FindSave(string saveName)
         {
-            return PackageManager.FindAssetByName(saveName, UserAssetType.SaveGameMetaData);
+            if (string.IsNullOrEmpty(saveName)) return null;
+
+            Package.Asset fullNameMatch = null;
+            foreach (Package.Asset asset in PackageManager.FilterAssets(UserAssetType.SaveGameMetaData))
+            {
+                if (asset == null) continue;
+                if (asset.name == saveName) return asset;
+
+                try
+                {
+                    SaveGameMetaData metaData = asset.Instantiate<SaveGameMetaData>();
+                    if (metaData != null && metaData.cityName == saveName) return asset;
+                }
+                catch
+                {
+                    // Corrupt save: skip cityName matching for this asset, keep searching.
+                }
+
+                if (asset.fullName == saveName) fullNameMatch = asset;
+            }
+
+            return fullNameMatch;
         }
     }
 }

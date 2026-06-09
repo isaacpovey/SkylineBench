@@ -104,6 +104,8 @@ pub struct PopulationMetrics {
     pub total: u32,
     pub residential_demand: u8,
     pub commercial_demand: u8,
+    /// CS1 exposes a single combined industrial+office ("workplace") demand,
+    /// not separate industrial/office values — see mod DISCOVERY.md.
     pub workplace_demand: u8,
     pub employed: u32,
 }

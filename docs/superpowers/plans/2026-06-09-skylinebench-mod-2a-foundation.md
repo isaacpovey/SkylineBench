@@ -1190,7 +1190,7 @@ namespace SkylineBench
             w.Name("road_prefabs").BeginArray();
             try
             {
-                uint count = PrefabCollection<NetInfo>.PrefabCount();
+                int count = PrefabCollection<NetInfo>.PrefabCount(); // PrefabCount() returns int
                 for (uint i = 0; i < count; i++)
                 {
                     var p = PrefabCollection<NetInfo>.GetPrefab(i);

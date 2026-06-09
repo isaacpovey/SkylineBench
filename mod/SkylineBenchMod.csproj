@@ -24,6 +24,7 @@
     <Compile Include="src\json\JsonWriter.cs" />
     <Compile Include="src\json\Serialize.cs" />
     <Compile Include="src\json\JsonValue.cs" />
+    <Compile Include="src\json\RequestParse.cs" />
     <Compile Include="src\http\HttpQuery.cs" />
     <Compile Include="src\http\HttpServer.cs" />
     <Compile Include="src\http\Router.cs" />

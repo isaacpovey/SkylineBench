@@ -6,3 +6,9 @@ pub mod record;
 pub mod score;
 pub mod server;
 pub mod state;
+
+pub use config::BenchConfig;
+pub use measure::{finalize, measure_window};
+pub use record::{MapInfo, WindowStats};
+pub use server::BenchmarkServer;
+pub use state::RunState;

@@ -219,8 +219,10 @@ impl BenchmarkServer {
         self.ensure_baseline().await;
         match service::render_map(&self.client, args).await {
             Ok((png, legend)) => {
-                let tick = self.client.health().await.map(|h| h.tick).unwrap_or(0);
-                self.persist_render(&png, tick, "render_map").await;
+                if self.renders_dir.is_some() {
+                    let tick = self.client.health().await.map(|h| h.tick).unwrap_or(0);
+                    self.persist_render(&png, tick, "render_map").await;
+                }
                 let data = base64::engine::general_purpose::STANDARD.encode(&png);
                 let progress = {
                     let mut s = self.state.lock().await;

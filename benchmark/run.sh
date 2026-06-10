@@ -108,6 +108,8 @@ fi
 
 if [ "${DRY_RUN:-0}" = "1" ]; then
   printf '%q ' "${CMD[@]}"; echo
+  echo "--- mcp.json ---" >&2
+  cat "$MCP_CONFIG" >&2
   exit 0
 fi
 

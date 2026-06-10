@@ -103,6 +103,9 @@ mod tests {
                     prefab: "road".into(),
                     lanes: 2,
                     length: 100.0,
+                    one_way: false,
+                    travel_direction: "both".into(),
+                    speed_limit: 1.0,
                 },
                 NetSegment {
                     id: 11,
@@ -111,6 +114,9 @@ mod tests {
                     prefab: "road".into(),
                     lanes: 2,
                     length: 100.0,
+                    one_way: false,
+                    travel_direction: "both".into(),
+                    speed_limit: 1.0,
                 },
             ],
         }

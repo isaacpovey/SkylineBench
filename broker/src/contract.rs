@@ -32,6 +32,10 @@ pub struct NetNode {
     pub z: f32,
 }
 
+fn default_travel_direction() -> String {
+    "both".to_string()
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NetSegment {
     pub id: u32,
@@ -40,6 +44,14 @@ pub struct NetSegment {
     pub prefab: String,
     pub lanes: u8,
     pub length: f32,
+    #[serde(default)]
+    pub one_way: bool,
+    /// "both" | "start_to_end" | "end_to_start"
+    #[serde(default = "default_travel_direction")]
+    pub travel_direction: String,
+    /// Game speed units (~1.0 ≈ 50 km/h); 0.0 when unknown.
+    #[serde(default)]
+    pub speed_limit: f32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -190,6 +202,25 @@ pub struct LoadResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn net_segment_defaults_direction_fields() {
+        // Wire payload from an older mod without the new fields must default.
+        let parsed: NetSegment = serde_json::from_str(
+            "{\"id\":7,\"start_node\":1,\"end_node\":2,\"prefab\":\"road\",\"lanes\":2,\"length\":100.0}",
+        )
+        .unwrap();
+        assert!(!parsed.one_way);
+        assert_eq!(parsed.travel_direction, "both");
+        assert_eq!(parsed.speed_limit, 0.0);
+
+        let full: NetSegment = serde_json::from_str(
+            "{\"id\":7,\"start_node\":1,\"end_node\":2,\"prefab\":\"hw\",\"lanes\":4,\"length\":100.0,\"one_way\":true,\"travel_direction\":\"end_to_start\",\"speed_limit\":2.0}",
+        )
+        .unwrap();
+        assert!(full.one_way);
+        assert_eq!(full.travel_direction, "end_to_start");
+    }
 
     #[test]
     fn action_error_serializes_screaming_snake() {

@@ -69,6 +69,9 @@ mod tests {
             prefab: "road".into(),
             lanes: 2,
             length: 10.0,
+            one_way: false,
+            travel_direction: "both".into(),
+            speed_limit: 1.0,
         }
     }
 

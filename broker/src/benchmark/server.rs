@@ -45,6 +45,23 @@ pub struct SubmitArgs {
     pub note: Option<String>,
 }
 
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct ApplyPlanArgs {
+    /// Ops applied in order. Polylines and long build_road spans are
+    /// auto-split into segments under the 200 m cap.
+    pub ops: Vec<crate::benchmark::plan::PlanOp>,
+    /// true: validate and price every op, mutate nothing, record no changes.
+    #[serde(default)]
+    pub validate_only: bool,
+    /// true (default): a runtime failure stops the remaining ops.
+    #[serde(default = "default_stop_on_error")]
+    pub stop_on_error: bool,
+}
+
+fn default_stop_on_error() -> bool {
+    true
+}
+
 /// Merge the agent-facing telemetry block into a JSON object result (spec §7).
 pub fn with_progress(mut value: Value, state: &RunState) -> Value {
     if let Value::Object(ref mut map) = value {
@@ -440,6 +457,152 @@ impl BenchmarkServer {
         }
     }
 
+    #[tool(description = "Apply a batch of modifications in one call: build_road / build_polyline \
+        (multi-point, auto-split under the 200 m segment cap) / upgrade_road / bulldoze / set_zoning. \
+        Every op is validated and priced up front — any structurally invalid op rejects the WHOLE plan \
+        before anything executes. Set validate_only=true for a free dry-run (no changes recorded). \
+        Each executed op counts as one change, identical to the single-op tools. The game can still \
+        reject an op at execution time (e.g. COLLISION); stop_on_error (default true) then skips the rest.")]
+    async fn apply_plan(&self, Parameters(args): Parameters<ApplyPlanArgs>) -> Result<CallToolResult, ErrorData> {
+        use crate::benchmark::plan::{expand, tool_name, validate, ExecCtx, ExecOp, MAX_EXPANDED_OPS, MAX_OPS};
+
+        self.ensure_baseline().await;
+        if self.run_ended().await {
+            return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
+        }
+        if args.ops.is_empty() || args.ops.len() > MAX_OPS {
+            return Ok(CallToolResult::error(vec![Content::text(format!(
+                "plan must contain 1..={MAX_OPS} ops (got {})", args.ops.len()
+            ))]));
+        }
+
+        let (road_types, zone_types, net, buildings) = match tokio::try_join!(
+            self.client.road_types(),
+            self.client.zone_types(),
+            self.client.network(),
+            self.client.buildings(),
+        ) {
+            Ok((r, z, n, b)) => (r.road_types, z.zone_types, n, b.buildings),
+            Err(e) => return Ok(tool_err(ServiceError::Bridge(e))),
+        };
+        let ctx = ExecCtx {
+            road_types,
+            zone_types,
+            segment_ids: net.segments.iter().map(|s| s.id).collect(),
+            node_ids: net.nodes.iter().map(|n| n.id).collect(),
+            building_ids: buildings.iter().map(|b| b.id).collect(),
+            segment_lengths: net.segments.iter().map(|s| (s.id, s.length)).collect(),
+        };
+
+        let exec = expand(&args.ops);
+        if exec.len() > MAX_EXPANDED_OPS {
+            return Ok(CallToolResult::error(vec![Content::text(format!(
+                "plan expands to {} segments; the cap is {MAX_EXPANDED_OPS} — split it into smaller plans",
+                exec.len()
+            ))]));
+        }
+
+        let estimate = |op: &ExecOp, state: &crate::benchmark::state::RunState| -> i64 {
+            match op {
+                ExecOp::Build { from, to, road_type, .. } => {
+                    state.build_cost(road_type, horizontal_distance(*from, *to))
+                }
+                ExecOp::Upgrade { segment, road_type } => {
+                    state.build_cost(road_type, ctx.segment_lengths.get(segment).copied().unwrap_or(0.0))
+                }
+                _ => 0,
+            }
+        };
+
+        let validations: Vec<(usize, &ExecOp, Result<(), crate::contract::ActionError>, i64)> = {
+            let state = self.state.lock().await;
+            exec.iter()
+                .map(|(source, op)| (*source, op, validate(op, &ctx), estimate(op, &state)))
+                .collect()
+        };
+        let all_valid = validations.iter().all(|(_, _, v, _)| v.is_ok());
+        let total_estimated_cost: i64 = validations.iter().map(|(_, _, _, c)| c).sum();
+
+        if args.validate_only || !all_valid {
+            let results: Vec<Value> = validations
+                .iter()
+                .enumerate()
+                .map(|(i, (source, op, v, cost))| {
+                    serde_json::json!({
+                        "op_index": i,
+                        "source_op": source,
+                        "tool": tool_name(op),
+                        "valid": v.is_ok(),
+                        "reason": v.as_ref().err(),
+                        "estimated_cost": cost,
+                        "executed": false,
+                    })
+                })
+                .collect();
+            return self
+                .finish(serde_json::json!({
+                    "ok": all_valid,
+                    "validate_only": args.validate_only,
+                    "results": results,
+                    "total_estimated_cost": total_estimated_cost,
+                    "stopped_at": Value::Null,
+                }))
+                .await;
+        }
+
+        let mut results: Vec<Value> = Vec::with_capacity(validations.len());
+        let mut stopped_at: Option<usize> = None;
+        for (i, (source, op, _, cost)) in validations.iter().enumerate() {
+            if stopped_at.is_some() && args.stop_on_error {
+                results.push(serde_json::json!({
+                    "op_index": i, "source_op": source, "tool": tool_name(op),
+                    "valid": true, "estimated_cost": cost, "executed": false,
+                }));
+                continue;
+            }
+            let outcome = match (*op).clone() {
+                ExecOp::Build { from, to, road_type, snap } => {
+                    service::build_road(&self.client, BuildRoadArgs { from, to, road_type, snap }).await
+                }
+                ExecOp::Upgrade { segment, road_type } => {
+                    service::upgrade_road(&self.client, UpgradeRoadArgs { segment, road_type }).await
+                }
+                ExecOp::Bulldoze { target_type, id } => {
+                    service::bulldoze(&self.client, BulldozeArgs { target_type, id }).await
+                }
+                ExecOp::Zone { area, zone_type } => {
+                    service::set_zoning(&self.client, SetZoningArgs { area, zone_type }).await
+                }
+                ExecOp::Invalid => unreachable!("invalid ops never pass the all_valid gate"),
+            };
+            match outcome {
+                Ok(v) => {
+                    let ok = v.get("ok").and_then(|b| b.as_bool()) == Some(true);
+                    if ok {
+                        self.state.lock().await.record_mutation(tool_name(op), *cost);
+                    } else if stopped_at.is_none() {
+                        stopped_at = Some(i);
+                    }
+                    results.push(serde_json::json!({
+                        "op_index": i, "source_op": source, "tool": tool_name(op),
+                        "valid": true, "estimated_cost": cost, "executed": true,
+                        "ok": ok, "action": v,
+                    }));
+                }
+                Err(e) => return Ok(tool_err(e)),
+            }
+        }
+
+        self.finish(serde_json::json!({
+            "ok": stopped_at.is_none(),
+            "validate_only": false,
+            "results": results,
+            "total_estimated_cost": total_estimated_cost,
+            "stopped_at": stopped_at,
+        }))
+        .await
+    }
+
     #[tool(description = "Declare the run finished. Returns immediately; the harness settles and \
         scores the city after your session ends. Call when satisfied, then stop — further \
         modifications will be rejected.")]
@@ -484,6 +647,7 @@ mod tests {
         assert_eq!(
             names,
             vec![
+                "apply_plan",
                 "build_road",
                 "bulldoze",
                 "control_time",
@@ -729,6 +893,142 @@ mod tests {
         assert_eq!(lines[1]["trigger"], "step");
         assert!(lines[1]["tick"].is_u64());
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    fn plan_build(x0: f32, x1: f32) -> crate::benchmark::plan::PlanOp {
+        crate::benchmark::plan::PlanOp::BuildRoad {
+            from: crate::contract::Position { x: x0, y: 0.0, z: 0.0 },
+            to: crate::contract::Position { x: x1, y: 0.0, z: 0.0 },
+            road_type: "road".into(),
+            snap: true,
+        }
+    }
+
+    /// Like bench_with_mock, but with the mock's road-cost table seeded so
+    /// estimated costs are non-zero (bench_with_mock passes an empty map).
+    async fn bench_with_mock_costs() -> BenchmarkServer {
+        use crate::benchmark::config::BenchConfig;
+        use crate::benchmark::state::RunState;
+        use crate::bridge_client::BridgeClient;
+        use crate::mock;
+        use std::collections::HashMap;
+        use std::sync::Arc;
+        use tokio::sync::Mutex;
+
+        let (addr, server) = mock::bind("127.0.0.1:0".parse().unwrap()).await;
+        tokio::spawn(server);
+        let client = Arc::new(BridgeClient::new(format!("http://{addr}")));
+        let mut st = RunState::new(
+            BenchConfig::default(),
+            HashMap::from([("road".to_string(), 1000i64)]),
+        );
+        st.baseline = Some(crate::benchmark::record::WindowStats {
+            flow_mean: 50.0,
+            active_vehicles_mean: 10.0,
+            population: 100,
+        });
+        BenchmarkServer::new(client, Arc::new(Mutex::new(st)))
+    }
+
+    #[tokio::test]
+    async fn apply_plan_validate_only_prices_without_mutating() {
+        let bench = bench_with_mock_costs().await;
+        let res = bench
+            .apply_plan(Parameters(ApplyPlanArgs {
+                ops: vec![plan_build(0.0, 50.0), plan_build(1000.0, 1400.0)],
+                validate_only: true,
+                stop_on_error: true,
+            }))
+            .await
+            .unwrap();
+        let text = result_text(&res);
+        let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["validate_only"], true);
+        // 50m span = 1 op; 400m span = 3 chunks → 4 expanded ops priced.
+        assert_eq!(v["results"].as_array().unwrap().len(), 4);
+        assert!(v["total_estimated_cost"].as_i64().unwrap() > 0);
+        assert_eq!(v["benchmark_progress"]["num_changes"], 0, "dry-run must not record changes");
+    }
+
+    #[tokio::test]
+    async fn apply_plan_executes_and_records_each_op() {
+        let bench = bench_with_mock_costs().await;
+        let res = bench
+            .apply_plan(Parameters(ApplyPlanArgs {
+                ops: vec![plan_build(0.0, 50.0), plan_build(1000.0, 1400.0)],
+                validate_only: false,
+                stop_on_error: true,
+            }))
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&result_text(&res)).unwrap();
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["benchmark_progress"]["num_changes"], 4);
+        assert!(v["results"].as_array().unwrap().iter().all(|r| r["executed"] == true && r["ok"] == true));
+    }
+
+    #[tokio::test]
+    async fn apply_plan_rejects_whole_plan_on_invalid_op() {
+        let bench = bench_with_mock().await;
+        let res = bench
+            .apply_plan(Parameters(ApplyPlanArgs {
+                ops: vec![
+                    plan_build(0.0, 50.0),
+                    crate::benchmark::plan::PlanOp::UpgradeRoad { segment: 9999, road_type: "road".into() },
+                ],
+                validate_only: false,
+                stop_on_error: true,
+            }))
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&result_text(&res)).unwrap();
+        assert_eq!(v["ok"], false);
+        assert_eq!(v["benchmark_progress"]["num_changes"], 0, "nothing may execute when validation fails");
+        let results = v["results"].as_array().unwrap();
+        assert_eq!(results[1]["valid"], false);
+        assert_eq!(results[1]["reason"], "INVALID_ARGS");
+    }
+
+    #[tokio::test]
+    async fn apply_plan_stops_at_runtime_failure() {
+        let bench = bench_with_mock().await;
+        // Build one road, find its segment id, then: bulldoze it twice. The
+        // second bulldoze passes pre-validation (snapshot taken once) but
+        // fails at runtime — execution must stop there.
+        let built = bench
+            .build_road(Parameters(crate::service::BuildRoadArgs {
+                from: crate::contract::Position { x: 0.0, y: 0.0, z: 0.0 },
+                to: crate::contract::Position { x: 50.0, y: 0.0, z: 0.0 },
+                road_type: "road".into(),
+                snap: true,
+            }))
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&result_text(&built)).unwrap();
+        let seg = v["created_segments"][0].as_u64().unwrap() as u32;
+
+        let res = bench
+            .apply_plan(Parameters(ApplyPlanArgs {
+                ops: vec![
+                    crate::benchmark::plan::PlanOp::Bulldoze { target_type: "segment".into(), id: seg },
+                    crate::benchmark::plan::PlanOp::Bulldoze { target_type: "segment".into(), id: seg },
+                    plan_build(2000.0, 2050.0),
+                ],
+                validate_only: false,
+                stop_on_error: true,
+            }))
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&result_text(&res)).unwrap();
+        assert_eq!(v["ok"], false);
+        assert_eq!(v["stopped_at"], 1);
+        let results = v["results"].as_array().unwrap();
+        assert_eq!(results[0]["ok"], true);
+        assert_eq!(results[1]["ok"], false);
+        assert_eq!(results[2]["executed"], false, "ops after the failure are skipped");
+        // 1 change from the setup build + 1 from the successful bulldoze.
+        assert_eq!(v["benchmark_progress"]["num_changes"], 2);
     }
 
     #[tokio::test]

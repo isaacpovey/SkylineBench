@@ -5,6 +5,11 @@ You have MCP tools to observe and modify the city:
 - Modify (these are your "changes"): `build_road`, `bulldoze`, `upgrade_road`, `set_zoning`.
   Note: `upgrade_road` re-creates the segment under a NEW id (the response maps old → new);
   refresh any segment ids you cached before reusing them.
+- Modify in batch: `apply_plan` stages several ops (including multi-point polylines that
+  auto-split under the 200 m segment cap) in one call, validates and prices ALL of them
+  before anything executes, and supports `validate_only: true` as a free dry-run. Prefer
+  one validated plan per rebuild over loose single calls; each executed op still counts
+  as one change.
 - Time: `control_time` (pause / resume / step / speed). Build while paused, then `step` to let traffic respond before measuring. A `step` with no `ticks` advances one in-game day (585 ticks). The maximum step is 3 days (1755 ticks) — traffic patterns repeat daily, so longer waits only burn your wall-clock budget.
 - Finish: `submit_solution` when you are satisfied. It returns immediately; the city is settled and scored after your session ends, so finish your turn once it succeeds.
 

@@ -225,6 +225,9 @@ impl BenchmarkServer {
         }
         let chunks = step_chunks(requested, day_ticks);
         let started = std::time::Instant::now();
+        // 600 s MCP client timeout minus ~150 s headroom for one in-flight chunk.
+        // Budget is only checked *after* a chunk completes, so worst case is
+        // 450 s + the duration of one additional chunk.
         let wall_budget = std::time::Duration::from_secs(450);
         let mut advanced: u32 = 0;
         let mut last: Option<Value> = None;
@@ -239,7 +242,12 @@ impl BenchmarkServer {
                     advanced += chunk;
                     last = Some(v);
                 }
-                Err(e) => return Ok(tool_err(e)),
+                Err(e) => {
+                    return Ok(CallToolResult::error(vec![Content::text(format!(
+                        "{e} (step had already advanced {advanced} of {requested} ticks; \
+                         check the clock before retrying)"
+                    ))]))
+                }
             }
             if started.elapsed() > wall_budget {
                 break;
@@ -574,6 +582,24 @@ mod tests {
         let text = result_text(&res);
         assert!(text.contains("\"tick\":1755"), "got: {text}");
         assert!(text.contains("\"ticks_advanced\":1755"), "got: {text}");
+        assert!(text.contains("\"partial\":false"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn zero_tick_step_returns_clock_state_without_advancing() {
+        let bench = bench_with_mock().await;
+        let res = bench
+            .control_time(Parameters(crate::service::ControlTimeArgs {
+                op: "step".into(),
+                ticks: Some(0),
+                speed: None,
+            }))
+            .await
+            .unwrap();
+        assert_ne!(res.is_error, Some(true), "zero-tick step should not be an error");
+        let text = result_text(&res);
+        assert!(text.contains("\"tick\":0"), "clock should remain at 0, got: {text}");
+        assert!(text.contains("\"ticks_advanced\":0"), "got: {text}");
         assert!(text.contains("\"partial\":false"), "got: {text}");
     }
 

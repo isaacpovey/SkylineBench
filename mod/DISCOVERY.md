@@ -31,8 +31,8 @@ This resolves the OPEN items from the API reference (`docs/superpowers/research/
 ## Per-segment & city traffic — RESOLVED ✅ (better than expected)
 The API reference flagged "no single vanilla traffic flow field." The probe found usable fields:
 - **Per-segment load:** `NetSegment.m_trafficDensity` **exists** as a `Byte` (0–255). → `/metrics` `segment_loads[].density` reads this directly (normalize /255). No lane-chain computation needed.
-- **City-wide traffic flow:** `VehicleManager` exposes `m_lastTrafficFlow : UInt32`, `m_maxTrafficFlow : UInt32`, `m_totalTrafficFlow : UInt32`. The UI "traffic flow %" ≈ `m_lastTrafficFlow * 100 / m_maxTrafficFlow` (guard divide-by-zero → 100 when `m_maxTrafficFlow == 0`). → `/metrics` `traffic.flow_percent` computes from these.
-- **2b note:** confirm the exact flow-% formula against the in-game UI value during 2b's manual verify; the fields are present and the ratio is the standard derivation.
+- **City-wide traffic flow:** `VehicleManager` exposes `m_lastTrafficFlow : UInt32`, `m_maxTrafficFlow : UInt32`, `m_totalTrafficFlow : UInt32`. **`m_lastTrafficFlow` IS the 0..100 traffic-flow percentage** — confirmed against `Assembly-CSharp` IL: every 256 sim frames the game sets `m_lastTrafficFlow = min(100, m_totalTrafficFlow*100 / m_maxTrafficFlow)` and then resets `m_total`/`m_max` to 0. → `/metrics` `traffic.flow_percent` returns `m_lastTrafficFlow` **directly**.
+- **⚠️ CORRECTED (Phase 2):** the original guess `m_lastTrafficFlow * 100 / m_maxTrafficFlow` was WRONG — it divides an already-percentage by the raw accumulator (which is mid-refill and reset every 256 frames), yielding ~0.01% on a busy city. Reading `m_lastTrafficFlow` directly matches the in-game UI. `m_total`/`m_max` are internal accumulators, not for direct use.
 
 ## Active vehicle count — RESOLVED ✅
 - `VehicleManager.cityVehicleCount` (property, `UInt32`) — the moving-vehicle count; or `m_vehicleCount : Int32`. → `/metrics` `traffic.active_vehicles` uses `cityVehicleCount`.

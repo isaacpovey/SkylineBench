@@ -82,7 +82,12 @@ namespace SkylineBench.Bridge
                 dto.Tick = Singleton<SimulationManager>.instance.m_currentTickIndex;
                 var vm = Singleton<VehicleManager>.instance;
                 dto.ActiveVehicles = vm.cityVehicleCount;
-                dto.FlowPercent = vm.m_maxTrafficFlow == 0u ? 100f : (vm.m_lastTrafficFlow * 100f / vm.m_maxTrafficFlow);
+                // m_lastTrafficFlow is already the city traffic-flow percentage
+                // (0..100): the game rolls it up every 256 sim frames as
+                // min(100, m_totalTrafficFlow*100 / m_maxTrafficFlow) and then
+                // resets the accumulators (verified against Assembly-CSharp IL).
+                // Dividing it by the (mid-refill) accumulator was the bug.
+                dto.FlowPercent = vm.m_lastTrafficFlow;
                 var nm = Singleton<NetManager>.instance;
                 for (uint i = 0; i < nm.m_segments.m_buffer.Length; i++)
                 {

@@ -50,15 +50,16 @@ pub async fn observe_area(
             let inside = |x: f32, z: f32| {
                 crate::geometry::in_bounds(Position { x, y: 0.0, z }, b)
             };
-            let node_in: std::collections::HashMap<u32, bool> =
-                net.nodes.iter().map(|n| (n.id, inside(n.x, n.z))).collect();
+            let node_in: std::collections::HashSet<u32> = net
+                .nodes
+                .iter()
+                .filter(|n| inside(n.x, n.z))
+                .map(|n| n.id)
+                .collect();
             let segments: Vec<_> = net
                 .segments
                 .into_iter()
-                .filter(|s| {
-                    node_in.get(&s.start_node).copied().unwrap_or(false)
-                        || node_in.get(&s.end_node).copied().unwrap_or(false)
-                })
+                .filter(|s| node_in.contains(&s.start_node) || node_in.contains(&s.end_node))
                 .collect();
             let kept: std::collections::HashSet<u32> = segments
                 .iter()
@@ -552,5 +553,27 @@ mod tests {
         .unwrap();
         assert_eq!(near["network"]["segments"].as_array().unwrap().len(), 1);
         assert_eq!(near["network"]["nodes"].as_array().unwrap().len(), 2);
+
+        // Half-crossing: one endpoint inside the rectangle, one outside.
+        build_road(
+            &c,
+            BuildRoadArgs {
+                from: Position { x: 50.0, y: 0.0, z: 0.0 },
+                to: Position { x: 200.0, y: 0.0, z: 0.0 },
+                road_type: "road".into(),
+                snap: true,
+            },
+        )
+        .await
+        .unwrap();
+        let crossing = observe_area(
+            &c,
+            ObserveAreaArgs {
+                bounds: Some(crate::contract::Bounds { min_x: -10.0, min_z: -10.0, max_x: 100.0, max_z: 10.0 }),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(crossing["network"]["segments"].as_array().unwrap().len(), 2);
     }
 }

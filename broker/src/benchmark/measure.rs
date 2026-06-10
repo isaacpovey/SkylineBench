@@ -22,6 +22,13 @@ pub async fn measure_window(
 ) -> Result<WindowMeasurement, BridgeError> {
     let n_samples = cfg.window_samples.max(1);
     let chunk = (cfg.window_ticks / n_samples).max(1);
+    // Best-effort: request max sim speed (the mod clamps to 1..3) to shorten
+    // window wall-clock. For a compute-bound (large, gridlocked) city the per-
+    // tick cost dominates and this may not help; the generous MCP timeouts set
+    // by run.sh are what actually keep the long baseline/settle windows from
+    // being killed. Speed changes how fast simulated time passes, not the
+    // steady-state flow %.
+    client.clock("set-speed", None, Some(3)).await?;
     client.clock("pause", None, None).await?;
 
     let mut flow_sum = 0.0_f64;

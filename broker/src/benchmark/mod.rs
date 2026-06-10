@@ -13,4 +13,4 @@ pub use measure::{finalize, measure_window};
 pub use record::{MapInfo, WindowStats};
 pub use server::BenchmarkServer;
 pub use state::RunState;
-pub use transcript::render_transcript;
+pub use transcript::{format_event_live, render_transcript};

@@ -241,7 +241,12 @@ impl BenchmarkServer {
                 s.end_reason = Some(EndReason::Submit);
             }
         }
-        self.finish(serde_json::json!({ "ok": true, "submitted": true })).await
+        // Hold the connection open. The background watcher runs the settle +
+        // final measurement and then exits the process, which ends the agent
+        // session. Returning here would let `claude -p` finish its turn and tear
+        // down this server before finalize completes, losing the artifacts.
+        std::future::pending::<()>().await;
+        unreachable!("the watcher exits the process during finalize")
     }
 }
 

@@ -17,6 +17,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::Mutex;
 
+use crate::benchmark::measure::measure_window;
 use crate::benchmark::record::EndReason;
 use crate::benchmark::state::RunState;
 use crate::bridge_client::BridgeClient;
@@ -68,12 +69,34 @@ impl BenchmarkServer {
     async fn run_ended(&self) -> bool {
         self.state.lock().await.end_reason.is_some()
     }
+
+    /// Measure the baseline window on the first tool call (the city is still
+    /// untouched then). Deferred out of startup so the MCP `initialize`
+    /// handshake — which has its own ~60s request timeout — isn't blocked by
+    /// the slow window. No-op once measured.
+    async fn ensure_baseline(&self) {
+        let cfg = {
+            let s = self.state.lock().await;
+            if s.baseline.is_some() {
+                return;
+            }
+            s.config.clone()
+        };
+        if let Ok(m) = measure_window(&self.client, &cfg).await {
+            let mut s = self.state.lock().await;
+            if s.baseline.is_none() {
+                s.baseline = Some(m.stats);
+                s.baseline_flow_samples = m.samples;
+            }
+        }
+    }
 }
 
 #[tool_router]
 impl BenchmarkServer {
     #[tool(description = "Summarise the city: tick, population, funds, traffic flow, network size.")]
     async fn get_city_overview(&self) -> Result<CallToolResult, ErrorData> {
+        self.ensure_baseline().await;
         match service::get_city_overview(&self.client).await {
             Ok(v) => self.finish(v).await,
             Err(e) => Ok(tool_err(e)),
@@ -82,6 +105,7 @@ impl BenchmarkServer {
 
     #[tool(description = "Observe the playable area: network, buildings, zones, intersections, dead ends.")]
     async fn observe_area(&self) -> Result<CallToolResult, ErrorData> {
+        self.ensure_baseline().await;
         match service::observe_area(&self.client).await {
             Ok(v) => self.finish(v).await,
             Err(e) => Ok(tool_err(e)),
@@ -90,6 +114,7 @@ impl BenchmarkServer {
 
     #[tool(description = "Get city metrics, optionally filtered to groups: traffic, economy, population, services.")]
     async fn get_metrics(&self, Parameters(args): Parameters<GetMetricsArgs>) -> Result<CallToolResult, ErrorData> {
+        self.ensure_baseline().await;
         match service::get_metrics(&self.client, args).await {
             Ok(v) => {
                 if let Some(flow) = v.get("traffic").and_then(|t| t.get("flow_percent")).and_then(|f| f.as_f64()) {
@@ -103,6 +128,7 @@ impl BenchmarkServer {
 
     #[tool(description = "List the available road types (with construction cost).")]
     async fn list_road_types(&self) -> Result<CallToolResult, ErrorData> {
+        self.ensure_baseline().await;
         match service::list_road_types(&self.client).await {
             Ok(v) => self.finish(v).await,
             Err(e) => Ok(tool_err(e)),
@@ -111,6 +137,7 @@ impl BenchmarkServer {
 
     #[tool(description = "List the available zone types.")]
     async fn list_zone_types(&self) -> Result<CallToolResult, ErrorData> {
+        self.ensure_baseline().await;
         match service::list_zone_types(&self.client).await {
             Ok(v) => self.finish(v).await,
             Err(e) => Ok(tool_err(e)),
@@ -119,6 +146,7 @@ impl BenchmarkServer {
 
     #[tool(description = "Render the road network to a PNG image.")]
     async fn render_map(&self, Parameters(args): Parameters<RenderMapArgs>) -> Result<CallToolResult, ErrorData> {
+        self.ensure_baseline().await;
         match service::render_map(&self.client, args).await {
             Ok(png) => {
                 let data = base64::engine::general_purpose::STANDARD.encode(png);
@@ -138,6 +166,7 @@ impl BenchmarkServer {
 
     #[tool(description = "Control simulation time: pause, resume, step, or set speed.")]
     async fn control_time(&self, Parameters(args): Parameters<ControlTimeArgs>) -> Result<CallToolResult, ErrorData> {
+        self.ensure_baseline().await;
         if self.run_ended().await {
             return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
         }
@@ -156,6 +185,7 @@ impl BenchmarkServer {
 
     #[tool(description = "Build a road between two positions of a given road type.")]
     async fn build_road(&self, Parameters(args): Parameters<BuildRoadArgs>) -> Result<CallToolResult, ErrorData> {
+        self.ensure_baseline().await;
         if self.run_ended().await {
             return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
         }
@@ -176,6 +206,7 @@ impl BenchmarkServer {
 
     #[tool(description = "Change an existing road segment's type. Validates the new road_type first.")]
     async fn upgrade_road(&self, Parameters(args): Parameters<UpgradeRoadArgs>) -> Result<CallToolResult, ErrorData> {
+        self.ensure_baseline().await;
         if self.run_ended().await {
             return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
         }
@@ -203,6 +234,7 @@ impl BenchmarkServer {
 
     #[tool(description = "Remove a network segment, node, or building. target_type = segment | node | building.")]
     async fn bulldoze(&self, Parameters(args): Parameters<BulldozeArgs>) -> Result<CallToolResult, ErrorData> {
+        self.ensure_baseline().await;
         if self.run_ended().await {
             return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
         }
@@ -219,6 +251,7 @@ impl BenchmarkServer {
 
     #[tool(description = "Set zoning over a rectangular area. zone_type from list_zone_types.")]
     async fn set_zoning(&self, Parameters(args): Parameters<SetZoningArgs>) -> Result<CallToolResult, ErrorData> {
+        self.ensure_baseline().await;
         if self.run_ended().await {
             return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
         }
@@ -235,6 +268,9 @@ impl BenchmarkServer {
 
     #[tool(description = "Declare the run finished. The harness then scores the city. Call when satisfied.")]
     async fn submit_solution(&self, Parameters(_args): Parameters<SubmitArgs>) -> Result<CallToolResult, ErrorData> {
+        // Capture the baseline if the agent submits without any prior tool call,
+        // so finalize has a "before" snapshot to score against.
+        self.ensure_baseline().await;
         {
             let mut s = self.state.lock().await;
             if s.end_reason.is_none() {
@@ -291,16 +327,10 @@ mod tests {
     #[test]
     fn attaches_progress_to_json_value() {
         use crate::benchmark::config::BenchConfig;
-        use crate::benchmark::record::WindowStats;
         use crate::benchmark::state::RunState;
         use std::collections::HashMap;
 
-        let state = RunState::new(
-            BenchConfig::default(),
-            WindowStats { flow_mean: 0.0, active_vehicles_mean: 0.0, population: 0 },
-            vec![],
-            HashMap::new(),
-        );
+        let state = RunState::new(BenchConfig::default(), HashMap::new());
         let merged = with_progress(serde_json::json!({"ok": true}), &state);
         assert_eq!(merged["ok"], true);
         assert!(merged["benchmark_progress"]["flow_target"].is_number());
@@ -309,7 +339,7 @@ mod tests {
     #[tokio::test]
     async fn mutations_rejected_after_run_ended() {
         use crate::benchmark::config::BenchConfig;
-        use crate::benchmark::record::{EndReason, WindowStats};
+        use crate::benchmark::record::EndReason;
         use crate::benchmark::state::RunState;
         use crate::bridge_client::BridgeClient;
         use crate::mock;
@@ -320,12 +350,7 @@ mod tests {
         let (addr, server) = mock::bind("127.0.0.1:0".parse().unwrap()).await;
         tokio::spawn(server);
         let client = Arc::new(BridgeClient::new(format!("http://{addr}")));
-        let mut st = RunState::new(
-            BenchConfig::default(),
-            WindowStats { flow_mean: 0.0, active_vehicles_mean: 0.0, population: 0 },
-            vec![],
-            HashMap::new(),
-        );
+        let mut st = RunState::new(BenchConfig::default(), HashMap::new());
         st.end_reason = Some(EndReason::Submit);
         let state = Arc::new(Mutex::new(st));
         let bench = BenchmarkServer::new(client, state.clone());

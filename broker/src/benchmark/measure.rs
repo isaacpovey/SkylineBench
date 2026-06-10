@@ -66,7 +66,7 @@ pub async fn finalize(
     started_at: String,
     ended_at: String,
 ) -> anyhow::Result<()> {
-    let (cfg, baseline, baseline_flow_samples, tally, actions, end_reason) = {
+    let (cfg, baseline_opt, baseline_flow_samples, tally, actions, end_reason) = {
         let s = state.lock().await;
         (
             s.config.clone(),
@@ -76,6 +76,17 @@ pub async fn finalize(
             s.actions.clone(),
             s.end_reason.unwrap_or(EndReason::Submit),
         )
+    };
+
+    // Baseline is normally captured on the agent's first tool call. If the run
+    // ended with no tool calls at all, fall back to measuring it now (the city
+    // is then still untouched, so it's a valid baseline).
+    let (baseline, baseline_flow_samples) = match baseline_opt {
+        Some(b) => (b, baseline_flow_samples),
+        None => {
+            let m = measure_window(client, &cfg).await?;
+            (m.stats, m.samples)
+        }
     };
 
     let settle_cfg = BenchConfig { window_ticks: cfg.settle_ticks, window_samples: 1, ..cfg.clone() };
@@ -137,9 +148,12 @@ mod tests {
 
         let c = client().await;
         let cfg = BenchConfig::default();
-        let baseline = WindowStats { flow_mean: 80.0, active_vehicles_mean: 0.0, population: 0 };
-        let state = Arc::new(Mutex::new(RunState::new(cfg.clone(), baseline, vec![], HashMap::new())));
-        state.lock().await.end_reason = Some(EndReason::Submit);
+        let state = Arc::new(Mutex::new(RunState::new(cfg.clone(), HashMap::new())));
+        {
+            let mut s = state.lock().await;
+            s.baseline = Some(WindowStats { flow_mean: 80.0, active_vehicles_mean: 0.0, population: 0 });
+            s.end_reason = Some(EndReason::Submit);
+        }
 
         let dir = std::env::temp_dir().join(format!("sb-finalize-{}", std::process::id()));
         let map = MapInfo { id: "gridlock-v1".into(), source: "test".into(), game_version: "1.21.1-f9".into() };

@@ -10,7 +10,9 @@ use crate::benchmark::record::{ActionEntry, EndReason, WindowStats};
 
 pub struct RunState {
     pub config: BenchConfig,
-    pub baseline: WindowStats,
+    /// Measured lazily on the agent's first tool call (None until then) so the
+    /// MCP `initialize` handshake isn't blocked by the slow baseline window.
+    pub baseline: Option<WindowStats>,
     pub baseline_flow_samples: Vec<f64>,
     pub road_costs: HashMap<String, i64>,
     pub num_changes: u32,
@@ -22,17 +24,12 @@ pub struct RunState {
 }
 
 impl RunState {
-    pub fn new(
-        config: BenchConfig,
-        baseline: WindowStats,
-        baseline_flow_samples: Vec<f64>,
-        road_costs: HashMap<String, i64>,
-    ) -> Self {
+    pub fn new(config: BenchConfig, road_costs: HashMap<String, i64>) -> Self {
         let window = config.window_samples as usize;
         Self {
             config,
-            baseline,
-            baseline_flow_samples,
+            baseline: None,
+            baseline_flow_samples: Vec::new(),
             road_costs,
             num_changes: 0,
             money_spent: 0,
@@ -95,18 +92,12 @@ impl RunState {
 mod tests {
     use super::*;
     use crate::benchmark::config::BenchConfig;
-    use crate::benchmark::record::WindowStats;
     use std::collections::HashMap;
 
     fn state() -> RunState {
         let mut costs = HashMap::new();
         costs.insert("road".to_string(), 1000i64);
-        RunState::new(
-            BenchConfig::default(),
-            WindowStats { flow_mean: 6.0, active_vehicles_mean: 240.0, population: 3380 },
-            vec![],
-            costs,
-        )
+        RunState::new(BenchConfig::default(), costs)
     }
 
     #[test]

@@ -88,7 +88,7 @@ async fn main() -> anyhow::Result<()> {
             use std::sync::Arc;
             use tokio::sync::Mutex;
             use skylinebench::benchmark::{
-                finalize, measure_window, BenchConfig, BenchmarkServer, MapInfo, RunState,
+                finalize, BenchConfig, BenchmarkServer, MapInfo, RunState,
             };
             use skylinebench::bridge_client::BridgeClient;
             use rmcp::ServiceExt;
@@ -114,16 +114,12 @@ async fn main() -> anyhow::Result<()> {
                 .map(|r| (r.name, r.construction_cost))
                 .collect();
 
-            eprintln!("benchmark: measuring baseline…");
-            let baseline = measure_window(&client, &cfg).await?;
-            eprintln!("benchmark: baseline flow {:.1}%", baseline.stats.flow_mean);
-
-            let state = Arc::new(Mutex::new(RunState::new(
-                cfg.clone(),
-                baseline.stats,
-                baseline.samples,
-                road_costs,
-            )));
+            // The baseline is measured lazily on the agent's first tool call, NOT
+            // here — doing it before serving would block the MCP `initialize`
+            // handshake (which has its own ~60s request timeout) for the whole
+            // slow window on a large city. Serve immediately instead.
+            eprintln!("benchmark: serving MCP; baseline measured on first tool call…");
+            let state = Arc::new(Mutex::new(RunState::new(cfg.clone(), road_costs)));
 
             let watch_client = client.clone();
             let watch_state = state.clone();

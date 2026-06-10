@@ -1,4 +1,5 @@
 pub mod config;
+pub mod plan;
 pub mod cost;
 pub mod flow_window;
 pub mod measure;

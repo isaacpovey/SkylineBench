@@ -26,7 +26,11 @@ impl EndStatePersister {
         let end = state.end_state(self.map.clone(), self.started_at.clone(), epoch_secs());
         let tmp = self.out_dir.join("end-state.json.tmp");
         let dest = self.out_dir.join("end-state.json");
-        std::fs::create_dir_all(&self.out_dir)?;
+        // Best-effort: inside the agent's Seatbelt sandbox metadata reads on
+        // out_dir are denied, so create_dir_all errors even when the dir
+        // exists (run.sh pre-creates it). Plain writes and renames are still
+        // permitted; if the dir truly doesn't exist the write below fails.
+        let _ = std::fs::create_dir_all(&self.out_dir);
         std::fs::write(&tmp, serde_json::to_string_pretty(&end)?)?;
         std::fs::rename(&tmp, &dest)?;
         Ok(())

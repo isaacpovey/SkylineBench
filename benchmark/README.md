@@ -25,5 +25,9 @@ Score a Claude Code agent on improving traffic in a bad-traffic city.
 
 ## Scoring (spec §4)
 `score = 0.60·norm(Δflow) + 0.20·(1−norm(money)) + 0.20·(1−norm(changes))`,
-zeroed if final active vehicles drop below 90% of baseline. Constants live in
-`broker/src/benchmark/config.rs` and are tuned against the map.
+zeroed if final active vehicles drop below 90% of baseline. Normalization:
+Δflow against a 40-point target gain, money against a $10,000,000 budget,
+changes against a 300-change cap. Constants live in
+`broker/src/benchmark/config.rs` and are tuned against the map. The agent
+prompt now states these constants explicitly — keep prompt.md in sync when
+retuning them.

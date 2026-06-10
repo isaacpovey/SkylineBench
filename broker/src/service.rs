@@ -707,6 +707,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn query_segments_sorts_by_length_and_speed_limit() {
+        let c = client().await;
+        for (x1, road_type) in [(40.0_f32, "road"), (180.0, "highway")] {
+            build_road(
+                &c,
+                BuildRoadArgs {
+                    from: Position { x: 0.0, y: 0.0, z: 0.0 },
+                    to: Position { x: x1, y: 0.0, z: 0.0 },
+                    road_type: road_type.into(),
+                    snap: false,
+                },
+            )
+            .await
+            .unwrap();
+        }
+        let by_length = query_segments(
+            &c,
+            QuerySegmentsArgs { sort_by: Some("length".into()), limit: None, min_density: None, bounds: None, prefab_contains: None },
+        )
+        .await
+        .unwrap();
+        let lengths: Vec<f64> = by_length["segments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["length"].as_f64().unwrap())
+            .collect();
+        assert_eq!(lengths.len(), 2);
+        assert!(lengths[0] > lengths[1], "descending length: {lengths:?}");
+
+        let by_speed = query_segments(
+            &c,
+            QuerySegmentsArgs { sort_by: Some("speed_limit".into()), limit: None, min_density: None, bounds: None, prefab_contains: None },
+        )
+        .await
+        .unwrap();
+        let speeds: Vec<f64> = by_speed["segments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["speed_limit"].as_f64().unwrap())
+            .collect();
+        assert!(speeds[0] > speeds[1], "descending speed: {speeds:?}");
+        assert_eq!(by_speed["segments"][0]["prefab"], "highway");
+    }
+
+    #[tokio::test]
     async fn observe_area_filters_by_bounds() {
         let c = client().await;
         for (x0, x1) in [(0.0_f32, 50.0_f32), (1000.0, 1050.0)] {

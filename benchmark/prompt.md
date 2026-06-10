@@ -22,4 +22,10 @@ The run ends when any of these happens:
 
 Every tool response includes a `benchmark_progress` block (money spent, changes made, current flow vs target, seconds remaining). Use it to pace yourself.
 
-Work method: observe the network and metrics, find the congestion, make targeted road/zoning changes, step the simulation to let traffic respond, re-measure, and iterate. Expect some interventions to do nothing — diagnose why and try a different class of fix rather than giving up; you have hours of budget and only spend score on modifications, not attempts. Submit when you have evidence further changes won't pay for themselves.
+Work method — repeat this loop:
+1. **Explore.** Survey the whole network (`render_map` at several zooms, `observe_area`, `get_metrics`) and find where traffic actually loses time — chokepoints, bad interchanges, missing links — not just where density looks high.
+2. **Plan.** For the worst problem, write a concrete multi-step plan: which segments to bulldoze, what to build in their place, and how the new geometry will route traffic. Scratch scripts in your workspace are useful for this.
+3. **Execute.** Pause, apply the whole plan as a batch, then `step` a day or more so traffic re-routes onto the new layout.
+4. **Validate.** Re-measure flow against your pre-change reading. Keep what worked, revise or revert what didn't, then loop back to exploring.
+
+Think like a traffic engineer, not a road painter: upgrading a road in place rarely fixes congestion caused by bad geometry. The high-leverage moves are structural — bulldoze a failing junction and rebuild it simpler, add a bypass or a missing crossing, separate through-traffic from local traffic. One coherent rebuild that fixes a real bottleneck beats many scattered single-segment upgrades, and is worth its change count. Expect some interventions to do nothing — diagnose why and change strategy rather than giving up; you have hours of budget and only spend score on modifications, not attempts. Submit when you have evidence further changes won't pay for themselves.

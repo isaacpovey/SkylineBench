@@ -16,7 +16,8 @@ namespace SkylineBench.Json
             w.Name("segments").BeginArray();
             foreach (var s in net.Segments)
                 w.BeginObject().Name("id").Value((long)s.Id).Name("start_node").Value((long)s.StartNode).Name("end_node").Value((long)s.EndNode)
-                    .Name("prefab").Value(s.Prefab).Name("lanes").Value((long)s.Lanes).Name("length").Value(s.Length).EndObject();
+                    .Name("prefab").Value(s.Prefab).Name("lanes").Value((long)s.Lanes).Name("length").Value(s.Length)
+                    .Name("one_way").Value(s.OneWay).Name("travel_direction").Value(s.TravelDirection).Name("speed_limit").Value(s.SpeedLimit).EndObject();
             w.EndArray();
             w.EndObject();
             return w.ToString();

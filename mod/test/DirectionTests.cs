@@ -33,6 +33,7 @@ namespace SkylineBench.Tests
         {
             Assert.True(!Direction.IsOneWay(false, false), "no vehicle lanes is not one-way");
             Assert.Equal(Direction.Both, Direction.Travel(false, false, false));
+            Assert.Equal(Direction.Both, Direction.Travel(false, false, true));
         }
     }
 }

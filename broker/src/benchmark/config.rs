@@ -33,8 +33,8 @@ impl Default for BenchConfig {
             w_money: 0.20,
             w_changes: 0.20,
             target_gain: 40.0,
-            budget: 5_000_000.0,
-            change_cap: 100.0,
+            budget: 10_000_000.0,
+            change_cap: 300.0,
             flow_target: 95.0,
             window_ticks: 2048,
             settle_ticks: 8192,
@@ -81,5 +81,12 @@ mod tests {
         assert_eq!(c.day_ticks, 585);
         assert_eq!(c.max_step_days, 3);
         assert_eq!(c.max_step_ticks(), 1755);
+    }
+
+    #[test]
+    fn default_resource_envelope() {
+        let c = BenchConfig::default();
+        assert_eq!(c.budget, 10_000_000.0);
+        assert_eq!(c.change_cap, 300.0);
     }
 }

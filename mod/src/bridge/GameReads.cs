@@ -29,7 +29,7 @@ namespace SkylineBench.Bridge
                     dto.Segments.Add(new SegmentDto
                     {
                         Id = i, StartNode = s.m_startNode, EndNode = s.m_endNode,
-                        Prefab = info.name,
+                        Prefab = info.name != null ? info.name : "",
                         Lanes = (byte)(info.m_lanes != null ? info.m_lanes.Length : 0),
                         Length = s.m_averageLength,
                         OneWay = Direction.IsOneWay(hasFwd, hasBwd),
@@ -108,6 +108,9 @@ namespace SkylineBench.Bridge
                     if ((s.m_flags & NetSegment.Flags.Created) == NetSegment.Flags.None) continue;
                     var sInfo = s.Info;
                     if (sInfo == null || sInfo.m_class == null || sInfo.m_class.m_service != ItemClass.Service.Road) continue;
+                    // m_trafficDensity is a byte the game rolls up to a max of
+                    // 100, not 255 — dividing by 255 pinned every saturated
+                    // segment at 0.39 and destroyed congestion ranking.
                     dto.SegmentLoads.Add(new SegmentLoadDto { SegmentId = i, Density = Mathf.Min(1f, s.m_trafficDensity / 100f) });
                 }
                 var em = Singleton<EconomyManager>.instance;

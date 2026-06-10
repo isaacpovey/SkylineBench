@@ -278,6 +278,88 @@ fn action_error_value(reason: ActionError) -> Value {
     json!({ "ok": false, "reason": reason })
 }
 
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct QuerySegmentsArgs {
+    /// Sort key, descending: "density" (default), "length", or "speed_limit".
+    #[serde(default)]
+    pub sort_by: Option<String>,
+    /// Max rows returned (default 20, capped at 200).
+    #[serde(default)]
+    pub limit: Option<usize>,
+    /// Keep only segments at or above this density (0..1).
+    #[serde(default)]
+    pub min_density: Option<f32>,
+    /// Keep only segments with an endpoint inside this rectangle.
+    #[serde(default)]
+    pub bounds: Option<Bounds>,
+    /// Case-insensitive substring match on the prefab name.
+    #[serde(default)]
+    pub prefab_contains: Option<String>,
+}
+
+pub async fn query_segments(
+    client: &BridgeClient,
+    args: QuerySegmentsArgs,
+) -> Result<Value, ServiceError> {
+    let net = client.network().await?;
+    let metrics = client.metrics().await?;
+    let density: std::collections::HashMap<u32, f32> = metrics
+        .traffic
+        .segment_loads
+        .iter()
+        .map(|l| (l.segment_id, l.density))
+        .collect();
+    let node_pos: std::collections::HashMap<u32, (f32, f32)> =
+        net.nodes.iter().map(|n| (n.id, (n.x, n.z))).collect();
+    let needle = args.prefab_contains.as_deref().map(str::to_lowercase);
+
+    let mut rows: Vec<(f32, Value)> = net
+        .segments
+        .iter()
+        .filter_map(|s| {
+            let (ax, az) = node_pos.get(&s.start_node).copied()?;
+            let (bx, bz) = node_pos.get(&s.end_node).copied()?;
+            let d = density.get(&s.id).copied().unwrap_or(0.0);
+            let in_bounds = args.bounds.is_none_or(|b| {
+                crate::geometry::in_bounds(Position { x: ax, y: 0.0, z: az }, b)
+                    || crate::geometry::in_bounds(Position { x: bx, y: 0.0, z: bz }, b)
+            });
+            let dense_enough = args.min_density.is_none_or(|m| d >= m);
+            let prefab_match = needle
+                .as_deref()
+                .is_none_or(|n| s.prefab.to_lowercase().contains(n));
+            (in_bounds && dense_enough && prefab_match).then(|| {
+                let key = match args.sort_by.as_deref() {
+                    Some("length") => s.length,
+                    Some("speed_limit") => s.speed_limit,
+                    _ => d,
+                };
+                (
+                    key,
+                    json!({
+                        "segment_id": s.id,
+                        "prefab": s.prefab,
+                        "density": d,
+                        "one_way": s.one_way,
+                        "travel_direction": s.travel_direction,
+                        "lanes": s.lanes,
+                        "speed_limit": s.speed_limit,
+                        "length": s.length,
+                        "start_node": s.start_node,
+                        "end_node": s.end_node,
+                        "midpoint": { "x": (ax + bx) / 2.0, "z": (az + bz) / 2.0 },
+                    }),
+                )
+            })
+        })
+        .collect();
+    rows.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    let total = rows.len();
+    let limit = args.limit.unwrap_or(20).min(200);
+    let segments: Vec<Value> = rows.into_iter().take(limit).map(|(_, v)| v).collect();
+    Ok(json!({ "segments": segments, "total_matching": total }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -556,6 +638,72 @@ mod tests {
         assert_eq!(res["ok"], true);
         let obs = observe_area(&c, ObserveAreaArgs { bounds: None }).await.unwrap();
         assert_eq!(obs["zones"].as_array().unwrap().len(), 1);
+    }
+
+    async fn build_three_roads(c: &BridgeClient) {
+        // Mock ids increment per node/segment; densities derive from id % 10,
+        // so three spaced roads get three distinct densities.
+        for (x0, x1) in [(0.0_f32, 50.0_f32), (1000.0, 1050.0), (2000.0, 2050.0)] {
+            build_road(
+                c,
+                BuildRoadArgs {
+                    from: Position { x: x0, y: 0.0, z: 0.0 },
+                    to: Position { x: x1, y: 0.0, z: 0.0 },
+                    road_type: "road".into(),
+                    snap: true,
+                },
+            )
+            .await
+            .unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn query_segments_sorts_by_density_and_limits() {
+        let c = client().await;
+        build_three_roads(&c).await;
+        let v = query_segments(
+            &c,
+            QuerySegmentsArgs { sort_by: None, limit: Some(2), min_density: None, bounds: None, prefab_contains: None },
+        )
+        .await
+        .unwrap();
+        let rows = v["segments"].as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(v["total_matching"], 3);
+        let d0 = rows[0]["density"].as_f64().unwrap();
+        let d1 = rows[1]["density"].as_f64().unwrap();
+        assert!(d0 >= d1, "descending density: {d0} vs {d1}");
+        assert!(rows[0]["midpoint"]["x"].is_number());
+        assert!(rows[0]["travel_direction"].is_string());
+    }
+
+    #[tokio::test]
+    async fn query_segments_filters_by_bounds_and_min_density() {
+        let c = client().await;
+        build_three_roads(&c).await;
+        let v = query_segments(
+            &c,
+            QuerySegmentsArgs {
+                sort_by: None,
+                limit: None,
+                min_density: None,
+                bounds: Some(crate::contract::Bounds { min_x: -10.0, min_z: -10.0, max_x: 100.0, max_z: 10.0 }),
+                prefab_contains: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(v["segments"].as_array().unwrap().len(), 1);
+
+        let none = query_segments(
+            &c,
+            QuerySegmentsArgs { sort_by: None, limit: None, min_density: Some(0.95), bounds: None, prefab_contains: None },
+        )
+        .await
+        .unwrap();
+        assert_eq!(none["segments"].as_array().unwrap().len(), 0);
+        assert_eq!(none["total_matching"], 0);
     }
 
     #[tokio::test]

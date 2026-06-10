@@ -19,7 +19,8 @@ use serde_json::Value;
 use crate::bridge_client::BridgeClient;
 use crate::service::{
     self, BuildRoadArgs, BulldozeArgs, ControlTimeArgs, GetMetricsArgs, ObserveAreaArgs,
-    RenderMapArgs, ResetScenarioArgs, ServiceError, SetZoningArgs, UpgradeRoadArgs,
+    QuerySegmentsArgs, RenderMapArgs, ResetScenarioArgs, ServiceError, SetZoningArgs,
+    UpgradeRoadArgs,
 };
 
 #[derive(Clone)]
@@ -68,6 +69,21 @@ impl Skyline {
         Parameters(args): Parameters<ObserveAreaArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         match service::observe_area(&self.client, args).await {
+            Ok(v) => json_result(v),
+            Err(e) => Ok(tool_error(e)),
+        }
+    }
+
+    #[tool(
+        description = "Query road segments sorted by congestion (default) — the 'worst N segments' \
+            search. Optional filters: min_density, bounds, prefab_contains; sort_by length or \
+            speed_limit instead. Returns density, direction, lanes, and midpoint per segment."
+    )]
+    async fn query_segments(
+        &self,
+        Parameters(args): Parameters<QuerySegmentsArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match service::query_segments(&self.client, args).await {
             Ok(v) => json_result(v),
             Err(e) => Ok(tool_error(e)),
         }
@@ -204,7 +220,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registers_all_twelve_tools() {
+    fn registers_all_tools() {
         let tools = Skyline::tool_router().list_all();
         let mut names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
         names.sort_unstable();
@@ -219,6 +235,7 @@ mod tests {
                 "list_road_types",
                 "list_zone_types",
                 "observe_area",
+                "query_segments",
                 "render_map",
                 "reset_scenario",
                 "set_zoning",

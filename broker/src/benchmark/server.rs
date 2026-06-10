@@ -25,7 +25,7 @@ use crate::bridge_client::BridgeClient;
 use crate::geometry::horizontal_distance;
 use crate::service::{
     self, BuildRoadArgs, BulldozeArgs, ControlTimeArgs, GetMetricsArgs, ObserveAreaArgs,
-    RenderMapArgs, ServiceError, SetZoningArgs, UpgradeRoadArgs,
+    QuerySegmentsArgs, RenderMapArgs, ServiceError, SetZoningArgs, UpgradeRoadArgs,
 };
 
 #[derive(Clone)]
@@ -129,6 +129,17 @@ impl BenchmarkServer {
     async fn observe_area(&self, Parameters(args): Parameters<ObserveAreaArgs>) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
         match service::observe_area(&self.client, args).await {
+            Ok(v) => self.finish(v).await,
+            Err(e) => Ok(tool_err(e)),
+        }
+    }
+
+    #[tool(description = "Query road segments sorted by congestion (default) — the 'worst N segments' \
+        search. Optional filters: min_density, bounds, prefab_contains; sort_by length or \
+        speed_limit instead. Returns density, direction, lanes, and midpoint per segment.")]
+    async fn query_segments(&self, Parameters(args): Parameters<QuerySegmentsArgs>) -> Result<CallToolResult, ErrorData> {
+        self.ensure_baseline().await;
+        match service::query_segments(&self.client, args).await {
             Ok(v) => self.finish(v).await,
             Err(e) => Ok(tool_err(e)),
         }
@@ -405,7 +416,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registers_twelve_tools_including_submit_excluding_reset() {
+    fn registers_tools_including_submit_excluding_reset() {
         let tools = BenchmarkServer::tool_router().list_all();
         let mut names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
         names.sort_unstable();
@@ -420,6 +431,7 @@ mod tests {
                 "list_road_types",
                 "list_zone_types",
                 "observe_area",
+                "query_segments",
                 "render_map",
                 "set_zoning",
                 "submit_solution",

@@ -11,6 +11,7 @@ use crate::benchmark::record::{ActionEntry, EndReason, WindowStats};
 pub struct RunState {
     pub config: BenchConfig,
     pub baseline: WindowStats,
+    pub baseline_flow_samples: Vec<f64>,
     pub road_costs: HashMap<String, i64>,
     pub num_changes: u32,
     pub money_spent: i64,
@@ -24,12 +25,14 @@ impl RunState {
     pub fn new(
         config: BenchConfig,
         baseline: WindowStats,
+        baseline_flow_samples: Vec<f64>,
         road_costs: HashMap<String, i64>,
     ) -> Self {
         let window = config.window_samples as usize;
         Self {
             config,
             baseline,
+            baseline_flow_samples,
             road_costs,
             num_changes: 0,
             money_spent: 0,
@@ -101,6 +104,7 @@ mod tests {
         RunState::new(
             BenchConfig::default(),
             WindowStats { flow_mean: 6.0, active_vehicles_mean: 240.0, population: 3380 },
+            vec![],
             costs,
         )
     }

@@ -64,6 +64,10 @@ impl BenchmarkServer {
         let merged = with_progress(value, &s);
         Ok(CallToolResult::success(vec![Content::text(merged.to_string())]))
     }
+
+    async fn run_ended(&self) -> bool {
+        self.state.lock().await.end_reason.is_some()
+    }
 }
 
 #[tool_router]
@@ -134,6 +138,9 @@ impl BenchmarkServer {
 
     #[tool(description = "Control simulation time: pause, resume, step, or set speed.")]
     async fn control_time(&self, Parameters(args): Parameters<ControlTimeArgs>) -> Result<CallToolResult, ErrorData> {
+        if self.run_ended().await {
+            return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
+        }
         match service::control_time(&self.client, args).await {
             Ok(v) => {
                 // A transient metrics fetch failure just skips this flow sample; the
@@ -149,6 +156,9 @@ impl BenchmarkServer {
 
     #[tool(description = "Build a road between two positions of a given road type.")]
     async fn build_road(&self, Parameters(args): Parameters<BuildRoadArgs>) -> Result<CallToolResult, ErrorData> {
+        if self.run_ended().await {
+            return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
+        }
         let length = horizontal_distance(args.from, args.to);
         let road_type = args.road_type.clone();
         match service::build_road(&self.client, args).await {
@@ -166,6 +176,9 @@ impl BenchmarkServer {
 
     #[tool(description = "Change an existing road segment's type. Validates the new road_type first.")]
     async fn upgrade_road(&self, Parameters(args): Parameters<UpgradeRoadArgs>) -> Result<CallToolResult, ErrorData> {
+        if self.run_ended().await {
+            return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
+        }
         let segment_id = args.segment;
         let road_type = args.road_type.clone();
         let length = self
@@ -190,6 +203,9 @@ impl BenchmarkServer {
 
     #[tool(description = "Remove a network segment, node, or building. target_type = segment | node | building.")]
     async fn bulldoze(&self, Parameters(args): Parameters<BulldozeArgs>) -> Result<CallToolResult, ErrorData> {
+        if self.run_ended().await {
+            return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
+        }
         match service::bulldoze(&self.client, args).await {
             Ok(v) => {
                 if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
@@ -203,6 +219,9 @@ impl BenchmarkServer {
 
     #[tool(description = "Set zoning over a rectangular area. zone_type from list_zone_types.")]
     async fn set_zoning(&self, Parameters(args): Parameters<SetZoningArgs>) -> Result<CallToolResult, ErrorData> {
+        if self.run_ended().await {
+            return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
+        }
         match service::set_zoning(&self.client, args).await {
             Ok(v) => {
                 if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
@@ -274,10 +293,46 @@ mod tests {
         let state = RunState::new(
             BenchConfig::default(),
             WindowStats { flow_mean: 0.0, active_vehicles_mean: 0.0, population: 0 },
+            vec![],
             HashMap::new(),
         );
         let merged = with_progress(serde_json::json!({"ok": true}), &state);
         assert_eq!(merged["ok"], true);
         assert!(merged["benchmark_progress"]["flow_target"].is_number());
+    }
+
+    #[tokio::test]
+    async fn mutations_rejected_after_run_ended() {
+        use crate::benchmark::config::BenchConfig;
+        use crate::benchmark::record::{EndReason, WindowStats};
+        use crate::benchmark::state::RunState;
+        use crate::bridge_client::BridgeClient;
+        use crate::mock;
+        use std::collections::HashMap;
+        use std::sync::Arc;
+        use tokio::sync::Mutex;
+
+        let (addr, server) = mock::bind("127.0.0.1:0".parse().unwrap()).await;
+        tokio::spawn(server);
+        let client = Arc::new(BridgeClient::new(format!("http://{addr}")));
+        let mut st = RunState::new(
+            BenchConfig::default(),
+            WindowStats { flow_mean: 0.0, active_vehicles_mean: 0.0, population: 0 },
+            vec![],
+            HashMap::new(),
+        );
+        st.end_reason = Some(EndReason::Submit);
+        let state = Arc::new(Mutex::new(st));
+        let bench = BenchmarkServer::new(client, state.clone());
+
+        let res = bench
+            .bulldoze(Parameters(
+                crate::service::BulldozeArgs { target_type: "segment".into(), id: 0 },
+            ))
+            .await
+            .unwrap();
+        // run_ended path returns ok:false, run_ended:true and records NO change.
+        assert_eq!(state.lock().await.num_changes, 0);
+        let _ = res; // result content is a CallToolResult; the key assertion is no mutation recorded
     }
 }

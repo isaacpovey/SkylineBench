@@ -22,6 +22,10 @@ Score a Claude Code agent on improving traffic in a bad-traffic city.
    - `score.json` — the composite score and per-term breakdown.
    - `run-record.json` — baseline/final stats, tally, per-action cost log.
    - `transcript.md` / `transcript.jsonl` — what the agent did *(headless runs only)*, for diagnosing a poor score (harness issue vs prompt issue).
+   - `renders/` — one PNG per agent `render_map` call plus an automatic
+     full-map frame after every sim step, with `index.jsonl` (tick, changes,
+     flow per frame). Timelapse:
+     `ffmpeg -framerate 4 -pattern_type glob -i 'benchmark/runs/<ts>/renders/*.png' -pix_fmt yuv420p timelapse.mp4`
 
 ## Scoring (spec §4)
 `score = 0.60·norm(Δflow) + 0.20·(1−norm(money)) + 0.20·(1−norm(changes))`,

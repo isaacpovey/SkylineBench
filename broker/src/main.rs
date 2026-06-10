@@ -46,6 +46,9 @@ enum Command {
         map_source: String,
         #[arg(long)]
         out: std::path::PathBuf,
+        /// Directory for per-run render frames (timelapse). Omit to disable.
+        #[arg(long)]
+        renders_dir: Option<std::path::PathBuf>,
     },
     /// Finalize a finished benchmark run: read end-state.json from --out, run
     /// the settle + final measurement against the mod, and write
@@ -92,7 +95,7 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Command::Benchmark { mod_url, map, map_source, out } => {
+        Command::Benchmark { mod_url, map, map_source, out, renders_dir } => {
             use std::collections::HashMap;
             use std::sync::Arc;
             use tokio::sync::Mutex;
@@ -164,10 +167,15 @@ async fn main() -> anyhow::Result<()> {
                 }
             });
 
-            let server = BenchmarkServer::new(client, state.clone())
-                .with_persist(persister.clone())
-                .serve((tokio::io::stdin(), tokio::io::stdout()))
-                .await?;
+            let server = {
+                let s = BenchmarkServer::new(client, state.clone()).with_persist(persister.clone());
+                match renders_dir {
+                    Some(dir) => s.with_renders_dir(dir),
+                    None => s,
+                }
+            }
+            .serve((tokio::io::stdin(), tokio::io::stdout()))
+            .await?;
             server.waiting().await?;
 
             // Graceful teardown (stdin closed). Best-effort final snapshot:

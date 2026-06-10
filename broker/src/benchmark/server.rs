@@ -33,6 +33,7 @@ pub struct BenchmarkServer {
     client: Arc<BridgeClient>,
     state: Arc<Mutex<RunState>>,
     persist: Option<Arc<EndStatePersister>>,
+    renders_dir: Option<std::path::PathBuf>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -68,11 +69,46 @@ fn tool_err(err: ServiceError) -> CallToolResult {
 
 impl BenchmarkServer {
     pub fn new(client: Arc<BridgeClient>, state: Arc<Mutex<RunState>>) -> Self {
-        Self { client, state, persist: None, tool_router: Self::tool_router() }
+        Self { client, state, persist: None, renders_dir: None, tool_router: Self::tool_router() }
     }
 
     pub fn with_persist(self, persist: Arc<EndStatePersister>) -> Self {
         Self { persist: Some(persist), ..self }
+    }
+
+    pub fn with_renders_dir(self, dir: std::path::PathBuf) -> Self {
+        Self { renders_dir: Some(dir), ..self }
+    }
+
+    /// Best-effort frame write: a failed render persist must never fail the
+    /// tool call (same policy as end-state persistence).
+    async fn persist_render(&self, png: &[u8], tick: u64, trigger: &str) {
+        let Some(dir) = &self.renders_dir else { return };
+        let (seq, changes, flow) = {
+            let mut s = self.state.lock().await;
+            (s.next_render_seq(), s.num_changes, s.flow.mean())
+        };
+        let _ = std::fs::create_dir_all(dir);
+        let name = format!("{seq:05}-tick{tick}.png");
+        if let Err(e) = std::fs::write(dir.join(&name), png) {
+            eprintln!("benchmark: render persist error: {e}");
+            return;
+        }
+        let line = serde_json::json!({
+            "seq": seq, "file": name, "tick": tick, "trigger": trigger,
+            "changes": changes, "flow": flow,
+        });
+        let appended = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(dir.join("index.jsonl"))
+            .and_then(|mut f| {
+                use std::io::Write;
+                writeln!(f, "{line}")
+            });
+        if let Err(e) = appended {
+            eprintln!("benchmark: render index error: {e}");
+        }
     }
 
     async fn finish(&self, value: Value) -> Result<CallToolResult, ErrorData> {
@@ -183,6 +219,8 @@ impl BenchmarkServer {
         self.ensure_baseline().await;
         match service::render_map(&self.client, args).await {
             Ok((png, legend)) => {
+                let tick = self.client.health().await.map(|h| h.tick).unwrap_or(0);
+                self.persist_render(&png, tick, "render_map").await;
                 let data = base64::engine::general_purpose::STANDARD.encode(&png);
                 let progress = {
                     let mut s = self.state.lock().await;
@@ -295,6 +333,22 @@ impl BenchmarkServer {
         }
         if let Ok(m) = self.client.metrics().await {
             self.state.lock().await.push_flow(m.traffic.flow_percent as f64);
+        }
+        if self.renders_dir.is_some() {
+            let frame = service::render_map(
+                &self.client,
+                crate::service::RenderMapArgs {
+                    bounds: None,
+                    width_px: 1024,
+                    height_px: 1024,
+                    grid_spacing_m: None,
+                },
+            )
+            .await;
+            if let Ok((png, _)) = frame {
+                let tick = out.get("tick").and_then(|t| t.as_u64()).unwrap_or(0);
+                self.persist_render(&png, tick, "step").await;
+            }
         }
         self.finish(out).await
     }
@@ -630,6 +684,49 @@ mod tests {
         assert_eq!(step_chunks(585, 585), vec![585]);
         assert_eq!(step_chunks(10, 585), vec![10]);
         assert_eq!(step_chunks(0, 585), Vec::<u32>::new());
+    }
+
+    #[tokio::test]
+    async fn renders_are_persisted_with_index() {
+        let dir = std::env::temp_dir().join(format!("sb-renders-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        let bench = bench_with_mock().await.with_renders_dir(dir.clone());
+
+        bench
+            .render_map(Parameters(crate::service::RenderMapArgs {
+                bounds: None,
+                width_px: 32,
+                height_px: 32,
+                grid_spacing_m: None,
+            }))
+            .await
+            .unwrap();
+        bench
+            .control_time(Parameters(crate::service::ControlTimeArgs {
+                op: "step".into(),
+                ticks: Some(10),
+                speed: None,
+            }))
+            .await
+            .unwrap();
+
+        let mut frames: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.file_name().to_string_lossy().into_owned()))
+            .filter(|n| n.ends_with(".png"))
+            .collect();
+        frames.sort();
+        assert_eq!(frames.len(), 2, "one agent render + one auto step frame: {frames:?}");
+        assert!(frames[0].starts_with("00001"), "{frames:?}");
+
+        let index = std::fs::read_to_string(dir.join("index.jsonl")).unwrap();
+        let lines: Vec<serde_json::Value> =
+            index.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0]["trigger"], "render_map");
+        assert_eq!(lines[1]["trigger"], "step");
+        assert!(lines[1]["tick"].is_u64());
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[tokio::test]

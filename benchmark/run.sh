@@ -84,7 +84,7 @@ cat > "$MCP_CONFIG" <<JSON
   "mcpServers": {
     "skylinebench": {
       "command": "sh",
-      "args": ["-c", "$BROKER_BIN benchmark --map $MAP --map-source $MAP_SOURCE --mod-url $MOD_URL --out $OUT_DIR"]
+      "args": ["-c", "$BROKER_BIN benchmark --map $MAP --map-source $MAP_SOURCE --mod-url $MOD_URL --out $OUT_DIR --renders-dir $SESSION_DIR/renders"]
     }
   }
 }
@@ -123,6 +123,10 @@ else
   # connection, so `claude` exits non-zero — that's expected, not a failure.
   (cd "$WORKSPACE" && "${CMD[@]}") | tee "$OUT_DIR/transcript.jsonl" | "$REPO_BIN" format-stream | tee "$OUT_DIR/run.log" || true
   "$REPO_BIN" render-transcript --input "$OUT_DIR/transcript.jsonl" --out "$OUT_DIR/transcript.md"
+fi
+
+if [ -d "$SESSION_DIR/renders" ]; then
+  mv "$SESSION_DIR/renders" "$OUT_DIR/renders"
 fi
 
 # The slow settle + final measurement runs here, outside the agent session, so

@@ -160,7 +160,7 @@ pub async fn render_map(
         .collect();
     // Clamp: a tiny spacing would draw millions of gridlines; 0 disables.
     let grid_spacing_m = args.grid_spacing_m.unwrap_or(1000.0);
-    let grid_spacing_m = if grid_spacing_m <= 0.0 { 0.0 } else { grid_spacing_m.max(100.0) };
+    let grid_spacing_m = if grid_spacing_m <= 0.0 || !grid_spacing_m.is_finite() { 0.0 } else { grid_spacing_m.max(100.0) };
     let opts = RenderOptions {
         bounds: args.bounds.unwrap_or_else(playable_bounds),
         width_px: args.width_px,

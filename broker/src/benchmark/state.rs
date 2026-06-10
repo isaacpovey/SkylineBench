@@ -21,6 +21,7 @@ pub struct RunState {
     pub flow: FlowWindow,
     pub start: Instant,
     pub end_reason: Option<EndReason>,
+    pub render_seq: u32,
 }
 
 impl RunState {
@@ -37,7 +38,13 @@ impl RunState {
             flow: FlowWindow::new(window),
             start: Instant::now(),
             end_reason: None,
+            render_seq: 0,
         }
+    }
+
+    pub fn next_render_seq(&mut self) -> u32 {
+        self.render_seq += 1;
+        self.render_seq
     }
 
     pub fn build_cost(&self, road_type: &str, length_m: f32) -> i64 {

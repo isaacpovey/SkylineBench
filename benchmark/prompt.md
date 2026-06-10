@@ -21,7 +21,7 @@ How you are scored (you will NOT see your score during the run):
 - `score = 0.60·min(1, flow_gain/40) + 0.20·(1 − min(1, money_spent/10,000,000)) + 0.20·(1 − min(1, changes/300))`.
 - `flow_gain` is the FINAL settled flow minus the baseline — peaks along the way do not count.
   If a change makes flow worse, leaving it in place costs you score; revert it.
-- Every successful modifying call is one change; reads are free — observe as much as you like.
+- Every successful modifying op is one change (a batch `apply_plan` call counts each executed op); reads are free — observe as much as you like.
 - INVALID RUN: if you reduce the number of active vehicles too far (below 90% of baseline —
   you must not "fix" traffic by depopulating the city), the run scores zero. Keep the city alive.
 

@@ -462,7 +462,8 @@ impl BenchmarkServer {
         Every op is validated and priced up front — any structurally invalid op rejects the WHOLE plan \
         before anything executes. Set validate_only=true for a free dry-run (no changes recorded). \
         Each executed op counts as one change, identical to the single-op tools. The game can still \
-        reject an op at execution time (e.g. COLLISION); stop_on_error (default true) then skips the rest.")]
+        reject an op at execution time (e.g. COLLISION); stop_on_error (default true) then skips the rest; \
+        with stop_on_error=false execution continues and `first_failed_at` reports the earliest failing op.")]
     async fn apply_plan(&self, Parameters(args): Parameters<ApplyPlanArgs>) -> Result<CallToolResult, ErrorData> {
         use crate::benchmark::plan::{expand, tool_name, validate, ExecCtx, ExecOp, MAX_EXPANDED_OPS, MAX_OPS};
 
@@ -545,15 +546,15 @@ impl BenchmarkServer {
                     "validate_only": args.validate_only,
                     "results": results,
                     "total_estimated_cost": total_estimated_cost,
-                    "stopped_at": Value::Null,
+                    "first_failed_at": Value::Null,
                 }))
                 .await;
         }
 
         let mut results: Vec<Value> = Vec::with_capacity(validations.len());
-        let mut stopped_at: Option<usize> = None;
+        let mut first_failed_at: Option<usize> = None;
         for (i, (source, op, _, cost)) in validations.iter().enumerate() {
-            if stopped_at.is_some() && args.stop_on_error {
+            if first_failed_at.is_some() && args.stop_on_error {
                 results.push(serde_json::json!({
                     "op_index": i, "source_op": source, "tool": tool_name(op),
                     "valid": true, "estimated_cost": cost, "executed": false,
@@ -580,8 +581,8 @@ impl BenchmarkServer {
                     let ok = v.get("ok").and_then(|b| b.as_bool()) == Some(true);
                     if ok {
                         self.state.lock().await.record_mutation(tool_name(op), *cost);
-                    } else if stopped_at.is_none() {
-                        stopped_at = Some(i);
+                    } else if first_failed_at.is_none() {
+                        first_failed_at = Some(i);
                     }
                     results.push(serde_json::json!({
                         "op_index": i, "source_op": source, "tool": tool_name(op),
@@ -594,11 +595,11 @@ impl BenchmarkServer {
         }
 
         self.finish(serde_json::json!({
-            "ok": stopped_at.is_none(),
+            "ok": first_failed_at.is_none(),
             "validate_only": false,
             "results": results,
             "total_estimated_cost": total_estimated_cost,
-            "stopped_at": stopped_at,
+            "first_failed_at": first_failed_at,
         }))
         .await
     }
@@ -1022,13 +1023,51 @@ mod tests {
             .unwrap();
         let v: serde_json::Value = serde_json::from_str(&result_text(&res)).unwrap();
         assert_eq!(v["ok"], false);
-        assert_eq!(v["stopped_at"], 1);
+        assert_eq!(v["first_failed_at"], 1);
         let results = v["results"].as_array().unwrap();
         assert_eq!(results[0]["ok"], true);
         assert_eq!(results[1]["ok"], false);
         assert_eq!(results[2]["executed"], false, "ops after the failure are skipped");
         // 1 change from the setup build + 1 from the successful bulldoze.
         assert_eq!(v["benchmark_progress"]["num_changes"], 2);
+    }
+
+    #[tokio::test]
+    async fn apply_plan_continues_past_failures_when_not_stopping() {
+        let bench = bench_with_mock_costs().await;
+        let built = bench
+            .build_road(Parameters(crate::service::BuildRoadArgs {
+                from: crate::contract::Position { x: 0.0, y: 0.0, z: 0.0 },
+                to: crate::contract::Position { x: 50.0, y: 0.0, z: 0.0 },
+                road_type: "road".into(),
+                snap: true,
+            }))
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&result_text(&built)).unwrap();
+        let seg = v["created_segments"][0].as_u64().unwrap() as u32;
+
+        let res = bench
+            .apply_plan(Parameters(ApplyPlanArgs {
+                ops: vec![
+                    crate::benchmark::plan::PlanOp::Bulldoze { target_type: "segment".into(), id: seg },
+                    crate::benchmark::plan::PlanOp::Bulldoze { target_type: "segment".into(), id: seg },
+                    plan_build(2000.0, 2050.0),
+                ],
+                validate_only: false,
+                stop_on_error: false,
+            }))
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&result_text(&res)).unwrap();
+        assert_eq!(v["ok"], false);
+        assert_eq!(v["first_failed_at"], 1);
+        let results = v["results"].as_array().unwrap();
+        assert_eq!(results[1]["ok"], false);
+        assert_eq!(results[2]["executed"], true, "later ops still run when not stopping");
+        assert_eq!(results[2]["ok"], true);
+        // setup build + first bulldoze + final build all recorded; failed bulldoze not.
+        assert_eq!(v["benchmark_progress"]["num_changes"], 3);
     }
 
     #[tokio::test]

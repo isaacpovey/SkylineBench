@@ -20,6 +20,8 @@ The run ends when any of these happens:
 2. Flow reaches the target shown as `flow_target` in `benchmark_progress`.
 3. A 3-hour time limit is reached.
 
+If any tool response contains `run_ended: true`, the run is already over — stop and finish your turn; further calls are pointless.
+
 Every tool response includes a `benchmark_progress` block (money spent, changes made, current flow vs target, seconds remaining). Use it to pace yourself.
 
 Work method — repeat this loop:

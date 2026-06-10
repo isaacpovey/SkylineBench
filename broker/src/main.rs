@@ -47,6 +47,15 @@ enum Command {
         #[arg(long)]
         out: std::path::PathBuf,
     },
+    /// Finalize a finished benchmark run: read end-state.json from --out, run
+    /// the settle + final measurement against the mod, and write
+    /// run-record.json + score.json. Run this AFTER the agent session exits.
+    BenchmarkFinalize {
+        #[arg(long, default_value = "http://127.0.0.1:8787")]
+        mod_url: String,
+        #[arg(long)]
+        out: std::path::PathBuf,
+    },
 }
 
 #[tokio::main]
@@ -87,9 +96,7 @@ async fn main() -> anyhow::Result<()> {
             use std::collections::HashMap;
             use std::sync::Arc;
             use tokio::sync::Mutex;
-            use skylinebench::benchmark::{
-                finalize, BenchConfig, BenchmarkServer, MapInfo, RunState,
-            };
+            use skylinebench::benchmark::{BenchConfig, BenchmarkServer, MapInfo, RunState};
             use skylinebench::bridge_client::BridgeClient;
             use rmcp::ServiceExt;
 
@@ -98,6 +105,18 @@ async fn main() -> anyhow::Result<()> {
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_secs().to_string())
                     .unwrap_or_default()
+            }
+
+            async fn write_end_state(
+                state: &Arc<Mutex<RunState>>,
+                out: &std::path::Path,
+                map: MapInfo,
+                started_at: String,
+            ) -> anyhow::Result<()> {
+                let end = state.lock().await.end_state(map, started_at, epoch_secs());
+                std::fs::create_dir_all(out)?;
+                std::fs::write(out.join("end-state.json"), serde_json::to_string_pretty(&end)?)?;
+                Ok(())
             }
 
             let client = Arc::new(BridgeClient::new(mod_url));
@@ -119,34 +138,39 @@ async fn main() -> anyhow::Result<()> {
             // handshake (which has its own ~60s request timeout) for the whole
             // slow window on a large city. Serve immediately instead.
             eprintln!("benchmark: serving MCP; baseline measured on first tool call…");
-            let state = Arc::new(Mutex::new(RunState::new(cfg.clone(), road_costs)));
+            let state = Arc::new(Mutex::new(RunState::new(cfg, road_costs)));
+            let map_info = MapInfo {
+                id: map,
+                source: map_source,
+                game_version: health.game_version,
+            };
 
-            let watch_client = client.clone();
+            // Watchdog: the wall-clock cap is the only end reason that must
+            // force the process down mid-session (a submit ends the session
+            // naturally — claude exits, stdin closes, and we fall through to
+            // the end-state write below). Finalize (settle + measure + score)
+            // happens in `benchmark-finalize`, run by run.sh AFTER claude
+            // exits, so it can't be killed by client teardown or timeouts.
             let watch_state = state.clone();
-            let game_version = health.game_version.clone();
-            let started_at = started_at.clone();
+            let watch_out = out.clone();
+            let watch_map = map_info.clone();
+            let watch_started = started_at.clone();
             tokio::spawn(async move {
                 loop {
                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                    let ended = {
+                    let timed_out = {
                         let mut s = watch_state.lock().await;
                         s.check_timeout();
-                        s.end_reason.is_some()
+                        s.end_reason == Some(skylinebench::benchmark::record::EndReason::Timeout)
                     };
-                    if ended {
-                        let ended_at = epoch_secs();
-                        let map_info = MapInfo {
-                            id: map.clone(),
-                            source: map_source.clone(),
-                            game_version: game_version.clone(),
-                        };
-                        let code = match finalize(&watch_client, watch_state.clone(), &out, map_info, started_at.clone(), ended_at).await {
+                    if timed_out {
+                        let code = match write_end_state(&watch_state, &watch_out, watch_map.clone(), watch_started.clone()).await {
                             Ok(()) => {
-                                eprintln!("benchmark: wrote artifacts to {}", out.display());
+                                eprintln!("benchmark: wall-clock cap hit; wrote end-state.json");
                                 0
                             }
                             Err(e) => {
-                                eprintln!("benchmark: finalize error: {e}");
+                                eprintln!("benchmark: end-state write error: {e}");
                                 1
                             }
                         };
@@ -155,10 +179,33 @@ async fn main() -> anyhow::Result<()> {
                 }
             });
 
-            let server = BenchmarkServer::new(client, state)
+            let server = BenchmarkServer::new(client, state.clone())
                 .serve((tokio::io::stdin(), tokio::io::stdout()))
                 .await?;
             server.waiting().await?;
+
+            // Agent session over (claude closed stdin). Snapshot the run for
+            // the out-of-process finalize. end_reason None (the agent quit
+            // without submitting) is recorded as `disconnect`.
+            write_end_state(&state, &out, map_info, started_at).await?;
+            eprintln!("benchmark: session ended; wrote end-state.json to {}", out.display());
+        }
+        Command::BenchmarkFinalize { mod_url, out } => {
+            use skylinebench::benchmark::{finalize, EndState};
+            use skylinebench::bridge_client::BridgeClient;
+
+            let path = out.join("end-state.json");
+            let raw = std::fs::read_to_string(&path)
+                .map_err(|e| anyhow::anyhow!("cannot read {}: {e} — did the benchmark session run?", path.display()))?;
+            let end: EndState = serde_json::from_str(&raw)?;
+
+            let client = BridgeClient::new(mod_url);
+            let health = client.health().await?;
+            anyhow::ensure!(health.city_loaded, "no city loaded — cannot run the settle/final measurement");
+
+            eprintln!("benchmark-finalize: settle + final window (this takes several minutes)…");
+            finalize(&client, end, &out).await?;
+            eprintln!("benchmark-finalize: wrote run-record.json + score.json to {}", out.display());
         }
     }
     Ok(())

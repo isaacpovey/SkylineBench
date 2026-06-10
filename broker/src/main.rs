@@ -96,36 +96,14 @@ async fn main() -> anyhow::Result<()> {
             use std::collections::HashMap;
             use std::sync::Arc;
             use tokio::sync::Mutex;
-            use skylinebench::benchmark::{BenchConfig, BenchmarkServer, MapInfo, RunState};
+            use skylinebench::benchmark::{persist, BenchConfig, BenchmarkServer, EndStatePersister, MapInfo, RunState};
             use skylinebench::bridge_client::BridgeClient;
             use rmcp::ServiceExt;
-
-            fn epoch_secs() -> String {
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs().to_string())
-                    .unwrap_or_default()
-            }
-
-            async fn write_end_state(
-                state: &Arc<Mutex<RunState>>,
-                out: &std::path::Path,
-                map: MapInfo,
-                started_at: String,
-            ) -> anyhow::Result<()> {
-                let end = state.lock().await.end_state(map, started_at, epoch_secs());
-                std::fs::create_dir_all(out)?;
-                let tmp = out.join("end-state.json.tmp");
-                let dest = out.join("end-state.json");
-                std::fs::write(&tmp, serde_json::to_string_pretty(&end)?)?;
-                std::fs::rename(&tmp, &dest)?;
-                Ok(())
-            }
 
             let client = Arc::new(BridgeClient::new(mod_url));
             let health = client.health().await?;
             anyhow::ensure!(health.city_loaded, "no city loaded — load the benchmark save first");
-            let started_at = epoch_secs();
+            let started_at = persist::epoch_secs();
 
             let cfg = BenchConfig::default();
             let road_costs: HashMap<String, i64> = client
@@ -147,17 +125,21 @@ async fn main() -> anyhow::Result<()> {
                 source: map_source,
                 game_version: health.game_version,
             };
+            let persister = Arc::new(EndStatePersister {
+                out_dir: out.clone(),
+                map: map_info,
+                started_at,
+            });
 
             // Watchdog: the wall-clock cap is the only end reason that must
             // force the process down mid-session (a submit ends the session
-            // naturally — claude exits, stdin closes, and we fall through to
-            // the end-state write below). Finalize (settle + measure + score)
-            // happens in `benchmark-finalize`, run by run.sh AFTER claude
-            // exits, so it can't be killed by client teardown or timeouts.
+            // naturally — claude exits and kills us; the snapshot was already
+            // persisted eagerly on the submit response). Finalize (settle +
+            // measure + score) happens in `benchmark-finalize`, run by run.sh
+            // AFTER claude exits, so it can't be killed by client teardown or
+            // timeouts.
             let watch_state = state.clone();
-            let watch_out = out.clone();
-            let watch_map = map_info.clone();
-            let watch_started = started_at.clone();
+            let watch_persister = persister.clone();
             tokio::spawn(async move {
                 loop {
                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -167,7 +149,7 @@ async fn main() -> anyhow::Result<()> {
                         s.end_reason == Some(skylinebench::benchmark::record::EndReason::Timeout)
                     };
                     if timed_out {
-                        let code = match write_end_state(&watch_state, &watch_out, watch_map.clone(), watch_started.clone()).await {
+                        let code = match watch_persister.write(&*watch_state.lock().await) {
                             Ok(()) => {
                                 eprintln!("benchmark: wall-clock cap hit; wrote end-state.json");
                                 0
@@ -183,14 +165,17 @@ async fn main() -> anyhow::Result<()> {
             });
 
             let server = BenchmarkServer::new(client, state.clone())
+                .with_persist(persister.clone())
                 .serve((tokio::io::stdin(), tokio::io::stdout()))
                 .await?;
             server.waiting().await?;
 
-            // Agent session over (claude closed stdin). Snapshot the run for
-            // the out-of-process finalize. end_reason None (the agent quit
-            // without submitting) is recorded as `disconnect`.
-            write_end_state(&state, &out, map_info, started_at).await?;
+            // Graceful teardown (stdin closed). Best-effort final snapshot:
+            // claude normally kills the process instead of reaching here, but
+            // by then the eager per-response persistence has already written
+            // the latest snapshot. end_reason None (the agent quit without
+            // submitting) is recorded as `disconnect`.
+            persister.write(&*state.lock().await)?;
             eprintln!("benchmark: session ended; wrote end-state.json to {}", out.display());
         }
         Command::BenchmarkFinalize { mod_url, out } => {

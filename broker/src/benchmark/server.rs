@@ -18,6 +18,7 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 
 use crate::benchmark::measure::measure_window;
+use crate::benchmark::persist::EndStatePersister;
 use crate::benchmark::record::EndReason;
 use crate::benchmark::state::RunState;
 use crate::bridge_client::BridgeClient;
@@ -31,6 +32,7 @@ use crate::service::{
 pub struct BenchmarkServer {
     client: Arc<BridgeClient>,
     state: Arc<Mutex<RunState>>,
+    persist: Option<Arc<EndStatePersister>>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -56,12 +58,21 @@ fn tool_err(err: ServiceError) -> CallToolResult {
 
 impl BenchmarkServer {
     pub fn new(client: Arc<BridgeClient>, state: Arc<Mutex<RunState>>) -> Self {
-        Self { client, state, tool_router: Self::tool_router() }
+        Self { client, state, persist: None, tool_router: Self::tool_router() }
+    }
+
+    pub fn with_persist(self, persist: Arc<EndStatePersister>) -> Self {
+        Self { persist: Some(persist), ..self }
     }
 
     async fn finish(&self, value: Value) -> Result<CallToolResult, ErrorData> {
         let mut s = self.state.lock().await;
         s.check_timeout();
+        if let Some(p) = &self.persist {
+            if let Err(e) = p.write(&s) {
+                eprintln!("benchmark: end-state persist error: {e}");
+            }
+        }
         let merged = with_progress(value, &s);
         Ok(CallToolResult::success(vec![Content::text(merged.to_string())]))
     }
@@ -153,6 +164,11 @@ impl BenchmarkServer {
                 let progress = {
                     let mut s = self.state.lock().await;
                     s.check_timeout();
+                    if let Some(p) = &self.persist {
+                        if let Err(e) = p.write(&s) {
+                            eprintln!("benchmark: end-state persist error: {e}");
+                        }
+                    }
                     s.progress()
                 };
                 Ok(CallToolResult::success(vec![
@@ -467,6 +483,25 @@ mod tests {
             .await
             .unwrap();
         assert!(result_text(&after).contains("\"run_ended\":true"));
+    }
+
+    #[tokio::test]
+    async fn submit_persists_end_state_before_responding() {
+        let dir = std::env::temp_dir().join(format!("sb-persist-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        let persister = std::sync::Arc::new(crate::benchmark::persist::EndStatePersister {
+            out_dir: dir.clone(),
+            map: crate::benchmark::record::MapInfo { id: "m".into(), source: "test".into(), game_version: "v".into() },
+            started_at: "t0".into(),
+        });
+        let bench = bench_with_mock().await.with_persist(persister);
+        let res = bench.submit_solution(Parameters(SubmitArgs { note: None })).await.unwrap();
+        assert!(result_text(&res).contains("\"run_ended\":true"));
+        // The snapshot must already be on disk when the response is built.
+        let end: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("end-state.json")).unwrap()).unwrap();
+        assert_eq!(end["end_reason"], "submit");
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[tokio::test]

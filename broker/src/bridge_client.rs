@@ -32,9 +32,19 @@ struct ClockBody<'a> {
 
 impl BridgeClient {
     pub fn new(base_url: impl Into<String>) -> Self {
+        // The mod's Mono HttpListener closes each connection after responding
+        // without advertising `Connection: close`. reqwest would otherwise pool
+        // the dead socket and reuse it for the next request — fine for retried
+        // idempotent GETs, but a non-idempotent POST (e.g. /clock) fails with
+        // "connection closed before message completed". Disabling idle pooling
+        // forces a fresh connection per request.
+        let http = reqwest::Client::builder()
+            .pool_max_idle_per_host(0)
+            .build()
+            .expect("reqwest client builds with default TLS/runtime config");
         BridgeClient {
             base: base_url.into(),
-            http: reqwest::Client::new(),
+            http,
         }
     }
 

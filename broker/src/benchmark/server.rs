@@ -285,7 +285,9 @@ impl BenchmarkServer {
         }
     }
 
-    #[tool(description = "Declare the run finished. The harness then scores the city. Call when satisfied.")]
+    #[tool(description = "Declare the run finished. Returns immediately; the harness settles and \
+        scores the city after your session ends. Call when satisfied, then stop — further \
+        modifications will be rejected.")]
     async fn submit_solution(&self, Parameters(_args): Parameters<SubmitArgs>) -> Result<CallToolResult, ErrorData> {
         // Capture the baseline if the agent submits without any prior tool call,
         // so finalize has a "before" snapshot to score against.
@@ -296,12 +298,12 @@ impl BenchmarkServer {
                 s.end_reason = Some(EndReason::Submit);
             }
         }
-        // Hold the connection open. The background watcher runs the settle +
-        // final measurement and then exits the process, which ends the agent
-        // session. Returning here would let `claude -p` finish its turn and tear
-        // down this server before finalize completes, losing the artifacts.
-        std::future::pending::<()>().await;
-        unreachable!("the watcher exits the process during finalize")
+        self.finish(serde_json::json!({
+            "ok": true,
+            "run_ended": true,
+            "message": "Solution submitted. The run will be settled and scored after this session ends — finish your turn now.",
+        }))
+        .await
     }
 }
 
@@ -444,6 +446,27 @@ mod tests {
         assert_ne!(res.is_error, Some(true), "exact-cap step should succeed");
         let text = result_text(&res);
         assert!(text.contains("\"tick\":1755"), "clock should be at 1755, got: {text}");
+    }
+
+    #[tokio::test]
+    async fn submit_returns_immediately_and_ends_run() {
+        let bench = bench_with_mock().await;
+        let res = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            bench.submit_solution(Parameters(SubmitArgs { note: None })),
+        )
+        .await
+        .expect("submit_solution must return, not hang")
+        .unwrap();
+        let text = result_text(&res);
+        assert!(text.contains("\"run_ended\":true"), "got: {text}");
+
+        // The run is over: subsequent mutations are rejected.
+        let after = bench
+            .bulldoze(Parameters(crate::service::BulldozeArgs { target_type: "segment".into(), id: 0 }))
+            .await
+            .unwrap();
+        assert!(result_text(&after).contains("\"run_ended\":true"));
     }
 
     #[tokio::test]

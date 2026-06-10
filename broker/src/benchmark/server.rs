@@ -172,25 +172,23 @@ impl BenchmarkServer {
         if self.run_ended().await {
             return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
         }
-        let (day_ticks, max_ticks) = {
+        let (day_ticks, max_ticks, max_step_days) = {
             let s = self.state.lock().await;
-            (s.config.day_ticks, s.config.max_step_ticks())
+            (s.config.day_ticks, s.config.max_step_ticks(), s.config.max_step_days)
         };
         let is_step = args.op == "step";
         let args = if is_step {
-            ControlTimeArgs { ticks: Some(args.ticks.unwrap_or(day_ticks)), ..args }
-        } else {
-            args
-        };
-        if is_step {
-            let requested = args.ticks.unwrap_or(0);
+            let requested = args.ticks.unwrap_or(day_ticks);
             if requested > max_ticks {
                 return Ok(CallToolResult::error(vec![Content::text(format!(
                     "step of {requested} ticks exceeds the cap of {max_ticks} ticks \
-                     (3 in-game days; 1 day ≈ {day_ticks} ticks). Request {max_ticks} or fewer."
+                     ({max_step_days} in-game days; 1 day ≈ {day_ticks} ticks). Request {max_ticks} or fewer."
                 ))]));
             }
-        }
+            ControlTimeArgs { ticks: Some(requested), ..args }
+        } else {
+            args
+        };
         match service::control_time(&self.client, args).await {
             Ok(v) => {
                 // A transient metrics fetch failure just skips this flow sample; the
@@ -418,6 +416,34 @@ mod tests {
         assert_eq!(res.is_error, Some(true));
         let text = result_text(&res);
         assert!(text.contains("1755"), "error should state the cap, got: {text}");
+
+        // Rejected step must not have advanced the mock clock.
+        let pause_res = bench
+            .control_time(Parameters(crate::service::ControlTimeArgs {
+                op: "pause".into(),
+                ticks: None,
+                speed: None,
+            }))
+            .await
+            .unwrap();
+        let pause_text = result_text(&pause_res);
+        assert!(pause_text.contains("\"tick\":0"), "clock should still be at 0, got: {pause_text}");
+    }
+
+    #[tokio::test]
+    async fn step_of_exactly_the_cap_is_allowed() {
+        let bench = bench_with_mock().await;
+        let res = bench
+            .control_time(Parameters(crate::service::ControlTimeArgs {
+                op: "step".into(),
+                ticks: Some(1755),
+                speed: None,
+            }))
+            .await
+            .unwrap();
+        assert_ne!(res.is_error, Some(true), "exact-cap step should succeed");
+        let text = result_text(&res);
+        assert!(text.contains("\"tick\":1755"), "clock should be at 1755, got: {text}");
     }
 
     #[tokio::test]

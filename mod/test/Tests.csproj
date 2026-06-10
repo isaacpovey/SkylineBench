@@ -21,12 +21,14 @@
     <Compile Include="..\src\dto\Dtos.cs"><Link>src\Dtos.cs</Link></Compile>
     <Compile Include="..\src\json\Serialize.cs"><Link>src\Serialize.cs</Link></Compile>
     <Compile Include="..\src\json\RequestParse.cs"><Link>src\RequestParse.cs</Link></Compile>
+    <Compile Include="..\src\bridge\Direction.cs"><Link>src\Direction.cs</Link></Compile>
     <Compile Include="TestRunner.cs" />
     <Compile Include="JsonWriterTests.cs" />
     <Compile Include="JsonReaderTests.cs" />
     <Compile Include="HttpQueryTests.cs" />
     <Compile Include="SerializeTests.cs" />
     <Compile Include="RequestParseTests.cs" />
+    <Compile Include="DirectionTests.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

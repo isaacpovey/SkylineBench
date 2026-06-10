@@ -27,13 +27,26 @@ esac
 
 mkdir -p "$OUT_DIR"
 
+# Only one run may drive the single game instance at a time. A second run.sh
+# started mid-run (this happened on 2026-06-09: 21:01 + 21:04 against one game)
+# corrupts both runs' measurements.
+LOCK_DIR="${TMPDIR:-/tmp}/skylinebench.lock"
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  echo "another benchmark run appears active (lock: $LOCK_DIR). Remove the dir if it is stale." >&2
+  exit 1
+fi
+
 # Per-run session dir OUTSIDE the repo: the agent runs under a Seatbelt profile
 # that denies reading the repo (anti-cheating — run 20260609-191326 read the
 # scoring source via Bash). Everything claude must read or exec therefore
 # lives here: the broker binary copy, mcp.json, and the scratch workspace.
 # The agent may freely write/run code in its workspace; only repo reads die.
-SESSION_DIR="$(mktemp -d "${TMPDIR:-/tmp}/skylinebench-$RUN_ID.XXXXXX")"
-trap 'rm -rf "$SESSION_DIR"' EXIT
+# Lives under ~/Library/Caches (not TMPDIR): macOS periodically reaps
+# /var/folders temp dirs, which deleted a live workspace mid-run on 2026-06-09.
+SESSION_BASE="$HOME/Library/Caches/skylinebench"
+mkdir -p "$SESSION_BASE"
+SESSION_DIR="$(mktemp -d "$SESSION_BASE/$RUN_ID.XXXXXX")"
+trap 'rm -rf "$SESSION_DIR"; rmdir "$LOCK_DIR" 2>/dev/null' EXIT
 WORKSPACE="$SESSION_DIR/workspace"
 mkdir -p "$WORKSPACE"
 
@@ -82,10 +95,14 @@ ALLOWED="mcp__skylinebench__build_road,mcp__skylinebench__bulldoze,mcp__skylineb
 DISALLOWED="WebFetch,WebSearch"
 
 SANDBOX=(sandbox-exec -f "$SANDBOX_PROFILE")
+# caffeinate -dims: block display/idle/disk/system sleep for the lifetime of
+# the agent session. Machine sleep killed run 20260609-210135 ~2.8h in.
+KEEPAWAKE=()
+if command -v caffeinate >/dev/null; then KEEPAWAKE=(caffeinate -dims); fi
 if [ "$WATCH" -eq 1 ]; then
-  CMD=("${SANDBOX[@]}" claude --mcp-config "$MCP_CONFIG" --strict-mcp-config --allowedTools "$ALLOWED" --disallowedTools "$DISALLOWED" --permission-mode bypassPermissions "$PROMPT")
+  CMD=("${KEEPAWAKE[@]}" "${SANDBOX[@]}" claude --mcp-config "$MCP_CONFIG" --strict-mcp-config --allowedTools "$ALLOWED" --disallowedTools "$DISALLOWED" --permission-mode bypassPermissions "$PROMPT")
 else
-  CMD=("${SANDBOX[@]}" claude -p "$PROMPT" --mcp-config "$MCP_CONFIG" --strict-mcp-config --allowedTools "$ALLOWED" --disallowedTools "$DISALLOWED" --permission-mode bypassPermissions --output-format stream-json --verbose)
+  CMD=("${KEEPAWAKE[@]}" "${SANDBOX[@]}" claude -p "$PROMPT" --mcp-config "$MCP_CONFIG" --strict-mcp-config --allowedTools "$ALLOWED" --disallowedTools "$DISALLOWED" --permission-mode bypassPermissions --output-format stream-json --verbose)
 fi
 
 if [ "${DRY_RUN:-0}" = "1" ]; then

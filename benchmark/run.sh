@@ -3,6 +3,7 @@ set -euo pipefail
 
 MAP=""
 MOD_URL="http://127.0.0.1:8787"
+MAP_SOURCE="test"
 WATCH=0
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_ID="$(date +%Y%m%d-%H%M%S)"
@@ -11,6 +12,7 @@ OUT_DIR="$ROOT/benchmark/runs/$RUN_ID"
 while [ $# -gt 0 ]; do
   case "$1" in
     --map) MAP="$2"; shift 2 ;;
+    --map-source) MAP_SOURCE="$2"; shift 2 ;;
     --mod-url) MOD_URL="$2"; shift 2 ;;
     --out) OUT_DIR="$2"; shift 2 ;;
     --watch|--interactive) WATCH=1; shift ;;
@@ -18,7 +20,10 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ -n "$MAP" ] || { echo "usage: run.sh --map <id> [--watch] [--mod-url URL] [--out DIR]" >&2; exit 2; }
+[ -n "$MAP" ] || { echo "usage: run.sh --map <id> [--watch] [--mod-url URL] [--map-source SRC] [--out DIR]" >&2; exit 2; }
+case "$MAP" in
+  *[!A-Za-z0-9_-]*) echo "map id must be alphanumeric, dash, or underscore" >&2; exit 2 ;;
+esac
 
 mkdir -p "$OUT_DIR"
 BROKER_BIN="$ROOT/broker/target/release/skylinebench"
@@ -31,7 +36,7 @@ cat > "$MCP_CONFIG" <<JSON
   "mcpServers": {
     "skylinebench": {
       "command": "sh",
-      "args": ["-c", "$BROKER_BIN benchmark --map $MAP --mod-url $MOD_URL --out $OUT_DIR"]
+      "args": ["-c", "$BROKER_BIN benchmark --map $MAP --map-source $MAP_SOURCE --mod-url $MOD_URL --out $OUT_DIR"]
     }
   }
 }
@@ -55,9 +60,13 @@ if [ "$WATCH" -eq 1 ]; then
   "${CMD[@]}"
 else
   "${CMD[@]}" | tee "$OUT_DIR/transcript.jsonl"
-  "$BROKER_BIN" render-transcript --input "$OUT_DIR/transcript.jsonl" --out "$OUT_DIR/transcript.md" || \
+  RELEASE_BIN="$ROOT/broker/target/release/skylinebench"
+  if [ -x "$RELEASE_BIN" ]; then
+    "$RELEASE_BIN" render-transcript --input "$OUT_DIR/transcript.jsonl" --out "$OUT_DIR/transcript.md"
+  else
     cargo run --manifest-path "$ROOT/broker/Cargo.toml" --release -- \
       render-transcript --input "$OUT_DIR/transcript.jsonl" --out "$OUT_DIR/transcript.md"
+  fi
 fi
 
 echo "artifacts in $OUT_DIR"

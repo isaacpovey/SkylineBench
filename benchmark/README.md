@@ -15,8 +15,7 @@ Score a Claude Code agent on improving traffic in a bad-traffic city.
 4. Read the results in `benchmark/runs/<timestamp>/`:
    - `score.json` — the composite score and per-term breakdown.
    - `run-record.json` — baseline/final stats, tally, per-action cost log.
-   - `transcript.md` / `transcript.jsonl` — what the agent did, for diagnosing a
-     poor score (harness issue vs prompt issue).
+   - `transcript.md` / `transcript.jsonl` — what the agent did *(headless runs only)*, for diagnosing a poor score (harness issue vs prompt issue).
 
 ## Scoring (spec §4)
 `score = 0.60·norm(Δflow) + 0.20·(1−norm(money)) + 0.20·(1−norm(changes))`,

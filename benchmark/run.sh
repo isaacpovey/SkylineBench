@@ -26,8 +26,20 @@ case "$MAP" in
 esac
 
 mkdir -p "$OUT_DIR"
+
+# Always build a fresh release binary so the MCP server can never be a stale
+# build that lacks the `benchmark` subcommand (skipped under DRY_RUN).
 BROKER_BIN="$ROOT/broker/target/release/skylinebench"
-[ -x "$BROKER_BIN" ] || BROKER_BIN="cargo run --manifest-path $ROOT/broker/Cargo.toml --release --"
+if [ "${DRY_RUN:-0}" != "1" ]; then
+  echo "building broker (release)…" >&2
+  cargo build --release --manifest-path "$ROOT/broker/Cargo.toml" >&2 || { echo "broker build failed" >&2; exit 1; }
+fi
+
+# The pre-serve baseline (and the post-run settle/final windows) drive the sim
+# for tens of seconds; give Claude Code's MCP startup + tool timeouts generous
+# headroom so the server isn't killed mid-measurement (defaults are ~30s/60s).
+export MCP_TIMEOUT="${MCP_TIMEOUT:-600000}"
+export MCP_TOOL_TIMEOUT="${MCP_TOOL_TIMEOUT:-600000}"
 
 # Generate the MCP config: Claude Code spawns `broker benchmark` over stdio.
 MCP_CONFIG="$OUT_DIR/mcp.json"
@@ -59,14 +71,12 @@ fi
 if [ "$WATCH" -eq 1 ]; then
   "${CMD[@]}"
 else
-  "${CMD[@]}" | tee "$OUT_DIR/transcript.jsonl"
-  RELEASE_BIN="$ROOT/broker/target/release/skylinebench"
-  if [ -x "$RELEASE_BIN" ]; then
-    "$RELEASE_BIN" render-transcript --input "$OUT_DIR/transcript.jsonl" --out "$OUT_DIR/transcript.md"
-  else
-    cargo run --manifest-path "$ROOT/broker/Cargo.toml" --release -- \
-      render-transcript --input "$OUT_DIR/transcript.jsonl" --out "$OUT_DIR/transcript.md"
-  fi
+  # Capture the raw stream-json to transcript.jsonl unchanged, render a
+  # human-readable line per event to the console, and also save that to run.log.
+  # `|| true`: when a run ends the broker exits and closes the MCP connection,
+  # so `claude` exits non-zero — that's expected, not a failure of the run.
+  "${CMD[@]}" | tee "$OUT_DIR/transcript.jsonl" | "$BROKER_BIN" format-stream | tee "$OUT_DIR/run.log" || true
+  "$BROKER_BIN" render-transcript --input "$OUT_DIR/transcript.jsonl" --out "$OUT_DIR/transcript.md"
 fi
 
 echo "artifacts in $OUT_DIR"

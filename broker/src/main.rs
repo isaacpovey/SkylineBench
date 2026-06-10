@@ -115,7 +115,10 @@ async fn main() -> anyhow::Result<()> {
             ) -> anyhow::Result<()> {
                 let end = state.lock().await.end_state(map, started_at, epoch_secs());
                 std::fs::create_dir_all(out)?;
-                std::fs::write(out.join("end-state.json"), serde_json::to_string_pretty(&end)?)?;
+                let tmp = out.join("end-state.json.tmp");
+                let dest = out.join("end-state.json");
+                std::fs::write(&tmp, serde_json::to_string_pretty(&end)?)?;
+                std::fs::rename(&tmp, &dest)?;
                 Ok(())
             }
 
@@ -197,7 +200,8 @@ async fn main() -> anyhow::Result<()> {
             let path = out.join("end-state.json");
             let raw = std::fs::read_to_string(&path)
                 .map_err(|e| anyhow::anyhow!("cannot read {}: {e} — did the benchmark session run?", path.display()))?;
-            let end: EndState = serde_json::from_str(&raw)?;
+            let end: EndState = serde_json::from_str(&raw)
+                .map_err(|e| anyhow::anyhow!("invalid {}: {e}", path.display()))?;
 
             let client = BridgeClient::new(mod_url);
             let health = client.health().await?;

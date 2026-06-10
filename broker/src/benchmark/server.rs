@@ -164,11 +164,32 @@ impl BenchmarkServer {
         }
     }
 
-    #[tool(description = "Control simulation time: pause, resume, step, or set speed.")]
+    #[tool(description = "Control simulation time: pause, resume, step, or set speed. \
+        `step` defaults to 1 in-game day (585 ticks) when `ticks` is omitted; \
+        the maximum step is 3 days (1755 ticks).")]
     async fn control_time(&self, Parameters(args): Parameters<ControlTimeArgs>) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
         if self.run_ended().await {
             return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
+        }
+        let (day_ticks, max_ticks) = {
+            let s = self.state.lock().await;
+            (s.config.day_ticks, s.config.max_step_ticks())
+        };
+        let is_step = args.op == "step";
+        let args = if is_step {
+            ControlTimeArgs { ticks: Some(args.ticks.unwrap_or(day_ticks)), ..args }
+        } else {
+            args
+        };
+        if is_step {
+            let requested = args.ticks.unwrap_or(0);
+            if requested > max_ticks {
+                return Ok(CallToolResult::error(vec![Content::text(format!(
+                    "step of {requested} ticks exceeds the cap of {max_ticks} ticks \
+                     (3 in-game days; 1 day ≈ {day_ticks} ticks). Request {max_ticks} or fewer."
+                ))]));
+            }
         }
         match service::control_time(&self.client, args).await {
             Ok(v) => {
@@ -334,6 +355,69 @@ mod tests {
         let merged = with_progress(serde_json::json!({"ok": true}), &state);
         assert_eq!(merged["ok"], true);
         assert!(merged["benchmark_progress"]["flow_target"].is_number());
+    }
+
+    async fn bench_with_mock() -> BenchmarkServer {
+        use crate::benchmark::config::BenchConfig;
+        use crate::benchmark::state::RunState;
+        use crate::bridge_client::BridgeClient;
+        use crate::mock;
+        use std::collections::HashMap;
+        use std::sync::Arc;
+        use tokio::sync::Mutex;
+
+        let (addr, server) = mock::bind("127.0.0.1:0".parse().unwrap()).await;
+        tokio::spawn(server);
+        let client = Arc::new(BridgeClient::new(format!("http://{addr}")));
+        let mut st = RunState::new(BenchConfig::default(), HashMap::new());
+        // Pre-set a baseline so ensure_baseline doesn't drive the mock clock
+        // and skew the tick assertions below.
+        st.baseline = Some(crate::benchmark::record::WindowStats {
+            flow_mean: 50.0,
+            active_vehicles_mean: 10.0,
+            population: 100,
+        });
+        BenchmarkServer::new(client, Arc::new(Mutex::new(st)))
+    }
+
+    fn result_text(res: &CallToolResult) -> String {
+        res.content
+            .iter()
+            .filter_map(|c| c.as_text().map(|t| t.text.clone()))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[tokio::test]
+    async fn step_without_ticks_defaults_to_one_day() {
+        let bench = bench_with_mock().await;
+        let res = bench
+            .control_time(Parameters(crate::service::ControlTimeArgs {
+                op: "step".into(),
+                ticks: None,
+                speed: None,
+            }))
+            .await
+            .unwrap();
+        let text = result_text(&res);
+        // Mock starts at tick 0 and adds the requested ticks: default = 585.
+        assert!(text.contains("\"tick\":585"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn step_above_three_days_is_rejected() {
+        let bench = bench_with_mock().await;
+        let res = bench
+            .control_time(Parameters(crate::service::ControlTimeArgs {
+                op: "step".into(),
+                ticks: Some(4096),
+                speed: None,
+            }))
+            .await
+            .unwrap();
+        assert_eq!(res.is_error, Some(true));
+        let text = result_text(&res);
+        assert!(text.contains("1755"), "error should state the cap, got: {text}");
     }
 
     #[tokio::test]

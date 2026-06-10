@@ -301,6 +301,59 @@ pub async fn reset_scenario(
     Ok(serde_json::to_value(res).unwrap())
 }
 
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct TraceRouteArgs {
+    pub from: Position,
+    pub to: Position,
+}
+
+pub async fn trace_route(
+    client: &BridgeClient,
+    args: TraceRouteArgs,
+) -> Result<Value, ServiceError> {
+    let net = client.network().await?;
+    let nearest = |p: Position| {
+        net.nodes
+            .iter()
+            .map(|n| {
+                (
+                    n.id,
+                    crate::geometry::horizontal_distance(p, Position { x: n.x, y: 0.0, z: n.z }),
+                )
+            })
+            .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+    };
+    let (Some((from_node, from_dist)), Some((to_node, to_dist))) =
+        (nearest(args.from), nearest(args.to))
+    else {
+        return Ok(json!({ "ok": false, "reason": "EMPTY_NETWORK" }));
+    };
+    let route = crate::route::shortest_route(&net, from_node, to_node);
+    let note = "broker-side estimate from segment lengths, speed limits and one-way directions; \
+                the game's own pathfinding also weighs congestion and lane changes";
+    Ok(match route {
+        Some(r) => json!({
+            "ok": true,
+            "reachable": true,
+            "from_node": from_node,
+            "from_snap_distance_m": from_dist,
+            "to_node": to_node,
+            "to_snap_distance_m": to_dist,
+            "nodes": r.nodes,
+            "segments": r.segments,
+            "total_length_m": r.length_m,
+            "note": note,
+        }),
+        None => json!({
+            "ok": true,
+            "reachable": false,
+            "from_node": from_node,
+            "to_node": to_node,
+            "note": "no directed path exists — check one-way directions and disconnected components",
+        }),
+    })
+}
+
 fn action_error_value(reason: ActionError) -> Value {
     json!({ "ok": false, "reason": reason })
 }
@@ -785,6 +838,68 @@ mod tests {
             .collect();
         assert!(speeds[0] > speeds[1], "descending speed: {speeds:?}");
         assert_eq!(by_speed["segments"][0]["prefab"], "highway");
+    }
+
+    #[tokio::test]
+    async fn trace_route_follows_the_network() {
+        let c = client().await;
+        // Two roads sharing a middle node at x=50 (snap tolerance joins them).
+        for (x0, x1) in [(0.0_f32, 50.0_f32), (50.0, 100.0)] {
+            build_road(
+                &c,
+                BuildRoadArgs {
+                    from: Position { x: x0, y: 0.0, z: 0.0 },
+                    to: Position { x: x1, y: 0.0, z: 0.0 },
+                    road_type: "road".into(),
+                    snap: true,
+                },
+            )
+            .await
+            .unwrap();
+        }
+        let v = trace_route(
+            &c,
+            TraceRouteArgs {
+                from: Position { x: 2.0, y: 0.0, z: 0.0 },
+                to: Position { x: 99.0, y: 0.0, z: 0.0 },
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["reachable"], true);
+        assert_eq!(v["segments"].as_array().unwrap().len(), 2);
+        assert_eq!(v["total_length_m"].as_f64().unwrap().round(), 100.0);
+        assert!(v["note"].as_str().unwrap().contains("estimate"));
+    }
+
+    #[tokio::test]
+    async fn trace_route_reports_unreachable() {
+        let c = client().await;
+        for (x0, x1) in [(0.0_f32, 50.0_f32), (5000.0, 5050.0)] {
+            build_road(
+                &c,
+                BuildRoadArgs {
+                    from: Position { x: x0, y: 0.0, z: 0.0 },
+                    to: Position { x: x1, y: 0.0, z: 0.0 },
+                    road_type: "road".into(),
+                    snap: true,
+                },
+            )
+            .await
+            .unwrap();
+        }
+        let v = trace_route(
+            &c,
+            TraceRouteArgs {
+                from: Position { x: 0.0, y: 0.0, z: 0.0 },
+                to: Position { x: 5050.0, y: 0.0, z: 0.0 },
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["reachable"], false);
     }
 
     #[tokio::test]

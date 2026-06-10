@@ -25,7 +25,7 @@ use crate::bridge_client::BridgeClient;
 use crate::geometry::horizontal_distance;
 use crate::service::{
     self, BuildRoadArgs, BulldozeArgs, ControlTimeArgs, GetMetricsArgs, ObserveAreaArgs,
-    QuerySegmentsArgs, RenderMapArgs, ServiceError, SetZoningArgs, UpgradeRoadArgs,
+    QuerySegmentsArgs, RenderMapArgs, ServiceError, SetZoningArgs, TraceRouteArgs, UpgradeRoadArgs,
 };
 
 #[derive(Clone)]
@@ -604,6 +604,17 @@ impl BenchmarkServer {
         .await
     }
 
+    #[tool(description = "Estimate the route traffic would take between two positions \
+        (snapped to nearest road nodes), honoring one-way directions and speed limits. \
+        Free read — use it to check whether a new link will actually attract traffic.")]
+    async fn trace_route(&self, Parameters(args): Parameters<TraceRouteArgs>) -> Result<CallToolResult, ErrorData> {
+        self.ensure_baseline().await;
+        match service::trace_route(&self.client, args).await {
+            Ok(v) => self.finish(v).await,
+            Err(e) => Ok(tool_err(e)),
+        }
+    }
+
     #[tool(description = "Declare the run finished. Returns immediately; the harness settles and \
         scores the city after your session ends. Call when satisfied, then stop — further \
         modifications will be rejected.")]
@@ -661,6 +672,7 @@ mod tests {
                 "render_map",
                 "set_zoning",
                 "submit_solution",
+                "trace_route",
                 "upgrade_road",
             ]
         );

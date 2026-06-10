@@ -20,7 +20,7 @@ use crate::bridge_client::BridgeClient;
 use crate::service::{
     self, BuildRoadArgs, BulldozeArgs, ControlTimeArgs, GetMetricsArgs, ObserveAreaArgs,
     QuerySegmentsArgs, RenderMapArgs, ResetScenarioArgs, ServiceError, SetZoningArgs,
-    UpgradeRoadArgs,
+    TraceRouteArgs, UpgradeRoadArgs,
 };
 
 #[derive(Clone)]
@@ -195,6 +195,19 @@ impl Skyline {
         }
     }
 
+    #[tool(description = "Estimate the route traffic would take between two positions \
+        (snapped to nearest road nodes), honoring one-way directions and speed limits. \
+        Free read — use it to check whether a new link will actually attract traffic.")]
+    async fn trace_route(
+        &self,
+        Parameters(args): Parameters<TraceRouteArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match service::trace_route(&self.client, args).await {
+            Ok(v) => json_result(v),
+            Err(e) => Ok(tool_error(e)),
+        }
+    }
+
     #[tool(description = "Reload a named savegame — the benchmark reset primitive.")]
     async fn reset_scenario(
         &self,
@@ -240,6 +253,7 @@ mod tests {
                 "render_map",
                 "reset_scenario",
                 "set_zoning",
+                "trace_route",
                 "upgrade_road",
             ]
         );

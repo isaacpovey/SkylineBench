@@ -29,15 +29,68 @@ pub async fn get_city_overview(client: &BridgeClient) -> Result<Value, ServiceEr
     }))
 }
 
-pub async fn observe_area(client: &BridgeClient) -> Result<Value, ServiceError> {
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct ObserveAreaArgs {
+    /// Restrict the observation to this rectangle (world metres). Omit for the
+    /// whole map. A segment is included when either endpoint is inside.
+    #[serde(default)]
+    pub bounds: Option<Bounds>,
+}
+
+pub async fn observe_area(
+    client: &BridgeClient,
+    args: ObserveAreaArgs,
+) -> Result<Value, ServiceError> {
     let net = client.network().await?;
     let buildings = client.buildings().await?;
     let zones = client.zones().await?;
+    let net = match args.bounds {
+        None => net,
+        Some(b) => {
+            let inside = |x: f32, z: f32| {
+                crate::geometry::in_bounds(Position { x, y: 0.0, z }, b)
+            };
+            let node_in: std::collections::HashMap<u32, bool> =
+                net.nodes.iter().map(|n| (n.id, inside(n.x, n.z))).collect();
+            let segments: Vec<_> = net
+                .segments
+                .into_iter()
+                .filter(|s| {
+                    node_in.get(&s.start_node).copied().unwrap_or(false)
+                        || node_in.get(&s.end_node).copied().unwrap_or(false)
+                })
+                .collect();
+            let kept: std::collections::HashSet<u32> = segments
+                .iter()
+                .flat_map(|s| [s.start_node, s.end_node])
+                .collect();
+            crate::contract::Network {
+                nodes: net.nodes.into_iter().filter(|n| kept.contains(&n.id)).collect(),
+                segments,
+            }
+        }
+    };
+    let buildings: Vec<_> = match args.bounds {
+        None => buildings.buildings,
+        Some(b) => buildings
+            .buildings
+            .into_iter()
+            .filter(|bd| crate::geometry::in_bounds(Position { x: bd.x, y: 0.0, z: bd.z }, b))
+            .collect(),
+    };
+    let zones: Vec<_> = match args.bounds {
+        None => zones.cells,
+        Some(b) => zones
+            .cells
+            .into_iter()
+            .filter(|zc| crate::geometry::in_bounds(Position { x: zc.x, y: 0.0, z: zc.z }, b))
+            .collect(),
+    };
     let connectivity = build_connectivity(&net);
     Ok(json!({
         "network": net,
-        "buildings": buildings.buildings,
-        "zones": zones.cells,
+        "buildings": buildings,
+        "zones": zones,
         "intersections": connectivity.intersections(),
         "dead_ends": connectivity.dead_ends(),
     }))
@@ -299,7 +352,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(built["ok"], true);
-        let obs = observe_area(&c).await.unwrap();
+        let obs = observe_area(&c, ObserveAreaArgs { bounds: None }).await.unwrap();
         assert_eq!(obs["network"]["segments"].as_array().unwrap().len(), 1);
     }
 
@@ -352,7 +405,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(res["ok"], true);
-        let obs = observe_area(&c).await.unwrap();
+        let obs = observe_area(&c, ObserveAreaArgs { bounds: None }).await.unwrap();
         assert_eq!(obs["network"]["segments"].as_array().unwrap().len(), 0);
     }
 
@@ -407,7 +460,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let obs = observe_area(&c).await.unwrap();
+        let obs = observe_area(&c, ObserveAreaArgs { bounds: None }).await.unwrap();
         assert_eq!(obs["network"]["segments"].as_array().unwrap().len(), 0);
     }
 
@@ -444,7 +497,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(res["ok"], true);
-        let obs = observe_area(&c).await.unwrap();
+        let obs = observe_area(&c, ObserveAreaArgs { bounds: None }).await.unwrap();
         assert_eq!(obs["network"]["segments"][0]["prefab"], "highway");
     }
 
@@ -466,7 +519,38 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(res["ok"], true);
-        let obs = observe_area(&c).await.unwrap();
+        let obs = observe_area(&c, ObserveAreaArgs { bounds: None }).await.unwrap();
         assert_eq!(obs["zones"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn observe_area_filters_by_bounds() {
+        let c = client().await;
+        for (x0, x1) in [(0.0_f32, 50.0_f32), (1000.0, 1050.0)] {
+            build_road(
+                &c,
+                BuildRoadArgs {
+                    from: Position { x: x0, y: 0.0, z: 0.0 },
+                    to: Position { x: x1, y: 0.0, z: 0.0 },
+                    road_type: "road".into(),
+                    snap: true,
+                },
+            )
+            .await
+            .unwrap();
+        }
+        let all = observe_area(&c, ObserveAreaArgs { bounds: None }).await.unwrap();
+        assert_eq!(all["network"]["segments"].as_array().unwrap().len(), 2);
+
+        let near = observe_area(
+            &c,
+            ObserveAreaArgs {
+                bounds: Some(crate::contract::Bounds { min_x: -10.0, min_z: -10.0, max_x: 100.0, max_z: 10.0 }),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(near["network"]["segments"].as_array().unwrap().len(), 1);
+        assert_eq!(near["network"]["nodes"].as_array().unwrap().len(), 2);
     }
 }

@@ -18,8 +18,8 @@ use serde_json::Value;
 
 use crate::bridge_client::BridgeClient;
 use crate::service::{
-    self, BuildRoadArgs, BulldozeArgs, ControlTimeArgs, GetMetricsArgs, RenderMapArgs,
-    ResetScenarioArgs, ServiceError, SetZoningArgs, UpgradeRoadArgs,
+    self, BuildRoadArgs, BulldozeArgs, ControlTimeArgs, GetMetricsArgs, ObserveAreaArgs,
+    RenderMapArgs, ResetScenarioArgs, ServiceError, SetZoningArgs, UpgradeRoadArgs,
 };
 
 #[derive(Clone)]
@@ -60,10 +60,14 @@ impl Skyline {
     }
 
     #[tool(
-        description = "Observe the playable area: network, buildings, zones, intersections, dead ends."
+        description = "Observe the playable area: road network, buildings, zones, intersections, dead ends. \
+            Optional `bounds` restricts to a rectangle."
     )]
-    async fn observe_area(&self) -> Result<CallToolResult, ErrorData> {
-        match service::observe_area(&self.client).await {
+    async fn observe_area(
+        &self,
+        Parameters(args): Parameters<ObserveAreaArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match service::observe_area(&self.client, args).await {
             Ok(v) => json_result(v),
             Err(e) => Ok(tool_error(e)),
         }

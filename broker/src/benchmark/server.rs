@@ -24,8 +24,8 @@ use crate::benchmark::state::RunState;
 use crate::bridge_client::BridgeClient;
 use crate::geometry::horizontal_distance;
 use crate::service::{
-    self, BuildRoadArgs, BulldozeArgs, ControlTimeArgs, GetMetricsArgs, RenderMapArgs,
-    ServiceError, SetZoningArgs, UpgradeRoadArgs,
+    self, BuildRoadArgs, BulldozeArgs, ControlTimeArgs, GetMetricsArgs, ObserveAreaArgs,
+    RenderMapArgs, ServiceError, SetZoningArgs, UpgradeRoadArgs,
 };
 
 #[derive(Clone)]
@@ -124,10 +124,11 @@ impl BenchmarkServer {
         }
     }
 
-    #[tool(description = "Observe the playable area: network, buildings, zones, intersections, dead ends.")]
-    async fn observe_area(&self) -> Result<CallToolResult, ErrorData> {
+    #[tool(description = "Observe the playable area: road network, buildings, zones, intersections, dead ends. \
+        Optional `bounds` restricts to a rectangle.")]
+    async fn observe_area(&self, Parameters(args): Parameters<ObserveAreaArgs>) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
-        match service::observe_area(&self.client).await {
+        match service::observe_area(&self.client, args).await {
             Ok(v) => self.finish(v).await,
             Err(e) => Ok(tool_err(e)),
         }

@@ -15,7 +15,7 @@ Score a Claude Code agent on improving traffic in a bad-traffic city.
      `skylinebench benchmark-finalize`, which settles the sim, measures the
      final window, scores, and writes the artifacts.
    - Use `--watch` to observe an interactive session instead of headless.
-   - Runs are serialized by a lock at `$TMPDIR/skylinebench.lock`; never start
+   - Runs are serialized by a lock at `${TMPDIR:-/tmp}/skylinebench.lock`; never start
      two runs against one game instance. `run.sh` keeps the machine awake
      (`caffeinate`) for the whole session.
 4. Read the results in `benchmark/runs/<timestamp>/`:

@@ -35,6 +35,8 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   echo "another benchmark run appears active (lock: $LOCK_DIR). Remove the dir if it is stale." >&2
   exit 1
 fi
+SESSION_DIR=""
+trap 'rm -rf "${SESSION_DIR:-}"; rmdir "$LOCK_DIR" 2>/dev/null' EXIT
 
 # Per-run session dir OUTSIDE the repo: the agent runs under a Seatbelt profile
 # that denies reading the repo (anti-cheating — run 20260609-191326 read the
@@ -46,7 +48,6 @@ fi
 SESSION_BASE="$HOME/Library/Caches/skylinebench"
 mkdir -p "$SESSION_BASE"
 SESSION_DIR="$(mktemp -d "$SESSION_BASE/$RUN_ID.XXXXXX")"
-trap 'rm -rf "$SESSION_DIR"; rmdir "$LOCK_DIR" 2>/dev/null' EXIT
 WORKSPACE="$SESSION_DIR/workspace"
 mkdir -p "$WORKSPACE"
 
@@ -100,9 +101,9 @@ SANDBOX=(sandbox-exec -f "$SANDBOX_PROFILE")
 KEEPAWAKE=()
 if command -v caffeinate >/dev/null; then KEEPAWAKE=(caffeinate -dims); fi
 if [ "$WATCH" -eq 1 ]; then
-  CMD=("${KEEPAWAKE[@]}" "${SANDBOX[@]}" claude --mcp-config "$MCP_CONFIG" --strict-mcp-config --allowedTools "$ALLOWED" --disallowedTools "$DISALLOWED" --permission-mode bypassPermissions "$PROMPT")
+  CMD=(${KEEPAWAKE[@]:+"${KEEPAWAKE[@]}"} "${SANDBOX[@]}" claude --mcp-config "$MCP_CONFIG" --strict-mcp-config --allowedTools "$ALLOWED" --disallowedTools "$DISALLOWED" --permission-mode bypassPermissions "$PROMPT")
 else
-  CMD=("${KEEPAWAKE[@]}" "${SANDBOX[@]}" claude -p "$PROMPT" --mcp-config "$MCP_CONFIG" --strict-mcp-config --allowedTools "$ALLOWED" --disallowedTools "$DISALLOWED" --permission-mode bypassPermissions --output-format stream-json --verbose)
+  CMD=(${KEEPAWAKE[@]:+"${KEEPAWAKE[@]}"} "${SANDBOX[@]}" claude -p "$PROMPT" --mcp-config "$MCP_CONFIG" --strict-mcp-config --allowedTools "$ALLOWED" --disallowedTools "$DISALLOWED" --permission-mode bypassPermissions --output-format stream-json --verbose)
 fi
 
 if [ "${DRY_RUN:-0}" = "1" ]; then

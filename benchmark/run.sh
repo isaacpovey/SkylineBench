@@ -33,6 +33,7 @@ mkdir -p "$OUT_DIR"
 # lives here: the broker binary copy, mcp.json, and the scratch workspace.
 # The agent may freely write/run code in its workspace; only repo reads die.
 SESSION_DIR="$(mktemp -d "${TMPDIR:-/tmp}/skylinebench-$RUN_ID.XXXXXX")"
+trap 'rm -rf "$SESSION_DIR"' EXIT
 WORKSPACE="$SESSION_DIR/workspace"
 mkdir -p "$WORKSPACE"
 
@@ -42,6 +43,7 @@ cat > "$SANDBOX_PROFILE" <<SB
 (allow default)
 (deny file-read* (subpath "$ROOT"))
 SB
+command -v sandbox-exec >/dev/null || { echo "sandbox-exec not found (macOS only)" >&2; exit 1; }
 
 # Always build a fresh release binary so the MCP server can never be a stale
 # build that lacks the `benchmark` subcommand (skipped under DRY_RUN). The
@@ -92,7 +94,10 @@ if [ "${DRY_RUN:-0}" = "1" ]; then
 fi
 
 if [ "$WATCH" -eq 1 ]; then
-  (cd "$WORKSPACE" && "${CMD[@]}")
+  # `|| true`: the broker closing the MCP connection at the wall-clock cap causes
+  # claude to exit non-zero — that's expected, not a failure (same rationale as
+  # the headless branch below).
+  (cd "$WORKSPACE" && "${CMD[@]}") || true
 else
   # Capture the raw stream-json to transcript.jsonl unchanged, render a
   # human-readable line per event to the console, and also save that to run.log.
@@ -108,7 +113,5 @@ fi
 # not sandboxed.
 echo "finalizing run (settle + final measurement, several minutes)…" >&2
 "$REPO_BIN" benchmark-finalize --out "$OUT_DIR" --mod-url "$MOD_URL"
-
-rm -rf "$SESSION_DIR"
 
 echo "artifacts in $OUT_DIR"

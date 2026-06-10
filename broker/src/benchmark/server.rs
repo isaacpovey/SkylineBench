@@ -177,12 +177,13 @@ impl BenchmarkServer {
         }
     }
 
-    #[tool(description = "Render the road network to a PNG image.")]
+    #[tool(description = "Render the road network to a PNG image: congestion colours, lane widths, \
+        one-way arrows, coordinate grid. Returns the image plus a JSON legend.")]
     async fn render_map(&self, Parameters(args): Parameters<RenderMapArgs>) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
         match service::render_map(&self.client, args).await {
-            Ok(png) => {
-                let data = base64::engine::general_purpose::STANDARD.encode(png);
+            Ok((png, legend)) => {
+                let data = base64::engine::general_purpose::STANDARD.encode(&png);
                 let progress = {
                     let mut s = self.state.lock().await;
                     s.check_timeout();
@@ -193,9 +194,13 @@ impl BenchmarkServer {
                     }
                     s.progress()
                 };
+                let mut text = legend;
+                if let Value::Object(ref mut map) = text {
+                    map.insert("benchmark_progress".into(), progress);
+                }
                 Ok(CallToolResult::success(vec![
                     Content::image(data, "image/png".to_string()),
-                    Content::text(serde_json::json!({ "benchmark_progress": progress }).to_string()),
+                    Content::text(text.to_string()),
                 ]))
             }
             Err(e) => Ok(tool_err(e)),

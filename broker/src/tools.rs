@@ -89,18 +89,19 @@ impl Skyline {
         }
     }
 
-    #[tool(description = "Render the road network to a PNG image.")]
+    #[tool(description = "Render the road network to a PNG image: congestion colours, lane widths, \
+        one-way arrows, coordinate grid. Returns the image plus a JSON legend.")]
     async fn render_map(
         &self,
         Parameters(args): Parameters<RenderMapArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         match service::render_map(&self.client, args).await {
-            Ok(png) => {
+            Ok((png, legend)) => {
                 let data = base64::engine::general_purpose::STANDARD.encode(png);
-                Ok(CallToolResult::success(vec![Content::image(
-                    data,
-                    "image/png".to_string(),
-                )]))
+                Ok(CallToolResult::success(vec![
+                    Content::image(data, "image/png".to_string()),
+                    Content::text(legend.to_string()),
+                ]))
             }
             Err(e) => Ok(tool_error(e)),
         }

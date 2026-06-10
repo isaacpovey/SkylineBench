@@ -134,20 +134,23 @@ pub struct RenderMapArgs {
     pub width_px: u32,
     #[serde(default = "default_size")]
     pub height_px: u32,
+    /// World metres between gridlines (default 1000; 0 disables the grid).
+    #[serde(default)]
+    pub grid_spacing_m: Option<f32>,
 }
 
 fn default_size() -> u32 {
     512
 }
 
-/// Returns the rendered PNG bytes (the rmcp layer wraps these as an image
-/// content block).
+/// Returns the rendered PNG bytes plus a JSON legend describing the encoding
+/// (the rmcp layer returns both as image + text content blocks).
 pub async fn render_map(
     client: &BridgeClient,
     args: RenderMapArgs,
-) -> Result<Vec<u8>, ServiceError> {
+) -> Result<(Vec<u8>, Value), ServiceError> {
     let net = client.network().await?;
-    let loads = client
+    let loads: std::collections::HashMap<u32, f32> = client
         .metrics()
         .await?
         .traffic
@@ -155,13 +158,28 @@ pub async fn render_map(
         .iter()
         .map(|l| (l.segment_id, l.density))
         .collect();
+    // Clamp: a tiny spacing would draw millions of gridlines; 0 disables.
+    let grid_spacing_m = args.grid_spacing_m.unwrap_or(1000.0);
+    let grid_spacing_m = if grid_spacing_m <= 0.0 { 0.0 } else { grid_spacing_m.max(100.0) };
     let opts = RenderOptions {
         bounds: args.bounds.unwrap_or_else(playable_bounds),
         width_px: args.width_px,
         height_px: args.height_px,
-        grid_spacing_m: 1000.0,
+        grid_spacing_m,
     };
-    Ok(render_network(&net, &loads, &opts))
+    let legend = json!({
+        "bounds": opts.bounds,
+        "width_px": opts.width_px,
+        "height_px": opts.height_px,
+        "grid_spacing_m": opts.grid_spacing_m,
+        "encoding": {
+            "color": "segment congestion: green = free, yellow = busy, red = saturated, gray = no data",
+            "line_width": "scales with lane count",
+            "arrows": "white chevron = one-way travel direction",
+            "orientation": "+x right, +z up; gridlines every grid_spacing_m world metres, brighter lines are the x=0 / z=0 axes",
+        },
+    });
+    Ok((render_network(&net, &loads, &opts), legend))
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -457,19 +475,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn render_map_returns_png_bytes() {
+    async fn render_map_returns_png_and_legend() {
         let c = client().await;
-        let png = render_map(
+        let (png, legend) = render_map(
             &c,
-            RenderMapArgs {
-                bounds: None,
-                width_px: 64,
-                height_px: 64,
-            },
+            RenderMapArgs { bounds: None, width_px: 64, height_px: 64, grid_spacing_m: None },
         )
         .await
         .unwrap();
         assert_eq!(&png[1..4], b"PNG");
+        assert_eq!(legend["grid_spacing_m"], 1000.0);
+        assert!(legend["bounds"]["min_x"].is_number());
+        assert!(legend["encoding"]["color"].is_string());
+
+        let (_, clamped) = render_map(
+            &c,
+            RenderMapArgs { bounds: None, width_px: 64, height_px: 64, grid_spacing_m: Some(1.0) },
+        )
+        .await
+        .unwrap();
+        assert_eq!(clamped["grid_spacing_m"], 100.0);
     }
 
     #[tokio::test]

@@ -48,6 +48,99 @@ fn render_block(block: &Value) -> Option<String> {
     }
 }
 
+/// Format a single stream-json event into a compact, human-readable line for
+/// live console display during a run (spec §11 runner). Returns None for
+/// events with nothing useful to show. Distinct from `render_transcript`, which
+/// produces the full markdown record after the run.
+pub fn format_event_live(event: &Value) -> Option<String> {
+    match event.get("type")?.as_str()? {
+        "system" if event.get("subtype").and_then(|s| s.as_str()) == Some("init") => {
+            Some("● session started".to_string())
+        }
+        "assistant" => {
+            let blocks: Vec<String> = event
+                .get("message")?
+                .get("content")?
+                .as_array()?
+                .iter()
+                .filter_map(format_block_live)
+                .collect();
+            (!blocks.is_empty()).then(|| blocks.join("\n"))
+        }
+        "user" => {
+            let blocks: Vec<String> = event
+                .get("message")?
+                .get("content")?
+                .as_array()?
+                .iter()
+                .filter_map(format_result_live)
+                .collect();
+            (!blocks.is_empty()).then(|| blocks.join("\n"))
+        }
+        "result" => event
+            .get("result")
+            .and_then(|r| r.as_str())
+            .map(|r| format!("● done: {r}")),
+        _ => None,
+    }
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    let out: String = s.chars().take(max).collect();
+    if s.chars().count() > max {
+        format!("{out}…")
+    } else {
+        out
+    }
+}
+
+fn format_block_live(block: &Value) -> Option<String> {
+    match block.get("type")?.as_str()? {
+        "text" => {
+            let t = block.get("text")?.as_str()?.trim();
+            (!t.is_empty()).then(|| format!("  {t}"))
+        }
+        "tool_use" => {
+            let name = block
+                .get("name")?
+                .as_str()?
+                .trim_start_matches("mcp__skylinebench__");
+            let input = block.get("input").cloned().unwrap_or(Value::Null);
+            Some(format!("  → {name} {}", truncate(&input.to_string(), 120)))
+        }
+        _ => None,
+    }
+}
+
+fn format_result_live(block: &Value) -> Option<String> {
+    if block.get("type")?.as_str()? != "tool_result" {
+        return None;
+    }
+    let text: String = block
+        .get("content")?
+        .as_array()?
+        .iter()
+        .filter_map(|c| c.get("text").and_then(|t| t.as_str()))
+        .collect::<Vec<_>>()
+        .join(" ");
+    if let Ok(v) = serde_json::from_str::<Value>(&text) {
+        if let Some(p) = v.get("benchmark_progress") {
+            let f = |k: &str| p.get(k).and_then(|x| x.as_f64()).unwrap_or(0.0);
+            let rejected = v.get("ok").and_then(|x| x.as_bool()) == Some(false);
+            return Some(format!(
+                "    ↳ flow {:.1}/{:.0}  changes {}  spent {}  {}s left{}",
+                f("flow_current"),
+                f("flow_target"),
+                p.get("num_changes").and_then(|x| x.as_u64()).unwrap_or(0),
+                p.get("money_spent").and_then(|x| x.as_i64()).unwrap_or(0),
+                p.get("seconds_remaining").and_then(|x| x.as_u64()).unwrap_or(0),
+                if rejected { "  (rejected)" } else { "" },
+            ));
+        }
+    }
+    Some(format!("    ↳ {}", truncate(text.trim(), 80)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -71,5 +164,35 @@ mod tests {
     fn skips_malformed_lines() {
         let md = render_transcript("not json\n{}\n");
         assert!(md.is_empty(), "malformed-only input should render nothing, got: {md}");
+    }
+
+    #[test]
+    fn live_formats_assistant_text_and_tool_call() {
+        let event: Value = serde_json::from_str(
+            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Adding a bypass."},{"type":"tool_use","name":"mcp__skylinebench__build_road","input":{"road_type":"Highway"}}]}}"#,
+        )
+        .unwrap();
+        let line = format_event_live(&event).unwrap();
+        assert!(line.contains("Adding a bypass."), "text: {line}");
+        assert!(line.contains("→ build_road"), "stripped tool name: {line}");
+        assert!(line.contains("Highway"), "input: {line}");
+    }
+
+    #[test]
+    fn live_surfaces_benchmark_progress() {
+        let event: Value = serde_json::from_str(
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"{\"ok\":true,\"benchmark_progress\":{\"money_spent\":12000,\"num_changes\":3,\"flow_current\":12.3,\"flow_target\":95.0,\"seconds_remaining\":580}}"}]}]}}"#,
+        )
+        .unwrap();
+        let line = format_event_live(&event).unwrap();
+        assert!(line.contains("flow 12.3/95"), "flow vs target: {line}");
+        assert!(line.contains("changes 3"), "changes: {line}");
+        assert!(line.contains("580s left"), "time: {line}");
+    }
+
+    #[test]
+    fn live_skips_unknown_events() {
+        let event: Value = serde_json::from_str(r#"{"type":"rate_limit_event"}"#).unwrap();
+        assert!(format_event_live(&event).is_none());
     }
 }

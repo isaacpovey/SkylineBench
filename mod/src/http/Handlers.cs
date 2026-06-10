@@ -32,7 +32,10 @@ namespace SkylineBench.Http
         public static HttpReply RoadTypes()
         {
             var w = new JsonWriter(); w.BeginObject().Name("road_types").BeginArray();
-            foreach (var n in Prefabs.RoadNames()) w.Value(n);
+            foreach (var r in Prefabs.Roads())
+            {
+                w.BeginObject().Name("name").Value(r.Name).Name("construction_cost").Value(r.ConstructionCost).EndObject();
+            }
             w.EndArray().EndObject(); return HttpReply.Json(200, w.ToString());
         }
 

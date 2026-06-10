@@ -1,4 +1,5 @@
 // Modules are uncommented as each task lands.
+pub mod benchmark;
 pub mod bridge_client;
 pub mod contract;
 pub mod geometry;

@@ -177,7 +177,7 @@ pub async fn upgrade_road(
     args: UpgradeRoadArgs,
 ) -> Result<Value, ServiceError> {
     let road_types = client.road_types().await?.road_types;
-    if !road_types.contains(&args.road_type) {
+    if !road_types.iter().any(|t| t.name == args.road_type) {
         return Ok(action_error_value(ActionError::InvalidPrefab));
     }
     let res = client.upgrade_road(args.segment, &args.road_type).await?;

@@ -15,6 +15,7 @@ namespace SkylineBench.Tests
             tests.Add(new KeyValuePair<string, Action>("serialize: action error omits diff", ActionErr));
             tests.Add(new KeyValuePair<string, Action>("serialize: clock state", Clock));
             tests.Add(new KeyValuePair<string, Action>("serialize: load result", Load));
+            tests.Add(new KeyValuePair<string, Action>("serialize: road types shape", RoadTypesShape));
         }
 
         static void Network()
@@ -63,6 +64,16 @@ namespace SkylineBench.Tests
         {
             Assert.Equal("{\"ok\":true,\"city_loaded\":true}",
                 Serialize.Load(new LoadResultDto { Ok = true, CityLoaded = true }));
+        }
+
+        // Verifies the JSON object shape the handler emits; built directly with JsonWriter because game prefabs can't be loaded in the no-game test harness.
+        public static void RoadTypesShape()
+        {
+            var w = new SkylineBench.Json.JsonWriter();
+            w.BeginObject().Name("road_types").BeginArray();
+            w.BeginObject().Name("name").Value("Basic Road").Name("construction_cost").Value((long)1200).EndObject();
+            w.EndArray().EndObject();
+            Assert.Equal("{\"road_types\":[{\"name\":\"Basic Road\",\"construction_cost\":1200}]}", w.ToString());
         }
     }
 }

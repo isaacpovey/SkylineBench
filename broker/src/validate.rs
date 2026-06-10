@@ -1,4 +1,4 @@
-use crate::contract::{ActionError, Position};
+use crate::contract::{ActionError, Position, RoadType};
 use crate::geometry::{horizontal_distance, in_bounds, playable_bounds, MAX_SEGMENT_LENGTH_M};
 
 /// Validate a proposed straight road segment. `known_road_types` is the set the
@@ -9,9 +9,9 @@ pub fn validate_build_road(
     start: Position,
     end: Position,
     road_type: &str,
-    known_road_types: &[String],
+    known_road_types: &[RoadType],
 ) -> Result<(), ActionError> {
-    if !known_road_types.iter().any(|t| t == road_type) {
+    if !known_road_types.iter().any(|t| t.name == road_type) {
         return Err(ActionError::InvalidPrefab);
     }
     let bounds = playable_bounds();
@@ -36,8 +36,11 @@ mod tests {
         Position { x, y: 0.0, z }
     }
 
-    fn road_types() -> Vec<String> {
-        vec!["road".into(), "highway".into()]
+    fn road_types() -> Vec<RoadType> {
+        vec![
+            RoadType { name: "road".into(), construction_cost: 1000 },
+            RoadType { name: "highway".into(), construction_cost: 5000 },
+        ]
     }
 
     #[test]

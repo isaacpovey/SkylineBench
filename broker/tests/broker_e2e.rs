@@ -71,6 +71,6 @@ async fn full_observe_build_step_observe_loop() {
     );
 
     // The built segment is observable.
-    let obs = service::observe_area(&client).await.unwrap();
+    let obs = service::observe_area(&client, service::ObserveAreaArgs { bounds: None }).await.unwrap();
     assert_eq!(obs["network"]["segments"].as_array().unwrap().len(), 1);
 }

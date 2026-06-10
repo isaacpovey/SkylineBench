@@ -19,6 +19,11 @@ pub struct BenchConfig {
     /// Length (m) over which a road's `construction_cost` is charged once
     /// (cost = construction_cost · length / cost_base_length_m). Calibrated.
     pub cost_base_length_m: f64,
+    /// Ticks in one in-game calendar day (the CS1 game week is 4096 sim
+    /// frames, so a day is 4096/7 ≈ 585). `control_time` steps default to
+    /// one day and are capped at `max_step_days`.
+    pub day_ticks: u32,
+    pub max_step_days: u32,
 }
 
 impl Default for BenchConfig {
@@ -28,8 +33,8 @@ impl Default for BenchConfig {
             w_money: 0.20,
             w_changes: 0.20,
             target_gain: 40.0,
-            budget: 5_000_000.0,
-            change_cap: 100.0,
+            budget: 10_000_000.0,
+            change_cap: 300.0,
             flow_target: 95.0,
             window_ticks: 2048,
             settle_ticks: 8192,
@@ -37,7 +42,15 @@ impl Default for BenchConfig {
             wall_clock_cap_secs: 10_800,
             guard_ratio: 0.9,
             cost_base_length_m: 64.0,
+            day_ticks: 585,
+            max_step_days: 3,
         }
+    }
+}
+
+impl BenchConfig {
+    pub fn max_step_ticks(&self) -> u32 {
+        self.day_ticks * self.max_step_days
     }
 }
 
@@ -59,5 +72,21 @@ mod tests {
         assert_eq!(c.flow_target, 95.0);
         assert_eq!(c.wall_clock_cap_secs, 10_800);
         assert_eq!(c.guard_ratio, 0.9);
+    }
+
+    #[test]
+    fn day_ticks_default_to_one_calendar_day() {
+        let c = BenchConfig::default();
+        // One CS1 calendar day ≈ 585 ticks (the game week is 4096 frames).
+        assert_eq!(c.day_ticks, 585);
+        assert_eq!(c.max_step_days, 3);
+        assert_eq!(c.max_step_ticks(), 1755);
+    }
+
+    #[test]
+    fn default_resource_envelope() {
+        let c = BenchConfig::default();
+        assert_eq!(c.budget, 10_000_000.0);
+        assert_eq!(c.change_cap, 300.0);
     }
 }

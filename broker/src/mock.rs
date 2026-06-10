@@ -101,7 +101,7 @@ async fn metrics(State(s): State<MockState>) -> Json<Metrics> {
                 .iter()
                 .map(|sg| SegmentLoad {
                     segment_id: sg.id,
-                    density: 0.5,
+                    density: (sg.id % 10) as f32 / 10.0,
                 })
                 .collect(),
         },
@@ -198,6 +198,11 @@ async fn build_road(
     let seg_id = c.next_id;
     c.next_id += 1;
     let length = horizontal_distance(body.start, body.end);
+    let (one_way, speed_limit) = match body.prefab.as_str() {
+        "oneway" => (true, 1.2),
+        "highway" => (true, 2.0),
+        _ => (false, 1.0),
+    };
     c.segments.push(NetSegment {
         id: seg_id,
         start_node: start_id,
@@ -205,6 +210,9 @@ async fn build_road(
         prefab: body.prefab,
         lanes: 2,
         length,
+        one_way,
+        travel_direction: if one_way { "start_to_end".into() } else { "both".into() },
+        speed_limit,
     });
 
     Json(ActionResult {

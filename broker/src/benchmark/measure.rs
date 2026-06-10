@@ -1,11 +1,8 @@
 use std::path::Path;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 use crate::benchmark::config::BenchConfig;
-use crate::benchmark::record::{EndReason, FlowSamples, MapInfo, RunRecord, Tally, WindowStats};
+use crate::benchmark::record::{EndState, FlowSamples, RunRecord, WindowStats};
 use crate::benchmark::score::score_run;
-use crate::benchmark::state::RunState;
 use crate::bridge_client::{BridgeClient, BridgeError};
 
 pub struct WindowMeasurement {
@@ -57,25 +54,20 @@ pub async fn measure_window(
 
 /// Settle the sim, measure the final window, compute the score, and write
 /// `run-record.json` + `score.json` into `out_dir` (spec §3 steps 6–8, §10).
-/// Returns once both files are written.
-pub async fn finalize(
-    client: &BridgeClient,
-    state: Arc<Mutex<RunState>>,
-    out_dir: &Path,
-    map: MapInfo,
-    started_at: String,
-    ended_at: String,
-) -> anyhow::Result<()> {
-    let (cfg, baseline, baseline_flow_samples, tally, actions, end_reason) = {
-        let s = state.lock().await;
-        (
-            s.config.clone(),
-            s.baseline.clone(),
-            s.baseline_flow_samples.clone(),
-            Tally { num_changes: s.num_changes, money_spent: s.money_spent },
-            s.actions.clone(),
-            s.end_reason.unwrap_or(EndReason::Submit),
-        )
+/// Runs from an `EndState` snapshot so it can execute in a separate process
+/// after the agent session (and the MCP server) has exited.
+pub async fn finalize(client: &BridgeClient, end: EndState, out_dir: &Path) -> anyhow::Result<()> {
+    let cfg = end.config.clone();
+
+    // Baseline is normally captured on the agent's first tool call. If the run
+    // ended with no tool calls at all, fall back to measuring it now (the city
+    // is then still untouched, so it's a valid baseline).
+    let (baseline, baseline_flow_samples) = match end.baseline {
+        Some(b) => (b, end.baseline_flow_samples),
+        None => {
+            let m = measure_window(client, &cfg).await?;
+            (m.stats, m.samples)
+        }
     };
 
     let settle_cfg = BenchConfig { window_ticks: cfg.settle_ticks, window_samples: 1, ..cfg.clone() };
@@ -85,15 +77,15 @@ pub async fn finalize(
     let record = RunRecord {
         schema_version: 1,
         config: cfg.clone(),
-        map,
-        started_at,
-        ended_at,
-        end_reason,
+        map: end.map,
+        started_at: end.started_at,
+        ended_at: end.ended_at,
+        end_reason: end.end_reason,
         baseline,
         final_stats: final_m.stats,
         flow_samples: FlowSamples { baseline: baseline_flow_samples, final_samples: final_m.samples },
-        tally,
-        actions,
+        tally: end.tally,
+        actions: end.actions,
     };
     let score = score_run(&record, &cfg);
 
@@ -128,31 +120,64 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn finalize_writes_record_and_score() {
-        use crate::benchmark::record::{EndReason, MapInfo, WindowStats};
-        use crate::benchmark::state::RunState;
-        use std::collections::HashMap;
-        use std::sync::Arc;
-        use tokio::sync::Mutex;
+    async fn finalize_writes_record_and_score_from_end_state() {
+        use crate::benchmark::record::{ActionEntry, EndReason, EndState, MapInfo, Tally, WindowStats};
 
         let c = client().await;
-        let cfg = BenchConfig::default();
-        let baseline = WindowStats { flow_mean: 80.0, active_vehicles_mean: 0.0, population: 0 };
-        let state = Arc::new(Mutex::new(RunState::new(cfg.clone(), baseline, vec![], HashMap::new())));
-        state.lock().await.end_reason = Some(EndReason::Submit);
+        let end = EndState {
+            schema_version: 1,
+            config: BenchConfig::default(),
+            map: MapInfo { id: "gridlock-v1".into(), source: "test".into(), game_version: "1.21.1-f9".into() },
+            started_at: "t0".into(),
+            ended_at: "t1".into(),
+            end_reason: EndReason::Submit,
+            baseline: Some(WindowStats { flow_mean: 80.0, active_vehicles_mean: 0.0, population: 0 }),
+            baseline_flow_samples: vec![80.0],
+            tally: Tally { num_changes: 2, money_spent: 5_000 },
+            actions: vec![ActionEntry { seq: 1, tool: "build_road".into(), cost: 5_000 }],
+        };
 
         let dir = std::env::temp_dir().join(format!("sb-finalize-{}", std::process::id()));
-        let map = MapInfo { id: "gridlock-v1".into(), source: "test".into(), game_version: "1.21.1-f9".into() };
-        finalize(&c, state, &dir, map, "t0".into(), "t1".into()).await.unwrap();
+        finalize(&c, end, &dir).await.unwrap();
 
         let rec: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(dir.join("run-record.json")).unwrap()).unwrap();
         assert_eq!(rec["end_reason"], "submit");
         assert_eq!(rec["started_at"], "t0");
         assert_eq!(rec["ended_at"], "t1");
+        assert_eq!(rec["tally"]["num_changes"], 2);
         let score: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(dir.join("score.json")).unwrap()).unwrap();
         assert!(score["score"].is_number());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn finalize_measures_missing_baseline() {
+        use crate::benchmark::record::{EndReason, EndState, MapInfo, Tally};
+
+        let c = client().await;
+        let end = EndState {
+            schema_version: 1,
+            config: BenchConfig::default(),
+            map: MapInfo { id: "m".into(), source: "test".into(), game_version: "v".into() },
+            started_at: "t0".into(),
+            ended_at: "t1".into(),
+            end_reason: EndReason::Disconnect,
+            baseline: None,
+            baseline_flow_samples: vec![],
+            tally: Tally { num_changes: 0, money_spent: 0 },
+            actions: vec![],
+        };
+
+        let dir = std::env::temp_dir().join(format!("sb-finalize-nb-{}", std::process::id()));
+        finalize(&c, end, &dir).await.unwrap();
+
+        let rec: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("run-record.json")).unwrap()).unwrap();
+        // Mock city flow is 100; the measured fallback baseline must be present.
+        assert_eq!(rec["baseline"]["flow_mean"], 100.0);
+        assert_eq!(rec["end_reason"], "disconnect");
         std::fs::remove_dir_all(&dir).ok();
     }
 }

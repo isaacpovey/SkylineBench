@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace SkylineBench.Dto
 {
     public struct NodeDto { public uint Id; public float X; public float Y; public float Z; }
-    public struct SegmentDto { public uint Id; public uint StartNode; public uint EndNode; public string Prefab; public byte Lanes; public float Length; }
+    public struct SegmentDto { public uint Id; public uint StartNode; public uint EndNode; public string Prefab; public byte Lanes; public float Length; public bool OneWay; public string TravelDirection; public float SpeedLimit; }
     public sealed class NetworkDto { public List<NodeDto> Nodes = new List<NodeDto>(); public List<SegmentDto> Segments = new List<SegmentDto>(); }
 
     public struct BuildingDto { public uint Id; public string Prefab; public string Category; public float X; public float Y; public float Z; public float FootprintWidth; public float FootprintLength; public byte Level; }

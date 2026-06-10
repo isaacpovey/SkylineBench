@@ -18,8 +18,9 @@ use serde_json::Value;
 
 use crate::bridge_client::BridgeClient;
 use crate::service::{
-    self, BuildRoadArgs, BulldozeArgs, ControlTimeArgs, GetMetricsArgs, RenderMapArgs,
-    ResetScenarioArgs, ServiceError, SetZoningArgs, UpgradeRoadArgs,
+    self, BuildRoadArgs, BulldozeArgs, ControlTimeArgs, GetMetricsArgs, ObserveAreaArgs,
+    QuerySegmentsArgs, RenderMapArgs, ResetScenarioArgs, ServiceError, SetZoningArgs,
+    TraceRouteArgs, UpgradeRoadArgs,
 };
 
 #[derive(Clone)]
@@ -60,27 +61,47 @@ impl Skyline {
     }
 
     #[tool(
-        description = "Observe the playable area: network, buildings, zones, intersections, dead ends."
+        description = "Observe the playable area: road network, buildings, zones, intersections, dead ends. \
+            Optional `bounds` restricts to a rectangle."
     )]
-    async fn observe_area(&self) -> Result<CallToolResult, ErrorData> {
-        match service::observe_area(&self.client).await {
+    async fn observe_area(
+        &self,
+        Parameters(args): Parameters<ObserveAreaArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match service::observe_area(&self.client, args).await {
             Ok(v) => json_result(v),
             Err(e) => Ok(tool_error(e)),
         }
     }
 
-    #[tool(description = "Render the road network to a PNG image.")]
+    #[tool(
+        description = "Query road segments sorted by congestion (default) — the 'worst N segments' \
+            search. Optional filters: min_density, bounds, prefab_contains; sort_by length or \
+            speed_limit instead. Returns density, direction, lanes, and midpoint per segment."
+    )]
+    async fn query_segments(
+        &self,
+        Parameters(args): Parameters<QuerySegmentsArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match service::query_segments(&self.client, args).await {
+            Ok(v) => json_result(v),
+            Err(e) => Ok(tool_error(e)),
+        }
+    }
+
+    #[tool(description = "Render the road network to a PNG image: congestion colours, lane widths, \
+        one-way arrows, coordinate grid. Returns the image plus a JSON legend.")]
     async fn render_map(
         &self,
         Parameters(args): Parameters<RenderMapArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         match service::render_map(&self.client, args).await {
-            Ok(png) => {
+            Ok((png, legend)) => {
                 let data = base64::engine::general_purpose::STANDARD.encode(png);
-                Ok(CallToolResult::success(vec![Content::image(
-                    data,
-                    "image/png".to_string(),
-                )]))
+                Ok(CallToolResult::success(vec![
+                    Content::image(data, "image/png".to_string()),
+                    Content::text(legend.to_string()),
+                ]))
             }
             Err(e) => Ok(tool_error(e)),
         }
@@ -110,7 +131,7 @@ impl Skyline {
         }
     }
 
-    #[tool(description = "List the available road types.")]
+    #[tool(description = "List the available road types (with construction cost).")]
     async fn list_road_types(&self) -> Result<CallToolResult, ErrorData> {
         match service::list_road_types(&self.client).await {
             Ok(v) => json_result(v),
@@ -150,9 +171,9 @@ impl Skyline {
         }
     }
 
-    #[tool(
-        description = "Change an existing road segment's type. Validates the new road_type first."
-    )]
+    #[tool(description = "Change an existing road segment's type. The segment is re-created \
+        under a NEW id — `replaced` in the response maps old_segment_id to new_segment_id; \
+        refresh any cached ids.")]
     async fn upgrade_road(
         &self,
         Parameters(args): Parameters<UpgradeRoadArgs>,
@@ -169,6 +190,19 @@ impl Skyline {
         Parameters(args): Parameters<SetZoningArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         match service::set_zoning(&self.client, args).await {
+            Ok(v) => json_result(v),
+            Err(e) => Ok(tool_error(e)),
+        }
+    }
+
+    #[tool(description = "Estimate the route traffic would take between two positions \
+        (snapped to nearest road nodes), honoring one-way directions and speed limits. \
+        Free read — use it to check whether a new link will actually attract traffic.")]
+    async fn trace_route(
+        &self,
+        Parameters(args): Parameters<TraceRouteArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match service::trace_route(&self.client, args).await {
             Ok(v) => json_result(v),
             Err(e) => Ok(tool_error(e)),
         }
@@ -200,7 +234,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registers_all_twelve_tools() {
+    fn registers_all_tools() {
         let tools = Skyline::tool_router().list_all();
         let mut names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
         names.sort_unstable();
@@ -215,9 +249,11 @@ mod tests {
                 "list_road_types",
                 "list_zone_types",
                 "observe_area",
+                "query_segments",
                 "render_map",
                 "reset_scenario",
                 "set_zoning",
+                "trace_route",
                 "upgrade_road",
             ]
         );

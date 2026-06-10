@@ -6,11 +6,13 @@ use serde_json::{json, Value};
 use crate::benchmark::config::BenchConfig;
 use crate::benchmark::cost::road_cost;
 use crate::benchmark::flow_window::FlowWindow;
-use crate::benchmark::record::{ActionEntry, EndReason, WindowStats};
+use crate::benchmark::record::{ActionEntry, EndReason, EndState, MapInfo, Tally, WindowStats};
 
 pub struct RunState {
     pub config: BenchConfig,
-    pub baseline: WindowStats,
+    /// Measured lazily on the agent's first tool call (None until then) so the
+    /// MCP `initialize` handshake isn't blocked by the slow baseline window.
+    pub baseline: Option<WindowStats>,
     pub baseline_flow_samples: Vec<f64>,
     pub road_costs: HashMap<String, i64>,
     pub num_changes: u32,
@@ -19,20 +21,16 @@ pub struct RunState {
     pub flow: FlowWindow,
     pub start: Instant,
     pub end_reason: Option<EndReason>,
+    pub render_seq: u32,
 }
 
 impl RunState {
-    pub fn new(
-        config: BenchConfig,
-        baseline: WindowStats,
-        baseline_flow_samples: Vec<f64>,
-        road_costs: HashMap<String, i64>,
-    ) -> Self {
+    pub fn new(config: BenchConfig, road_costs: HashMap<String, i64>) -> Self {
         let window = config.window_samples as usize;
         Self {
             config,
-            baseline,
-            baseline_flow_samples,
+            baseline: None,
+            baseline_flow_samples: Vec::new(),
             road_costs,
             num_changes: 0,
             money_spent: 0,
@@ -40,7 +38,13 @@ impl RunState {
             flow: FlowWindow::new(window),
             start: Instant::now(),
             end_reason: None,
+            render_seq: 0,
         }
+    }
+
+    pub fn next_render_seq(&mut self) -> u32 {
+        self.render_seq += 1;
+        self.render_seq
     }
 
     pub fn build_cost(&self, road_type: &str, length_m: f32) -> i64 {
@@ -79,6 +83,21 @@ impl RunState {
         }
     }
 
+    pub fn end_state(&self, map: MapInfo, started_at: String, ended_at: String) -> EndState {
+        EndState {
+            schema_version: 1,
+            config: self.config.clone(),
+            map,
+            started_at,
+            ended_at,
+            end_reason: self.end_reason.unwrap_or(EndReason::Disconnect),
+            baseline: self.baseline.clone(),
+            baseline_flow_samples: self.baseline_flow_samples.clone(),
+            tally: Tally { num_changes: self.num_changes, money_spent: self.money_spent },
+            actions: self.actions.clone(),
+        }
+    }
+
     /// Agent-facing telemetry (spec §7): resources + goal, never the score.
     pub fn progress(&self) -> Value {
         json!({
@@ -95,18 +114,12 @@ impl RunState {
 mod tests {
     use super::*;
     use crate::benchmark::config::BenchConfig;
-    use crate::benchmark::record::WindowStats;
     use std::collections::HashMap;
 
     fn state() -> RunState {
         let mut costs = HashMap::new();
         costs.insert("road".to_string(), 1000i64);
-        RunState::new(
-            BenchConfig::default(),
-            WindowStats { flow_mean: 6.0, active_vehicles_mean: 240.0, population: 3380 },
-            vec![],
-            costs,
-        )
+        RunState::new(BenchConfig::default(), costs)
     }
 
     #[test]
@@ -129,6 +142,26 @@ mod tests {
         assert!(p.get("score").is_none());
         assert!(p.get("composite_score").is_none());
         assert!(p.get("weights").is_none());
+    }
+
+    #[test]
+    fn end_state_snapshots_run_and_defaults_to_disconnect() {
+        use crate::benchmark::record::{EndReason, MapInfo};
+
+        let mut s = state();
+        s.record_mutation("build_road", 12_000);
+        let map = MapInfo { id: "m".into(), source: "test".into(), game_version: "v".into() };
+        let e = s.end_state(map, "t0".into(), "t1".into());
+        assert_eq!(e.end_reason, EndReason::Disconnect);
+        assert_eq!(e.tally.num_changes, 1);
+        assert_eq!(e.tally.money_spent, 12_000);
+        assert_eq!(e.actions.len(), 1);
+        assert!(e.baseline.is_none());
+
+        s.end_reason = Some(EndReason::Submit);
+        let map = MapInfo { id: "m".into(), source: "test".into(), game_version: "v".into() };
+        let e = s.end_state(map, "t0".into(), "t1".into());
+        assert_eq!(e.end_reason, EndReason::Submit);
     }
 
     #[test]

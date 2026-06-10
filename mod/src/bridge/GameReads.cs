@@ -14,24 +14,37 @@ namespace SkylineBench.Bridge
             {
                 var dto = new NetworkDto();
                 var nm = Singleton<NetManager>.instance;
-                for (uint i = 0; i < nm.m_nodes.m_buffer.Length; i++)
-                {
-                    var n = nm.m_nodes.m_buffer[i];
-                    if ((n.m_flags & NetNode.Flags.Created) == NetNode.Flags.None) continue;
-                    dto.Nodes.Add(new NodeDto { Id = i, X = n.m_position.x, Y = n.m_position.y, Z = n.m_position.z });
-                }
+                var roadNodeIds = new System.Collections.Generic.HashSet<uint>();
                 for (uint i = 0; i < nm.m_segments.m_buffer.Length; i++)
                 {
                     var s = nm.m_segments.m_buffer[i];
                     if ((s.m_flags & NetSegment.Flags.Created) == NetSegment.Flags.None) continue;
                     var info = s.Info;
+                    // Roads only: water pipes and power lines are also NetSegments
+                    // and previously polluted the network dump and rendered map.
+                    if (info == null || info.m_class == null || info.m_class.m_service != ItemClass.Service.Road) continue;
+                    bool hasFwd = info.m_hasForwardVehicleLanes;
+                    bool hasBwd = info.m_hasBackwardVehicleLanes;
+                    bool inverted = (s.m_flags & NetSegment.Flags.Invert) != NetSegment.Flags.None;
                     dto.Segments.Add(new SegmentDto
                     {
                         Id = i, StartNode = s.m_startNode, EndNode = s.m_endNode,
-                        Prefab = info != null ? info.name : "",
-                        Lanes = (byte)(info != null && info.m_lanes != null ? info.m_lanes.Length : 0),
-                        Length = s.m_averageLength
+                        Prefab = info.name != null ? info.name : "",
+                        Lanes = (byte)(info.m_lanes != null ? info.m_lanes.Length : 0),
+                        Length = s.m_averageLength,
+                        OneWay = Direction.IsOneWay(hasFwd, hasBwd),
+                        TravelDirection = Direction.Travel(hasFwd, hasBwd, inverted),
+                        SpeedLimit = info.m_averageVehicleLaneSpeed
                     });
+                    roadNodeIds.Add(s.m_startNode);
+                    roadNodeIds.Add(s.m_endNode);
+                }
+                for (uint i = 0; i < nm.m_nodes.m_buffer.Length; i++)
+                {
+                    var n = nm.m_nodes.m_buffer[i];
+                    if ((n.m_flags & NetNode.Flags.Created) == NetNode.Flags.None) continue;
+                    if (!roadNodeIds.Contains(i)) continue;
+                    dto.Nodes.Add(new NodeDto { Id = i, X = n.m_position.x, Y = n.m_position.y, Z = n.m_position.z });
                 }
                 return dto;
             }, TimeoutMs);
@@ -93,7 +106,12 @@ namespace SkylineBench.Bridge
                 {
                     var s = nm.m_segments.m_buffer[i];
                     if ((s.m_flags & NetSegment.Flags.Created) == NetSegment.Flags.None) continue;
-                    dto.SegmentLoads.Add(new SegmentLoadDto { SegmentId = i, Density = s.m_trafficDensity / 255f });
+                    var sInfo = s.Info;
+                    if (sInfo == null || sInfo.m_class == null || sInfo.m_class.m_service != ItemClass.Service.Road) continue;
+                    // m_trafficDensity is a byte the game rolls up to a max of
+                    // 100, not 255 — dividing by 255 pinned every saturated
+                    // segment at 0.39 and destroyed congestion ranking.
+                    dto.SegmentLoads.Add(new SegmentLoadDto { SegmentId = i, Density = Mathf.Min(1f, s.m_trafficDensity / 100f) });
                 }
                 var em = Singleton<EconomyManager>.instance;
                 dto.Funds = em.LastCashAmount;

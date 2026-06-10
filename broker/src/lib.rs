@@ -6,6 +6,7 @@ pub mod geometry;
 pub mod graph;
 pub mod mock;
 pub mod render;
+pub mod route;
 pub mod service;
 pub mod tools;
 pub mod validate;

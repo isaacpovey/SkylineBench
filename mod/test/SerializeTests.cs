@@ -22,9 +22,9 @@ namespace SkylineBench.Tests
         {
             var net = new NetworkDto();
             net.Nodes.Add(new NodeDto { Id = 1, X = -50f, Y = 0f, Z = 10f });
-            net.Segments.Add(new SegmentDto { Id = 7, StartNode = 1, EndNode = 2, Prefab = "Basic Road", Lanes = 2, Length = 100f });
+            net.Segments.Add(new SegmentDto { Id = 7, StartNode = 1, EndNode = 2, Prefab = "Basic Road", Lanes = 2, Length = 100f, OneWay = true, TravelDirection = "start_to_end", SpeedLimit = 2f });
             Assert.Equal(
-                "{\"nodes\":[{\"id\":1,\"x\":-50,\"y\":0,\"z\":10}],\"segments\":[{\"id\":7,\"start_node\":1,\"end_node\":2,\"prefab\":\"Basic Road\",\"lanes\":2,\"length\":100}]}",
+                "{\"nodes\":[{\"id\":1,\"x\":-50,\"y\":0,\"z\":10}],\"segments\":[{\"id\":7,\"start_node\":1,\"end_node\":2,\"prefab\":\"Basic Road\",\"lanes\":2,\"length\":100,\"one_way\":true,\"travel_direction\":\"start_to_end\",\"speed_limit\":2}]}",
                 Serialize.Network(net));
         }
 

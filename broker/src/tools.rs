@@ -154,9 +154,9 @@ impl Skyline {
         }
     }
 
-    #[tool(
-        description = "Change an existing road segment's type. Validates the new road_type first."
-    )]
+    #[tool(description = "Change an existing road segment's type. The segment is re-created \
+        under a NEW id — `replaced` in the response maps old_segment_id to new_segment_id; \
+        refresh any cached ids.")]
     async fn upgrade_road(
         &self,
         Parameters(args): Parameters<UpgradeRoadArgs>,

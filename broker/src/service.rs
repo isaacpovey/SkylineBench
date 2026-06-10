@@ -235,7 +235,15 @@ pub async fn upgrade_road(
         return Ok(action_error_value(ActionError::InvalidPrefab));
     }
     let res = client.upgrade_road(args.segment, &args.road_type).await?;
-    Ok(serde_json::to_value(res).unwrap())
+    let new_id = res.created_segments.first().copied();
+    let mut v = serde_json::to_value(res).unwrap();
+    if let (Some(new_id), Value::Object(map)) = (new_id, &mut v) {
+        map.insert(
+            "replaced".into(),
+            json!({ "old_segment_id": args.segment, "new_segment_id": new_id }),
+        );
+    }
+    Ok(v)
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -463,6 +471,32 @@ mod tests {
         .unwrap();
         let obs = observe_area(&c, ObserveAreaArgs { bounds: None }).await.unwrap();
         assert_eq!(obs["network"]["segments"].as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn upgrade_road_reports_replaced_ids() {
+        let c = client().await;
+        let built = build_road(
+            &c,
+            BuildRoadArgs {
+                from: Position { x: 0.0, y: 0.0, z: 0.0 },
+                to: Position { x: 50.0, y: 0.0, z: 0.0 },
+                road_type: "road".into(),
+                snap: true,
+            },
+        )
+        .await
+        .unwrap();
+        let seg_id = built["created_segments"][0].as_u64().unwrap();
+        let res = upgrade_road(
+            &c,
+            UpgradeRoadArgs { segment: seg_id as u32, road_type: "highway".into() },
+        )
+        .await
+        .unwrap();
+        assert_eq!(res["ok"], true);
+        assert_eq!(res["replaced"]["old_segment_id"], seg_id);
+        assert!(res["replaced"]["new_segment_id"].is_u64());
     }
 
     #[tokio::test]

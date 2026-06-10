@@ -124,11 +124,14 @@ else
   # `|| true`: if the broker hits the wall-clock cap it exits and closes the MCP
   # connection, so `claude` exits non-zero — that's expected, not a failure.
   (cd "$WORKSPACE" && "${CMD[@]}") | tee "$OUT_DIR/transcript.jsonl" | "$REPO_BIN" format-stream | tee "$OUT_DIR/run.log" || true
-  "$REPO_BIN" render-transcript --input "$OUT_DIR/transcript.jsonl" --out "$OUT_DIR/transcript.md"
 fi
 
 if [ -d "$SESSION_DIR/renders" ]; then
   mv "$SESSION_DIR/renders" "$OUT_DIR/renders"
+fi
+
+if [ "$WATCH" -ne 1 ]; then
+  "$REPO_BIN" render-transcript --input "$OUT_DIR/transcript.jsonl" --out "$OUT_DIR/transcript.md" || true
 fi
 
 # The slow settle + final measurement runs here, outside the agent session, so

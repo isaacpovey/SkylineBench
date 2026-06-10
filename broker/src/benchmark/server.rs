@@ -590,7 +590,22 @@ impl BenchmarkServer {
                         "ok": ok, "action": v,
                     }));
                 }
-                Err(e) => return Ok(tool_err(e)),
+                Err(e) => {
+                    results.push(serde_json::json!({
+                        "op_index": i, "source_op": source, "tool": tool_name(op),
+                        "valid": true, "estimated_cost": cost, "executed": false,
+                        "error": e.to_string(),
+                    }));
+                    return self
+                        .finish(serde_json::json!({
+                            "ok": false,
+                            "validate_only": false,
+                            "results": results,
+                            "total_estimated_cost": total_estimated_cost,
+                            "first_failed_at": first_failed_at.or(Some(i)),
+                        }))
+                        .await;
+                }
             }
         }
 

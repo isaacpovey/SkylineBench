@@ -131,7 +131,7 @@ impl Skyline {
         }
     }
 
-    #[tool(description = "List the available road types.")]
+    #[tool(description = "List the available road types (with construction cost).")]
     async fn list_road_types(&self) -> Result<CallToolResult, ErrorData> {
         match service::list_road_types(&self.client).await {
             Ok(v) => json_result(v),

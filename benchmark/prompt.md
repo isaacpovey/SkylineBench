@@ -1,7 +1,7 @@
 You are competing in SkylineBench: improve the traffic in this Cities: Skylines city.
 
 You have MCP tools to observe and modify the city:
-- Observe (free, unlimited, unscored): `get_city_overview`, `observe_area`, `get_metrics`, `list_road_types`, `list_zone_types`, `render_map`.
+- Observe (free, unlimited, unscored): `get_city_overview`, `observe_area`, `get_metrics`, `list_road_types`, `list_zone_types`, `render_map`, `query_segments` (worst-N congestion search), `trace_route` (estimate the path traffic takes between two points — use it to check a planned link will attract traffic).
 - Modify (these are your "changes"): `build_road`, `bulldoze`, `upgrade_road`, `set_zoning`.
   Note: `upgrade_road` re-creates the segment under a NEW id (the response maps old → new);
   refresh any segment ids you cached before reusing them.

@@ -238,5 +238,4 @@ mod tests {
         assert_eq!(density_color(0.5), Color::from_rgba8(230, 230, 80, 255));
         assert_eq!(density_color(1.0), Color::from_rgba8(230, 60, 50, 255));
     }
-
 }

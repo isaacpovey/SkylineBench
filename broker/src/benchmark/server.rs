@@ -52,6 +52,16 @@ pub fn with_progress(mut value: Value, state: &RunState) -> Value {
     value
 }
 
+/// Split a step of `total` ticks into chunks of at most `chunk` ticks, so each
+/// bridge call stays short and the whole tool call can bail out before the MCP
+/// client timeout instead of being killed by it.
+pub fn step_chunks(total: u32, chunk: u32) -> Vec<u32> {
+    let chunk = chunk.max(1);
+    let full = (0..total / chunk).map(move |_| chunk);
+    let rem = total % chunk;
+    full.chain((rem > 0).then_some(rem)).collect()
+}
+
 fn tool_err(err: ServiceError) -> CallToolResult {
     CallToolResult::error(vec![Content::text(err.to_string())])
 }
@@ -182,7 +192,8 @@ impl BenchmarkServer {
 
     #[tool(description = "Control simulation time: pause, resume, step, or set speed. \
         `step` defaults to 1 in-game day (585 ticks) when `ticks` is omitted; \
-        the maximum step is 3 days (1755 ticks).")]
+        the maximum step is 3 days (1755 ticks). Long steps are driven in chunks; \
+        if the response has `partial: true`, call step again for the remainder of the ticks.")]
     async fn control_time(&self, Parameters(args): Parameters<ControlTimeArgs>) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
         if self.run_ended().await {
@@ -193,29 +204,74 @@ impl BenchmarkServer {
             (s.config.day_ticks, s.config.max_step_ticks(), s.config.max_step_days)
         };
         let is_step = args.op == "step";
-        let args = if is_step {
-            let requested = args.ticks.unwrap_or(day_ticks);
-            if requested > max_ticks {
-                return Ok(CallToolResult::error(vec![Content::text(format!(
-                    "step of {requested} ticks exceeds the cap of {max_ticks} ticks \
-                     ({max_step_days} in-game days; 1 day ≈ {day_ticks} ticks). Request {max_ticks} or fewer."
-                ))]));
-            }
-            ControlTimeArgs { ticks: Some(requested), ..args }
-        } else {
-            args
-        };
-        match service::control_time(&self.client, args).await {
-            Ok(v) => {
-                // A transient metrics fetch failure just skips this flow sample; the
-                // next get_metrics/control_time call will resample. Non-fatal.
-                if let Ok(m) = self.client.metrics().await {
-                    self.state.lock().await.push_flow(m.traffic.flow_percent as f64);
+        if !is_step {
+            return match service::control_time(&self.client, args).await {
+                Ok(v) => {
+                    if let Ok(m) = self.client.metrics().await {
+                        self.state.lock().await.push_flow(m.traffic.flow_percent as f64);
+                    }
+                    self.finish(v).await
                 }
-                self.finish(v).await
-            }
-            Err(e) => Ok(tool_err(e)),
+                Err(e) => Ok(tool_err(e)),
+            };
         }
+
+        let requested = args.ticks.unwrap_or(day_ticks);
+        if requested > max_ticks {
+            return Ok(CallToolResult::error(vec![Content::text(format!(
+                "step of {requested} ticks exceeds the cap of {max_ticks} ticks \
+                 ({max_step_days} in-game days; 1 day ≈ {day_ticks} ticks). Request {max_ticks} or fewer."
+            ))]));
+        }
+        let chunks = step_chunks(requested, day_ticks);
+        let started = std::time::Instant::now();
+        let wall_budget = std::time::Duration::from_secs(450);
+        let mut advanced: u32 = 0;
+        let mut last: Option<Value> = None;
+        for chunk in chunks {
+            match service::control_time(
+                &self.client,
+                ControlTimeArgs { op: "step".into(), ticks: Some(chunk), speed: None },
+            )
+            .await
+            {
+                Ok(v) => {
+                    advanced += chunk;
+                    last = Some(v);
+                }
+                Err(e) => return Ok(tool_err(e)),
+            }
+            if started.elapsed() > wall_budget {
+                break;
+            }
+        }
+        let mut out = match last {
+            Some(v) => v,
+            // requested == 0: fall through to a single zero-tick call so the
+            // response still reports the clock state.
+            None => match service::control_time(&self.client, ControlTimeArgs { op: "step".into(), ticks: Some(0), speed: None }).await {
+                Ok(v) => v,
+                Err(e) => return Ok(tool_err(e)),
+            },
+        };
+        let partial = advanced < requested;
+        if let Value::Object(ref mut map) = out {
+            map.insert("ticks_advanced".into(), serde_json::json!(advanced));
+            map.insert("partial".into(), serde_json::json!(partial));
+            if partial {
+                map.insert(
+                    "message".into(),
+                    serde_json::json!(format!(
+                        "step ran out of wall-clock budget after {advanced} of {requested} ticks; \
+                         call control_time step again for the remainder"
+                    )),
+                );
+            }
+        }
+        if let Ok(m) = self.client.metrics().await {
+            self.state.lock().await.push_flow(m.traffic.flow_percent as f64);
+        }
+        self.finish(out).await
     }
 
     #[tool(description = "Build a road between two positions of a given road type.")]
@@ -502,6 +558,32 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(dir.join("end-state.json")).unwrap()).unwrap();
         assert_eq!(end["end_reason"], "submit");
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn chunked_step_advances_the_full_requested_ticks() {
+        let bench = bench_with_mock().await;
+        let res = bench
+            .control_time(Parameters(crate::service::ControlTimeArgs {
+                op: "step".into(),
+                ticks: Some(1755),
+                speed: None,
+            }))
+            .await
+            .unwrap();
+        let text = result_text(&res);
+        assert!(text.contains("\"tick\":1755"), "got: {text}");
+        assert!(text.contains("\"ticks_advanced\":1755"), "got: {text}");
+        assert!(text.contains("\"partial\":false"), "got: {text}");
+    }
+
+    #[test]
+    fn step_chunks_splits_into_days() {
+        assert_eq!(step_chunks(1755, 585), vec![585, 585, 585]);
+        assert_eq!(step_chunks(600, 585), vec![585, 15]);
+        assert_eq!(step_chunks(585, 585), vec![585]);
+        assert_eq!(step_chunks(10, 585), vec![10]);
+        assert_eq!(step_chunks(0, 585), Vec::<u32>::new());
     }
 
     #[tokio::test]

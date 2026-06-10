@@ -147,12 +147,21 @@ pub async fn render_map(
     args: RenderMapArgs,
 ) -> Result<Vec<u8>, ServiceError> {
     let net = client.network().await?;
+    let loads = client
+        .metrics()
+        .await?
+        .traffic
+        .segment_loads
+        .iter()
+        .map(|l| (l.segment_id, l.density))
+        .collect();
     let opts = RenderOptions {
         bounds: args.bounds.unwrap_or_else(playable_bounds),
         width_px: args.width_px,
         height_px: args.height_px,
+        grid_spacing_m: 1000.0,
     };
-    Ok(render_network(&net, &opts))
+    Ok(render_network(&net, &loads, &opts))
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]

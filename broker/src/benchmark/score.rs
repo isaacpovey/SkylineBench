@@ -40,12 +40,14 @@ mod tests {
     fn record(flow_gain: f64, money: i64, changes: u32, veh_base: f64, veh_final: f64) -> RunRecord {
         RunRecord {
             schema_version: 1,
+            config: BenchConfig::default(),
             map: MapInfo { id: "m".into(), source: "s".into(), game_version: "v".into() },
             started_at: "a".into(),
             ended_at: "b".into(),
             end_reason: EndReason::Submit,
             baseline: WindowStats { flow_mean: 10.0, active_vehicles_mean: veh_base, population: 100 },
             final_stats: WindowStats { flow_mean: 10.0 + flow_gain, active_vehicles_mean: veh_final, population: 100 },
+            flow_samples: FlowSamples { baseline: vec![], final_samples: vec![] },
             tally: Tally { num_changes: changes, money_spent: money },
             actions: vec![],
         }

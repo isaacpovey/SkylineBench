@@ -99,9 +99,14 @@ async fn main() -> anyhow::Result<()> {
 
             eprintln!("benchmark: measuring baseline…");
             let baseline = measure_window(&client, &cfg).await?;
-            eprintln!("benchmark: baseline flow {:.1}%", baseline.flow_mean);
+            eprintln!("benchmark: baseline flow {:.1}%", baseline.stats.flow_mean);
 
-            let state = Arc::new(Mutex::new(RunState::new(cfg.clone(), baseline, road_costs)));
+            let state = Arc::new(Mutex::new(RunState::new(
+                cfg.clone(),
+                baseline.stats,
+                baseline.samples,
+                road_costs,
+            )));
 
             let watch_client = client.clone();
             let watch_state = state.clone();

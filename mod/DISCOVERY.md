@@ -72,9 +72,12 @@ The API reference flagged "no single vanilla traffic flow field." The probe foun
 - **Map extent / max segment length were NOT measured by this probe** (the probe didn't compute them). Working values stand: playable extent ≈ **±8,640 m** (consistent with a 9×9 grid of 1,920 m tiles → 17,280 m full span) and broker's `MAX_SEGMENT_LENGTH_M = 200` is a conservative guess. → **2b: measure** (e.g. `TerrainManager`/`NetManager` extents, and the game's segment-length limit) or accept the working values and tune from build failures.
 - **macOS `Managed/` path confirmed:** `…/Cities.app/Contents/Resources/Data/Managed` with `ICities.dll`, `ColossalManaged.dll`, `Assembly-CSharp.dll`, `UnityEngine.dll`. Mod installs to `~/Library/Application Support/Colossal Order/Cities_Skylines/Addons/Mods/SkylineBench/`. `BuildConfig.applicationVersion` works (returned `"1.21.1-f9"`).
 
-## Screenshot camera — IMPLEMENTED, calibration PROVISIONAL ⚠️
-- `POST /screenshot` manipulates `CameraController` fields directly: `m_targetPosition` / `m_currentPosition` (world position), `m_targetSize` / `m_currentSize` (vertical view extent in metres), `m_targetAngle` / `m_currentAngle` (pitch/yaw vector), `m_freeCamera` (bool — hides game UI chrome).
-- The broker size constants in `broker/src/service.rs` are **provisional pending in-game calibration**: `OVERVIEW_MIN_SIZE_M = 1200`, `CLOSEUP_SIZE_M = 350`, `OVERVIEW_MARGIN = 1.15`. These have not yet been verified against the actual game view. → **Calibrate**: load the city, call `POST /screenshot` with a range of `size` values, compare the resulting frames to the expected scene extent, and update the constants.
+## Screenshot camera — RESOLVED ✅ (runtime-verified 2026-06-11)
+- `POST /screenshot` manipulates `CameraController` fields directly: `m_targetPosition` / `m_currentPosition` (world position), `m_targetSize` / `m_currentSize` (vertical view extent in metres), `m_targetAngle` / `m_currentAngle` (pitch/yaw vector), `m_freeCamera` (bool — hides game UI chrome). All confirmed against 1.21.1-f9.
+- **Verified in-game (2026-06-11, live city, tick 3.39M):** `POST /screenshot` returns `200 image/png` with the real framebuffer at the game-window resolution (1280×720 here), captured with UI chrome hidden via `m_freeCamera`. Two captures confirmed:
+  - `{"x":0,"z":0,"size":2000,"top_down":true}` → clean top-down view framing the whole city (roads/zones/river).
+  - `{"x":0,"z":0,"size":350,"top_down":false}` → angled 45° close-up of an intersection with visible building height — confirms the pitch difference between top-down and angled modes.
+- **Camera-size calibration:** framing at the tested sizes (overview 2000, close-up 350) is good and needs no adjustment, so the broker constants `OVERVIEW_MIN_SIZE_M = 1200` / `CLOSEUP_SIZE_M = 350` / `OVERVIEW_MARGIN = 1.15` in `broker/src/service.rs` are validated in magnitude (`m_targetSize` ≈ vertical view extent in metres: larger = more zoomed out). The computed-overview floor (1200) was not independently swept but sits below the verified-good 2000 default, so it is a safe lower bound.
 
 ---
 
@@ -104,6 +107,6 @@ Every wire endpoint exercised against the running game via raw HTTP to `127.0.0.
 | `POST /action/set-zone` | ✅ painted 64×64 m → 80 `residential_low` cells read back at expected coords |
 | `POST /clock` (pause/step) | ✅ exact `ClockState` shape; step re-pauses (overshoot +2, documented above) |
 | `POST /load-save` | ⚠️ returns `ok:true` then **crashes** mid-session — experimental (see load-save section) |
-| `POST /screenshot` | ⚠️ implemented; in-game calibration of camera size constants pending (see Screenshot camera section) |
+| `POST /screenshot` | ✅ (verified 2026-06-11) `200 image/png`, real framebuffer 1280×720, UI chrome hidden; top-down (size 2000) and angled (size 350) framing both good (see Screenshot camera section) |
 
 **Critical-fix confirmed:** `/clock` and `/load-save` return their dedicated `ClockState`/`LoadResult` shapes (not the generic `ActionResult`), so the broker — which has no serde defaults on those — deserializes them correctly. This was the one Critical finding from the final pre-merge review; it round-trips against the real game.

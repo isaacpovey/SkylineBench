@@ -32,6 +32,10 @@ impl RollingWindow {
     pub fn is_full(&self) -> bool {
         self.samples.len() == self.capacity
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.samples.is_empty()
+    }
 }
 
 #[cfg(test)]
@@ -51,6 +55,14 @@ mod tests {
     #[test]
     fn empty_window_mean_is_zero() {
         assert_eq!(RollingWindow::new(4).mean(), 0.0);
+    }
+
+    #[test]
+    fn is_empty_until_first_sample() {
+        let mut w = RollingWindow::new(4);
+        assert!(w.is_empty());
+        w.push(1.0);
+        assert!(!w.is_empty());
     }
 
     #[test]

@@ -64,6 +64,15 @@ impl RunState {
         }
     }
 
+    /// Install the baseline and restart telemetry windows so the end condition
+    /// is evaluated only on post-baseline samples.
+    pub fn set_baseline(&mut self, stats: WindowStats, samples: Vec<f64>) {
+        self.baseline = Some(stats);
+        self.baseline_flow_samples = samples;
+        self.congestion = RollingWindow::new(self.config.window_samples as usize);
+        self.flow = RollingWindow::new(self.config.window_samples as usize);
+    }
+
     pub fn record_mutation(&mut self, tool: &str, cost: i64) {
         self.num_changes += 1;
         self.money_spent += cost;
@@ -129,10 +138,10 @@ impl RunState {
         json!({
             "money_spent": self.money_spent,
             "num_changes": self.num_changes,
-            "congested_meters_current": self.congestion.mean(),
+            "congested_meters_current": (!self.congestion.is_empty()).then(|| self.congestion.mean()),
             "congested_meters_baseline": baseline_cm,
             "congested_meters_target": baseline_cm.map(|b| self.config.congestion_end_ratio * b),
-            "flow_current": self.flow.mean(),
+            "flow_current": (!self.flow.is_empty()).then(|| self.flow.mean()),
             "population": self.last_population,
             "abandoned_buildings": self.last_abandoned_buildings,
             "seconds_remaining": self.seconds_remaining(),
@@ -152,35 +161,9 @@ mod tests {
         RunState::new(BenchConfig::default(), costs)
     }
 
-    #[test]
-    fn records_changes_and_cost() {
-        let mut s = state();
-        s.record_mutation("build_road", 12_000);
-        s.record_mutation("set_zoning", 0);
-        assert_eq!(s.num_changes, 2);
-        assert_eq!(s.money_spent, 12_000);
-        assert_eq!(s.actions.len(), 2);
-        assert_eq!(s.actions[0].seq, 1);
-    }
-
-    #[test]
-    fn progress_omits_score_fields() {
-        let s = state();
-        let p = s.progress();
-        assert!(p["congested_meters_current"].is_number());
-        assert!(p["congested_meters_baseline"].is_null(), "no baseline yet");
-        assert!(p["seconds_remaining"].as_u64().unwrap() <= 10_800);
-        assert!(p.get("score").is_none());
-        assert!(p.get("composite_score").is_none());
-        assert!(p.get("weights").is_none());
-    }
-
-    #[test]
-    fn congestion_end_condition_arms_only_with_baseline() {
-        use crate::benchmark::record::{EndReason, WindowStats};
+    fn sample_metrics(density: f32) -> crate::contract::Metrics {
         use crate::contract::*;
-
-        let metrics = |density: f32| Metrics {
+        Metrics {
             tick: 0,
             traffic: TrafficMetrics {
                 flow_percent: 50.0,
@@ -196,24 +179,66 @@ mod tests {
                 employed: 0,
             },
             services: ServiceMetrics { happiness: 80, abandoned_buildings: 2 },
-        };
+        }
+    }
+
+    #[test]
+    fn records_changes_and_cost() {
+        let mut s = state();
+        s.record_mutation("build_road", 12_000);
+        s.record_mutation("set_zoning", 0);
+        assert_eq!(s.num_changes, 2);
+        assert_eq!(s.money_spent, 12_000);
+        assert_eq!(s.actions.len(), 2);
+        assert_eq!(s.actions[0].seq, 1);
+    }
+
+    #[test]
+    fn progress_omits_score_fields() {
+        let mut s = state();
+        let p = s.progress();
+        assert!(p["congested_meters_current"].is_null(), "no samples yet");
+        assert!(p["flow_current"].is_null(), "no samples yet");
+        assert!(p["congested_meters_baseline"].is_null(), "no baseline yet");
+        assert!(p["seconds_remaining"].as_u64().unwrap() <= 10_800);
+        assert!(p.get("score").is_none());
+        assert!(p.get("composite_score").is_none());
+        assert!(p.get("weights").is_none());
+
+        s.observe_metrics(&sample_metrics(0.9));
+        let p = s.progress();
+        assert!(p["congested_meters_current"].is_number(), "current appears after first sample");
+        assert!(p["flow_current"].is_number());
+    }
+
+    #[test]
+    fn congestion_end_condition_arms_only_with_baseline() {
+        use crate::benchmark::record::{EndReason, WindowStats};
 
         let mut s = state();
+        let window = s.config.window_samples as usize;
         // Without a baseline, even a fully clear window must not end the run.
-        for _ in 0..10 {
-            s.observe_metrics(&metrics(0.0));
+        for _ in 0..window {
+            s.observe_metrics(&sample_metrics(0.0));
         }
         assert_eq!(s.end_reason, None);
 
-        s.baseline = Some(WindowStats {
-            flow_mean: 50.0,
-            active_vehicles_mean: 100.0,
-            population: 1000,
-            congested_meters: 100.0,
-        });
-        for _ in 0..10 {
-            s.observe_metrics(&metrics(0.0)); // 0 ≤ 0.05 × 100
+        s.set_baseline(
+            WindowStats {
+                flow_mean: 50.0,
+                active_vehicles_mean: 100.0,
+                population: 1000,
+                congested_meters: 100.0,
+            },
+            Vec::new(),
+        );
+        // The pre-baseline samples were discarded: the end condition needs a
+        // full window of FRESH post-baseline observations before it can fire.
+        for _ in 0..window - 1 {
+            s.observe_metrics(&sample_metrics(0.0)); // 0 ≤ 0.05 × 100
         }
+        assert_eq!(s.end_reason, None, "stale pre-baseline samples must not count");
+        s.observe_metrics(&sample_metrics(0.0));
         assert_eq!(s.end_reason, Some(EndReason::CongestionTarget));
         assert_eq!(s.progress()["population"], 1000);
         assert_eq!(s.progress()["abandoned_buildings"], 2);

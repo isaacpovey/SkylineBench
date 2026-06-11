@@ -101,9 +101,14 @@ impl BenchmarkServer {
     /// tool call (same policy as end-state persistence).
     async fn persist_render(&self, png: &[u8], tick: u64, trigger: &str) {
         let Some(dir) = &self.renders_dir else { return };
-        let (seq, changes, flow) = {
+        let (seq, changes, flow, congested) = {
             let mut s = self.state.lock().await;
-            (s.next_render_seq(), s.num_changes, s.flow.mean())
+            (
+                s.next_render_seq(),
+                s.num_changes,
+                s.flow.mean(),
+                (!s.congestion.is_empty()).then(|| s.congestion.mean()),
+            )
         };
         let _ = std::fs::create_dir_all(dir);
         let name = format!("{seq:05}-tick{tick}.png");
@@ -113,7 +118,7 @@ impl BenchmarkServer {
         }
         let line = serde_json::json!({
             "seq": seq, "file": name, "tick": tick, "trigger": trigger,
-            "changes": changes, "flow": flow,
+            "changes": changes, "flow": flow, "congested": congested,
         });
         let appended = std::fs::OpenOptions::new()
             .create(true)
@@ -157,10 +162,19 @@ impl BenchmarkServer {
             s.config.clone()
         };
         if let Ok(m) = measure_window(&self.client, &cfg).await {
+            // Spec §2.2: a zero-congestion baseline makes the run unscorable.
+            // Warn loudly here so the problem is visible at minute zero instead
+            // of only at finalize (which remains the authoritative abort).
+            if m.stats.congested_meters <= 0.0 {
+                eprintln!(
+                    "benchmark: ERROR: baseline measured 0 congested road-meters — this run \
+                     CANNOT be scored (spec §2.2). The bridge mod may predate segment lengths \
+                     in metrics, or the map simply has no congestion. Finalize will abort."
+                );
+            }
             let mut s = self.state.lock().await;
             if s.baseline.is_none() {
-                s.baseline = Some(m.stats);
-                s.baseline_flow_samples = m.samples;
+                s.set_baseline(m.stats, m.samples);
             }
         }
     }
@@ -700,7 +714,10 @@ mod tests {
         let state = RunState::new(BenchConfig::default(), HashMap::new());
         let merged = with_progress(serde_json::json!({"ok": true}), &state);
         assert_eq!(merged["ok"], true);
-        assert!(merged["benchmark_progress"]["congested_meters_current"].is_number());
+        assert!(
+            merged["benchmark_progress"]["congested_meters_current"].is_null(),
+            "no telemetry samples yet"
+        );
     }
 
     async fn bench_with_mock() -> BenchmarkServer {
@@ -919,6 +936,10 @@ mod tests {
         assert_eq!(lines[0]["trigger"], "render_map");
         assert_eq!(lines[1]["trigger"], "step");
         assert!(lines[1]["tick"].is_u64());
+        assert!(
+            lines.iter().all(|l| l.as_object().unwrap().contains_key("congested")),
+            "index tracks the scored metric: {lines:?}"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 

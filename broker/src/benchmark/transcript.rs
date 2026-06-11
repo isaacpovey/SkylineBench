@@ -125,16 +125,17 @@ fn format_result_live(block: &Value) -> Option<String> {
         .join(" ");
     if let Ok(v) = serde_json::from_str::<Value>(&text) {
         if let Some(p) = v.get("benchmark_progress") {
-            let f = |k: &str| p.get(k).and_then(|x| x.as_f64()).unwrap_or(0.0);
+            let opt = |k: &str, prec: usize| {
+                p.get(k)
+                    .and_then(|x| x.as_f64())
+                    .map_or("?".to_string(), |n| format!("{n:.prec$}"))
+            };
             let rejected = v.get("ok").and_then(|x| x.as_bool()) == Some(false);
-            let target = p
-                .get("congested_meters_target")
-                .and_then(|x| x.as_f64())
-                .map_or("?".to_string(), |t| format!("{t:.0}"));
+            let target = opt("congested_meters_target", 0);
             return Some(format!(
-                "    ↳ congested {:.0}m/{target}m  flow {:.1}  changes {}  spent {}  {}s left{}",
-                f("congested_meters_current"),
-                f("flow_current"),
+                "    ↳ congested {}m/{target}m  flow {}  changes {}  spent {}  {}s left{}",
+                opt("congested_meters_current", 0),
+                opt("flow_current", 1),
                 p.get("num_changes").and_then(|x| x.as_u64()).unwrap_or(0),
                 p.get("money_spent").and_then(|x| x.as_i64()).unwrap_or(0),
                 p.get("seconds_remaining").and_then(|x| x.as_u64()).unwrap_or(0),
@@ -193,6 +194,17 @@ mod tests {
         assert!(line.contains("flow 12.3"), "flow diagnostic: {line}");
         assert!(line.contains("changes 3"), "changes: {line}");
         assert!(line.contains("580s left"), "time: {line}");
+    }
+
+    #[test]
+    fn live_renders_question_mark_for_null_current() {
+        let event: Value = serde_json::from_str(
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"{\"ok\":true,\"benchmark_progress\":{\"money_spent\":0,\"num_changes\":0,\"congested_meters_current\":null,\"congested_meters_target\":50.0,\"flow_current\":null,\"seconds_remaining\":10800}}"}]}]}}"#,
+        )
+        .unwrap();
+        let line = format_event_live(&event).unwrap();
+        assert!(line.contains("congested ?m/50m"), "null current renders ?: {line}");
+        assert!(line.contains("flow ?"), "null flow renders ?: {line}");
     }
 
     #[test]

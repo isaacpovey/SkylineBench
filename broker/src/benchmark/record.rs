@@ -2,11 +2,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::benchmark::config::BenchConfig;
 
+/// v2: congestion-based scoring — `WindowStats.congested_meters`,
+/// `ScoreNorms.congestion`, `Score.flow_gain`, `EndReason::CongestionTarget`.
+pub const SCHEMA_VERSION: u32 = 2;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EndReason {
     Submit,
-    FlowTarget,
+    /// Windowed congested meters fell to the configured fraction of baseline.
+    CongestionTarget,
     Timeout,
     /// The agent session closed without submit_solution (e.g. the agent gave
     /// up or the client crashed). Scored the same as a submit.
@@ -25,6 +30,7 @@ pub struct WindowStats {
     pub flow_mean: f64,
     pub active_vehicles_mean: f64,
     pub population: u32,
+    pub congested_meters: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -83,7 +89,7 @@ pub struct RunRecord {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ScoreNorms {
-    pub flow: f64,
+    pub congestion: f64,
     pub money: f64,
     pub changes: f64,
 }
@@ -93,6 +99,9 @@ pub struct Score {
     pub norm: ScoreNorms,
     pub weighted: ScoreNorms,
     pub invalid: bool,
+    /// Unweighted diagnostic: final flow mean − baseline flow mean. Not part
+    /// of the score.
+    pub flow_gain: f64,
     pub score: f64,
 }
 
@@ -102,7 +111,7 @@ mod tests {
 
     #[test]
     fn end_reason_serializes_snake() {
-        assert_eq!(serde_json::to_string(&EndReason::FlowTarget).unwrap(), "\"flow_target\"");
+        assert_eq!(serde_json::to_string(&EndReason::CongestionTarget).unwrap(), "\"congestion_target\"");
         assert_eq!(serde_json::to_string(&EndReason::Submit).unwrap(), "\"submit\"");
         assert_eq!(serde_json::to_string(&EndReason::Timeout).unwrap(), "\"timeout\"");
     }
@@ -115,13 +124,13 @@ mod tests {
     #[test]
     fn end_state_round_trips() {
         let e = EndState {
-            schema_version: 1,
+            schema_version: SCHEMA_VERSION,
             config: crate::benchmark::config::BenchConfig::default(),
             map: MapInfo { id: "gridlock-v1".into(), source: "test".into(), game_version: "1.21.1-f9".into() },
             started_at: "t0".into(),
             ended_at: "t1".into(),
             end_reason: EndReason::Submit,
-            baseline: Some(WindowStats { flow_mean: 61.0, active_vehicles_mean: 6291.0, population: 102_839 }),
+            baseline: Some(WindowStats { flow_mean: 61.0, active_vehicles_mean: 6291.0, population: 102_839, congested_meters: 500.0 }),
             baseline_flow_samples: vec![61.0, 60.8],
             tally: Tally { num_changes: 10, money_spent: 98_834 },
             actions: vec![ActionEntry { seq: 1, tool: "upgrade_road".into(), cost: 17_081 }],
@@ -134,14 +143,14 @@ mod tests {
     #[test]
     fn run_record_round_trips() {
         let r = RunRecord {
-            schema_version: 1,
+            schema_version: SCHEMA_VERSION,
             config: crate::benchmark::config::BenchConfig::default(),
             map: MapInfo { id: "gridlock-v1".into(), source: "workshop:123".into(), game_version: "1.21.1-f9".into() },
             started_at: "2026-06-09T00:00:00Z".into(),
             ended_at: "2026-06-09T01:00:00Z".into(),
             end_reason: EndReason::Submit,
-            baseline: WindowStats { flow_mean: 6.0, active_vehicles_mean: 240.0, population: 3380 },
-            final_stats: WindowStats { flow_mean: 41.0, active_vehicles_mean: 230.0, population: 3375 },
+            baseline: WindowStats { flow_mean: 6.0, active_vehicles_mean: 240.0, population: 3380, congested_meters: 500.0 },
+            final_stats: WindowStats { flow_mean: 41.0, active_vehicles_mean: 230.0, population: 3375, congested_meters: 100.0 },
             flow_samples: FlowSamples { baseline: vec![6.0], final_samples: vec![41.0] },
             tally: Tally { num_changes: 12, money_spent: 250_000 },
             actions: vec![ActionEntry { seq: 1, tool: "build_road".into(), cost: 12000 }],

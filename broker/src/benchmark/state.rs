@@ -4,9 +4,13 @@ use std::time::Instant;
 use serde_json::{json, Value};
 
 use crate::benchmark::config::BenchConfig;
+use crate::benchmark::congestion::instant_congested_meters;
 use crate::benchmark::cost::road_cost;
-use crate::benchmark::flow_window::FlowWindow;
-use crate::benchmark::record::{ActionEntry, EndReason, EndState, MapInfo, Tally, WindowStats};
+use crate::benchmark::record::{
+    ActionEntry, EndReason, EndState, MapInfo, Tally, WindowStats, SCHEMA_VERSION,
+};
+use crate::benchmark::rolling_window::RollingWindow;
+use crate::contract::Metrics;
 
 pub struct RunState {
     pub config: BenchConfig,
@@ -18,7 +22,10 @@ pub struct RunState {
     pub num_changes: u32,
     pub money_spent: i64,
     pub actions: Vec<ActionEntry>,
-    pub flow: FlowWindow,
+    pub flow: RollingWindow,
+    pub congestion: RollingWindow,
+    pub last_population: Option<u32>,
+    pub last_abandoned_buildings: Option<u32>,
     pub start: Instant,
     pub end_reason: Option<EndReason>,
     pub render_seq: u32,
@@ -35,7 +42,10 @@ impl RunState {
             num_changes: 0,
             money_spent: 0,
             actions: Vec::new(),
-            flow: FlowWindow::new(window),
+            flow: RollingWindow::new(window),
+            congestion: RollingWindow::new(window),
+            last_population: None,
+            last_abandoned_buildings: None,
             start: Instant::now(),
             end_reason: None,
             render_seq: 0,
@@ -64,10 +74,24 @@ impl RunState {
         });
     }
 
-    pub fn push_flow(&mut self, sample: f64) {
-        self.flow.push(sample);
-        if self.flow.target_reached(self.config.flow_target) && self.end_reason.is_none() {
-            self.end_reason = Some(EndReason::FlowTarget);
+    /// Fold one metrics sample into the run telemetry. The congestion end
+    /// condition needs the baseline (for the ratio), so it only arms once the
+    /// baseline window has been measured.
+    pub fn observe_metrics(&mut self, m: &Metrics) {
+        self.flow.push(m.traffic.flow_percent as f64);
+        self.congestion
+            .push(instant_congested_meters(&m.traffic.segment_loads, self.config.congestion_threshold));
+        self.last_population = Some(m.population.total);
+        self.last_abandoned_buildings = Some(m.services.abandoned_buildings);
+        let baseline_cm = self.baseline.as_ref().map(|b| b.congested_meters);
+        if let Some(base) = baseline_cm {
+            if base > 0.0
+                && self.congestion.is_full()
+                && self.congestion.mean() <= self.config.congestion_end_ratio * base
+                && self.end_reason.is_none()
+            {
+                self.end_reason = Some(EndReason::CongestionTarget);
+            }
         }
     }
 
@@ -85,7 +109,7 @@ impl RunState {
 
     pub fn end_state(&self, map: MapInfo, started_at: String, ended_at: String) -> EndState {
         EndState {
-            schema_version: 1,
+            schema_version: SCHEMA_VERSION,
             config: self.config.clone(),
             map,
             started_at,
@@ -98,13 +122,19 @@ impl RunState {
         }
     }
 
-    /// Agent-facing telemetry (spec §7): resources + goal, never the score.
+    /// Agent-facing telemetry (spec §7 + 2026-06-10 §3): resources, the scored
+    /// congestion signal, and neutral city-health facts. Never the score.
     pub fn progress(&self) -> Value {
+        let baseline_cm = self.baseline.as_ref().map(|b| b.congested_meters);
         json!({
             "money_spent": self.money_spent,
             "num_changes": self.num_changes,
+            "congested_meters_current": self.congestion.mean(),
+            "congested_meters_baseline": baseline_cm,
+            "congested_meters_target": baseline_cm.map(|b| self.config.congestion_end_ratio * b),
             "flow_current": self.flow.mean(),
-            "flow_target": self.config.flow_target,
+            "population": self.last_population,
+            "abandoned_buildings": self.last_abandoned_buildings,
             "seconds_remaining": self.seconds_remaining(),
         })
     }
@@ -137,11 +167,56 @@ mod tests {
     fn progress_omits_score_fields() {
         let s = state();
         let p = s.progress();
-        assert_eq!(p["flow_target"], 95.0);
+        assert!(p["congested_meters_current"].is_number());
+        assert!(p["congested_meters_baseline"].is_null(), "no baseline yet");
         assert!(p["seconds_remaining"].as_u64().unwrap() <= 10_800);
         assert!(p.get("score").is_none());
         assert!(p.get("composite_score").is_none());
         assert!(p.get("weights").is_none());
+    }
+
+    #[test]
+    fn congestion_end_condition_arms_only_with_baseline() {
+        use crate::benchmark::record::{EndReason, WindowStats};
+        use crate::contract::*;
+
+        let metrics = |density: f32| Metrics {
+            tick: 0,
+            traffic: TrafficMetrics {
+                flow_percent: 50.0,
+                active_vehicles: 100,
+                segment_loads: vec![SegmentLoad { segment_id: 1, density, length: 100.0 }],
+            },
+            economy: EconomyMetrics { balance: 0, weekly_income: 0, weekly_expenses: 0, funds: 0 },
+            population: PopulationMetrics {
+                total: 1000,
+                residential_demand: 0,
+                commercial_demand: 0,
+                workplace_demand: 0,
+                employed: 0,
+            },
+            services: ServiceMetrics { happiness: 80, abandoned_buildings: 2 },
+        };
+
+        let mut s = state();
+        // Without a baseline, even a fully clear window must not end the run.
+        for _ in 0..10 {
+            s.observe_metrics(&metrics(0.0));
+        }
+        assert_eq!(s.end_reason, None);
+
+        s.baseline = Some(WindowStats {
+            flow_mean: 50.0,
+            active_vehicles_mean: 100.0,
+            population: 1000,
+            congested_meters: 100.0,
+        });
+        for _ in 0..10 {
+            s.observe_metrics(&metrics(0.0)); // 0 ≤ 0.05 × 100
+        }
+        assert_eq!(s.end_reason, Some(EndReason::CongestionTarget));
+        assert_eq!(s.progress()["population"], 1000);
+        assert_eq!(s.progress()["abandoned_buildings"], 2);
     }
 
     #[test]

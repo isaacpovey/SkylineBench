@@ -127,10 +127,14 @@ fn format_result_live(block: &Value) -> Option<String> {
         if let Some(p) = v.get("benchmark_progress") {
             let f = |k: &str| p.get(k).and_then(|x| x.as_f64()).unwrap_or(0.0);
             let rejected = v.get("ok").and_then(|x| x.as_bool()) == Some(false);
+            let target = p
+                .get("congested_meters_target")
+                .and_then(|x| x.as_f64())
+                .map_or("?".to_string(), |t| format!("{t:.0}"));
             return Some(format!(
-                "    ↳ flow {:.1}/{:.0}  changes {}  spent {}  {}s left{}",
+                "    ↳ congested {:.0}m/{target}m  flow {:.1}  changes {}  spent {}  {}s left{}",
+                f("congested_meters_current"),
                 f("flow_current"),
-                f("flow_target"),
                 p.get("num_changes").and_then(|x| x.as_u64()).unwrap_or(0),
                 p.get("money_spent").and_then(|x| x.as_i64()).unwrap_or(0),
                 p.get("seconds_remaining").and_then(|x| x.as_u64()).unwrap_or(0),
@@ -181,11 +185,12 @@ mod tests {
     #[test]
     fn live_surfaces_benchmark_progress() {
         let event: Value = serde_json::from_str(
-            r#"{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"{\"ok\":true,\"benchmark_progress\":{\"money_spent\":12000,\"num_changes\":3,\"flow_current\":12.3,\"flow_target\":95.0,\"seconds_remaining\":580}}"}]}]}}"#,
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"{\"ok\":true,\"benchmark_progress\":{\"money_spent\":12000,\"num_changes\":3,\"congested_meters_current\":840.0,\"congested_meters_target\":50.0,\"flow_current\":12.3,\"seconds_remaining\":580}}"}]}]}}"#,
         )
         .unwrap();
         let line = format_event_live(&event).unwrap();
-        assert!(line.contains("flow 12.3/95"), "flow vs target: {line}");
+        assert!(line.contains("congested 840m/50m"), "congestion vs target: {line}");
+        assert!(line.contains("flow 12.3"), "flow diagnostic: {line}");
         assert!(line.contains("changes 3"), "changes: {line}");
         assert!(line.contains("580s left"), "time: {line}");
     }

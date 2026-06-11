@@ -201,14 +201,12 @@ impl BenchmarkServer {
     #[tool(description = "Get city metrics, optionally filtered to groups: traffic, economy, population, services.")]
     async fn get_metrics(&self, Parameters(args): Parameters<GetMetricsArgs>) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
-        match service::get_metrics(&self.client, args).await {
-            Ok(v) => {
-                if let Some(flow) = v.get("traffic").and_then(|t| t.get("flow_percent")).and_then(|f| f.as_f64()) {
-                    self.state.lock().await.push_flow(flow);
-                }
-                self.finish(v).await
+        match self.client.metrics().await {
+            Ok(m) => {
+                self.state.lock().await.observe_metrics(&m);
+                self.finish(service::metrics_value(&m, &args.groups)).await
             }
-            Err(e) => Ok(tool_err(e)),
+            Err(e) => Ok(tool_err(ServiceError::Bridge(e))),
         }
     }
 
@@ -266,7 +264,7 @@ impl BenchmarkServer {
 
     #[tool(description = "Control simulation time: pause, resume, step, or set speed. \
         `step` defaults to 1 in-game day (585 ticks) when `ticks` is omitted; \
-        the maximum step is 3 days (1755 ticks). Long steps are driven in chunks; \
+        the maximum step is 7 days (4095 ticks). Long steps are driven in chunks; \
         if the response has `partial: true`, call step again for the remainder of the ticks.")]
     async fn control_time(&self, Parameters(args): Parameters<ControlTimeArgs>) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
@@ -282,7 +280,7 @@ impl BenchmarkServer {
             return match service::control_time(&self.client, args).await {
                 Ok(v) => {
                     if let Ok(m) = self.client.metrics().await {
-                        self.state.lock().await.push_flow(m.traffic.flow_percent as f64);
+                        self.state.lock().await.observe_metrics(&m);
                     }
                     self.finish(v).await
                 }
@@ -351,7 +349,7 @@ impl BenchmarkServer {
             }
         }
         if let Ok(m) = self.client.metrics().await {
-            self.state.lock().await.push_flow(m.traffic.flow_percent as f64);
+            self.state.lock().await.observe_metrics(&m);
         }
         if self.renders_dir.is_some() {
             let frame = service::render_map(
@@ -656,8 +654,8 @@ impl BenchmarkServer {
 impl ServerHandler for BenchmarkServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
-            "SkylineBench benchmark: improve city traffic, then call submit_solution. \
-             Each response includes benchmark_progress (resources + goal).",
+            "SkylineBench benchmark: reduce the city's congested road-meters, then call \
+             submit_solution. Each response includes benchmark_progress (resources + goal).",
         )
     }
 }
@@ -702,7 +700,7 @@ mod tests {
         let state = RunState::new(BenchConfig::default(), HashMap::new());
         let merged = with_progress(serde_json::json!({"ok": true}), &state);
         assert_eq!(merged["ok"], true);
-        assert!(merged["benchmark_progress"]["flow_target"].is_number());
+        assert!(merged["benchmark_progress"]["congested_meters_current"].is_number());
     }
 
     async fn bench_with_mock() -> BenchmarkServer {
@@ -724,6 +722,7 @@ mod tests {
             flow_mean: 50.0,
             active_vehicles_mean: 10.0,
             population: 100,
+            congested_meters: 100.0,
         });
         BenchmarkServer::new(client, Arc::new(Mutex::new(st)))
     }
@@ -753,19 +752,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn step_above_three_days_is_rejected() {
+    async fn step_above_cap_is_rejected() {
         let bench = bench_with_mock().await;
         let res = bench
             .control_time(Parameters(crate::service::ControlTimeArgs {
                 op: "step".into(),
-                ticks: Some(4096),
+                ticks: Some(5000),
                 speed: None,
             }))
             .await
             .unwrap();
         assert_eq!(res.is_error, Some(true));
         let text = result_text(&res);
-        assert!(text.contains("1755"), "error should state the cap, got: {text}");
+        assert!(text.contains("4095"), "error should state the cap, got: {text}");
 
         // Rejected step must not have advanced the mock clock.
         let pause_res = bench
@@ -786,14 +785,14 @@ mod tests {
         let res = bench
             .control_time(Parameters(crate::service::ControlTimeArgs {
                 op: "step".into(),
-                ticks: Some(1755),
+                ticks: Some(4095),
                 speed: None,
             }))
             .await
             .unwrap();
         assert_ne!(res.is_error, Some(true), "exact-cap step should succeed");
         let text = result_text(&res);
-        assert!(text.contains("\"tick\":1755"), "clock should be at 1755, got: {text}");
+        assert!(text.contains("\"tick\":4095"), "clock should be at 4095, got: {text}");
     }
 
     #[tokio::test]
@@ -842,14 +841,14 @@ mod tests {
         let res = bench
             .control_time(Parameters(crate::service::ControlTimeArgs {
                 op: "step".into(),
-                ticks: Some(1755),
+                ticks: Some(4095),
                 speed: None,
             }))
             .await
             .unwrap();
         let text = result_text(&res);
-        assert!(text.contains("\"tick\":1755"), "got: {text}");
-        assert!(text.contains("\"ticks_advanced\":1755"), "got: {text}");
+        assert!(text.contains("\"tick\":4095"), "got: {text}");
+        assert!(text.contains("\"ticks_advanced\":4095"), "got: {text}");
         assert!(text.contains("\"partial\":false"), "got: {text}");
     }
 
@@ -954,6 +953,7 @@ mod tests {
             flow_mean: 50.0,
             active_vehicles_mean: 10.0,
             population: 100,
+            congested_meters: 100.0,
         });
         BenchmarkServer::new(client, Arc::new(Mutex::new(st)))
     }

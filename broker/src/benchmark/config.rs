@@ -1,21 +1,26 @@
 use serde::{Deserialize, Serialize};
 
-/// Benchmark scoring + protocol constants (spec §6). Values are calibration
-/// placeholders tuned against the chosen map during the verify step.
+/// Benchmark scoring + protocol constants (spec 2026-06-10 §6).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BenchConfig {
-    pub w_flow: f64,
+    pub w_congestion: f64,
     pub w_money: f64,
     pub w_changes: f64,
-    pub target_gain: f64,
+    /// Segment density (0..1) at or above which a segment counts as congested.
+    pub congestion_threshold: f64,
     pub budget: f64,
     pub change_cap: f64,
-    pub flow_target: f64,
+    /// Early-success: the run ends when windowed congested meters fall to this
+    /// fraction of the baseline.
+    pub congestion_end_ratio: f64,
     pub window_ticks: u32,
     pub settle_ticks: u32,
     pub window_samples: u32,
     pub wall_clock_cap_secs: u64,
-    pub guard_ratio: f64,
+    /// Invalid run when final population < pop_guard_ratio × baseline. The
+    /// null-control run (benchmark/experiments) showed a natural population
+    /// floor of ~87% of peak, so 0.8 tolerates lifecycle waves.
+    pub pop_guard_ratio: f64,
     /// Length (m) over which a road's `construction_cost` is charged once
     /// (cost = construction_cost · length / cost_base_length_m). Calibrated.
     pub cost_base_length_m: f64,
@@ -29,21 +34,21 @@ pub struct BenchConfig {
 impl Default for BenchConfig {
     fn default() -> Self {
         Self {
-            w_flow: 0.60,
+            w_congestion: 0.60,
             w_money: 0.20,
             w_changes: 0.20,
-            target_gain: 40.0,
+            congestion_threshold: 0.7,
             budget: 10_000_000.0,
             change_cap: 300.0,
-            flow_target: 95.0,
+            congestion_end_ratio: 0.05,
             window_ticks: 2048,
             settle_ticks: 8192,
             window_samples: 8,
             wall_clock_cap_secs: 10_800,
-            guard_ratio: 0.9,
+            pop_guard_ratio: 0.8,
             cost_base_length_m: 64.0,
             day_ticks: 585,
-            max_step_days: 3,
+            max_step_days: 7,
         }
     }
 }
@@ -61,26 +66,26 @@ mod tests {
     #[test]
     fn default_weights_sum_to_one() {
         let c = BenchConfig::default();
-        let sum = c.w_flow + c.w_money + c.w_changes;
+        let sum = c.w_congestion + c.w_money + c.w_changes;
         assert!((sum - 1.0).abs() < 1e-9, "weights sum to {sum}");
     }
 
     #[test]
-    fn default_flow_dominant() {
+    fn congestion_dominates_and_guards_are_calibrated() {
         let c = BenchConfig::default();
-        assert!(c.w_flow > c.w_money && c.w_flow > c.w_changes);
-        assert_eq!(c.flow_target, 95.0);
+        assert!(c.w_congestion > c.w_money && c.w_congestion > c.w_changes);
+        assert_eq!(c.congestion_threshold, 0.7);
+        assert_eq!(c.congestion_end_ratio, 0.05);
+        assert_eq!(c.pop_guard_ratio, 0.8);
         assert_eq!(c.wall_clock_cap_secs, 10_800);
-        assert_eq!(c.guard_ratio, 0.9);
     }
 
     #[test]
-    fn day_ticks_default_to_one_calendar_day() {
+    fn step_cap_is_seven_days() {
         let c = BenchConfig::default();
-        // One CS1 calendar day ≈ 585 ticks (the game week is 4096 frames).
         assert_eq!(c.day_ticks, 585);
-        assert_eq!(c.max_step_days, 3);
-        assert_eq!(c.max_step_ticks(), 1755);
+        assert_eq!(c.max_step_days, 7);
+        assert_eq!(c.max_step_ticks(), 4095);
     }
 
     #[test]

@@ -5,6 +5,9 @@ use crate::contract::SegmentLoad;
 /// Densities arrive as f32; comparing them against an f64 threshold directly
 /// would exclude segments sitting exactly at the threshold (0.7f32 widens to
 /// ~0.69999999). Narrow the threshold to f32 first so "at threshold" counts.
+/// The same narrowed compare applies to the window's mean path: means of
+/// f32-derived samples at the threshold are exact, because the 24-bit-mantissa
+/// summands fit easily in f64 with room to spare.
 fn meets(density_f64: f64, threshold: f64) -> bool {
     density_f64 >= f64::from(threshold as f32)
 }
@@ -30,7 +33,9 @@ struct SegmentAccum {
 /// Accumulates per-segment densities across a measurement window so congested
 /// meters are computed from each segment's MEAN density over the window, not
 /// per-sample flickers. A segment absent from a sample (e.g. bulldozed) only
-/// contributes the samples where it exists.
+/// contributes the samples where it exists. A segment id released and reused
+/// mid-window is conflated (last length wins) — acceptable because scoring
+/// windows run after the agent phase, when the network is no longer changing.
 #[derive(Debug, Default)]
 pub struct WindowAccum {
     per_segment: HashMap<u32, SegmentAccum>,

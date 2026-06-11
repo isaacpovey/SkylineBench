@@ -1,7 +1,8 @@
 use std::path::Path;
 
 use crate::benchmark::config::BenchConfig;
-use crate::benchmark::record::{EndState, FlowSamples, RunRecord, WindowStats};
+use crate::benchmark::congestion::WindowAccum;
+use crate::benchmark::record::{EndState, FlowSamples, RunRecord, WindowStats, SCHEMA_VERSION};
 use crate::benchmark::score::score_run;
 use crate::bridge_client::{BridgeClient, BridgeError};
 
@@ -31,6 +32,7 @@ pub async fn measure_window(
     let mut flow_sum = 0.0_f64;
     let mut veh_sum = 0.0_f64;
     let mut last_pop = 0u32;
+    let mut accum = WindowAccum::new();
     let mut samples = Vec::with_capacity(n_samples as usize);
     for _ in 0..n_samples {
         client.clock("step", Some(chunk), None).await?;
@@ -39,6 +41,7 @@ pub async fn measure_window(
         flow_sum += flow;
         veh_sum += m.traffic.active_vehicles as f64;
         last_pop = m.population.total;
+        accum.push(&m.traffic.segment_loads);
         samples.push(flow);
     }
     let n = n_samples as f64;
@@ -47,6 +50,7 @@ pub async fn measure_window(
             flow_mean: flow_sum / n,
             active_vehicles_mean: veh_sum / n,
             population: last_pop,
+            congested_meters: accum.congested_meters(cfg.congestion_threshold),
         },
         samples,
     })
@@ -69,13 +73,18 @@ pub async fn finalize(client: &BridgeClient, end: EndState, out_dir: &Path) -> a
             (m.stats, m.samples)
         }
     };
+    anyhow::ensure!(
+        baseline.congested_meters > 0.0,
+        "baseline congested_meters is 0 — the map has nothing to score against (spec §2.2); \
+         check that the mod emits segment lengths and the save actually has congestion"
+    );
 
     let settle_cfg = BenchConfig { window_ticks: cfg.settle_ticks, window_samples: 1, ..cfg.clone() };
     let _ = measure_window(client, &settle_cfg).await?;
     let final_m = measure_window(client, &cfg).await?;
 
     let record = RunRecord {
-        schema_version: 1,
+        schema_version: SCHEMA_VERSION,
         config: cfg.clone(),
         map: end.map,
         started_at: end.started_at,
@@ -116,6 +125,7 @@ mod tests {
         let m = measure_window(&c, &cfg).await.unwrap();
         assert_eq!(m.stats.flow_mean, 100.0);
         assert_eq!(m.stats.active_vehicles_mean, 0.0);
+        assert_eq!(m.stats.congested_meters, 0.0);
         assert_eq!(m.samples.len(), cfg.window_samples as usize);
     }
 
@@ -125,13 +135,13 @@ mod tests {
 
         let c = client().await;
         let end = EndState {
-            schema_version: 1,
+            schema_version: SCHEMA_VERSION,
             config: BenchConfig::default(),
             map: MapInfo { id: "gridlock-v1".into(), source: "test".into(), game_version: "1.21.1-f9".into() },
             started_at: "t0".into(),
             ended_at: "t1".into(),
             end_reason: EndReason::Submit,
-            baseline: Some(WindowStats { flow_mean: 80.0, active_vehicles_mean: 0.0, population: 0 }),
+            baseline: Some(WindowStats { flow_mean: 80.0, active_vehicles_mean: 0.0, population: 0, congested_meters: 500.0 }),
             baseline_flow_samples: vec![80.0],
             tally: Tally { num_changes: 2, money_spent: 5_000 },
             actions: vec![ActionEntry { seq: 1, tool: "build_road".into(), cost: 5_000 }],
@@ -146,19 +156,19 @@ mod tests {
         assert_eq!(rec["started_at"], "t0");
         assert_eq!(rec["ended_at"], "t1");
         assert_eq!(rec["tally"]["num_changes"], 2);
+        assert_eq!(rec["baseline"]["congested_meters"], 500.0);
         let score: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(dir.join("score.json")).unwrap()).unwrap();
         assert!(score["score"].is_number());
+        assert!(score["flow_gain"].is_number());
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    #[tokio::test]
-    async fn finalize_measures_missing_baseline() {
-        use crate::benchmark::record::{EndReason, EndState, MapInfo, Tally};
+    fn disconnect_end_state_without_baseline() -> EndState {
+        use crate::benchmark::record::{EndReason, MapInfo, Tally};
 
-        let c = client().await;
-        let end = EndState {
-            schema_version: 1,
+        EndState {
+            schema_version: SCHEMA_VERSION,
             config: BenchConfig::default(),
             map: MapInfo { id: "m".into(), source: "test".into(), game_version: "v".into() },
             started_at: "t0".into(),
@@ -168,16 +178,41 @@ mod tests {
             baseline_flow_samples: vec![],
             tally: Tally { num_changes: 0, money_spent: 0 },
             actions: vec![],
-        };
+        }
+    }
+
+    #[tokio::test]
+    async fn finalize_measures_missing_baseline() {
+        let c = client().await;
+        // Three roads: mock segment ids 3, 6, 9 → densities 0.3, 0.6, 0.9, so
+        // only the third (50 m) counts as congested at the 0.7 threshold.
+        for (x0, x1) in [(0.0_f32, 50.0_f32), (1000.0, 1050.0), (2000.0, 2050.0)] {
+            c.build_road(
+                crate::contract::Position { x: x0, y: 0.0, z: 0.0 },
+                crate::contract::Position { x: x1, y: 0.0, z: 0.0 },
+                "road",
+                true,
+            )
+            .await
+            .unwrap();
+        }
 
         let dir = std::env::temp_dir().join(format!("sb-finalize-nb-{}", std::process::id()));
-        finalize(&c, end, &dir).await.unwrap();
+        finalize(&c, disconnect_end_state_without_baseline(), &dir).await.unwrap();
 
         let rec: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(dir.join("run-record.json")).unwrap()).unwrap();
-        // Mock city flow is 100; the measured fallback baseline must be present.
-        assert_eq!(rec["baseline"]["flow_mean"], 100.0);
+        // The measured fallback baseline must be present.
+        assert_eq!(rec["baseline"]["congested_meters"], 50.0);
         assert_eq!(rec["end_reason"], "disconnect");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn finalize_bails_when_baseline_has_no_congestion() {
+        let c = client().await;
+        let dir = std::env::temp_dir().join(format!("sb-finalize-nc-{}", std::process::id()));
+        assert!(finalize(&c, disconnect_end_state_without_baseline(), &dir).await.is_err());
         std::fs::remove_dir_all(&dir).ok();
     }
 }

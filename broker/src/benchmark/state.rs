@@ -26,6 +26,7 @@ pub struct RunState {
     pub congestion: RollingWindow,
     pub last_population: Option<u32>,
     pub last_abandoned_buildings: Option<u32>,
+    pub last_happiness: Option<u8>,
     pub start: Instant,
     pub end_reason: Option<EndReason>,
     pub render_seq: u32,
@@ -46,6 +47,7 @@ impl RunState {
             congestion: RollingWindow::new(window),
             last_population: None,
             last_abandoned_buildings: None,
+            last_happiness: None,
             start: Instant::now(),
             end_reason: None,
             render_seq: 0,
@@ -92,6 +94,7 @@ impl RunState {
             .push(instant_congested_meters(&m.traffic.segment_loads, self.config.congestion_threshold));
         self.last_population = Some(m.population.total);
         self.last_abandoned_buildings = Some(m.services.abandoned_buildings);
+        self.last_happiness = Some(m.services.happiness);
         let baseline_cm = self.baseline.as_ref().map(|b| b.congested_meters);
         if let Some(base) = baseline_cm {
             if base > 0.0
@@ -144,6 +147,7 @@ impl RunState {
             "flow_current": (!self.flow.is_empty()).then(|| self.flow.mean()),
             "population": self.last_population,
             "abandoned_buildings": self.last_abandoned_buildings,
+            "happiness": self.last_happiness,
             "seconds_remaining": self.seconds_remaining(),
         })
     }
@@ -205,10 +209,13 @@ mod tests {
         assert!(p.get("composite_score").is_none());
         assert!(p.get("weights").is_none());
 
+        assert!(p["happiness"].is_null(), "no happiness before first sample");
+
         s.observe_metrics(&sample_metrics(0.9));
         let p = s.progress();
         assert!(p["congested_meters_current"].is_number(), "current appears after first sample");
         assert!(p["flow_current"].is_number());
+        assert_eq!(p["happiness"], 80, "happiness surfaced from the latest sample");
     }
 
     #[test]

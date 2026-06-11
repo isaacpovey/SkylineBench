@@ -36,7 +36,7 @@ The run ends when any of these happens:
 
 If any tool response contains `run_ended: true`, the run is already over — stop and finish your turn; further calls are pointless.
 
-Every tool response includes a `benchmark_progress` block (money spent, changes made, congested meters now / baseline / target, flow, population, abandoned buildings, seconds remaining). Use it to pace yourself.
+Every tool response includes a `benchmark_progress` block (money spent, changes made, congested meters now / baseline / target, flow, population, abandoned buildings, happiness, seconds remaining). Use it to pace yourself.
 
 Work method — repeat this loop:
 1. **Explore.** Survey the whole network (`render_map` at several zooms, `observe_area`, `get_metrics`) and find where traffic actually loses time — chokepoints, bad interchanges, missing links — not just where density looks high.

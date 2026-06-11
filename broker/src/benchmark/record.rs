@@ -16,6 +16,9 @@ pub enum EndReason {
     /// The agent session closed without submit_solution (e.g. the agent gave
     /// up or the client crashed). Scored the same as a submit.
     Disconnect,
+    /// The baseline window measured zero congested road-meters, so the run can
+    /// never be scored (spec §2.2). Aborted at baseline.
+    UnscorableBaseline,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -114,6 +117,10 @@ mod tests {
         assert_eq!(serde_json::to_string(&EndReason::CongestionTarget).unwrap(), "\"congestion_target\"");
         assert_eq!(serde_json::to_string(&EndReason::Submit).unwrap(), "\"submit\"");
         assert_eq!(serde_json::to_string(&EndReason::Timeout).unwrap(), "\"timeout\"");
+        assert_eq!(
+            serde_json::to_string(&EndReason::UnscorableBaseline).unwrap(),
+            "\"unscorable_baseline\""
+        );
     }
 
     #[test]

@@ -86,10 +86,14 @@ export MCP_TOOL_TIMEOUT="${MCP_TOOL_TIMEOUT:-600000}"
 CLAUDE_CONFIG_DIR="${BENCH_CLAUDE_CONFIG:-$HOME/Library/Application Support/skylinebench/claude-config}"
 mkdir -p "$CLAUDE_CONFIG_DIR"
 [ -f "$CLAUDE_CONFIG_DIR/.claude.json" ] || printf '{"hasCompletedOnboarding": true}\n' > "$CLAUDE_CONFIG_DIR/.claude.json"
-if ! grep -q oauthAccount "$CLAUDE_CONFIG_DIR/.claude.json" 2>/dev/null; then
-  echo "benchmark Claude config is not logged in. One-time setup:" >&2
-  echo "  CLAUDE_CONFIG_DIR=\"$CLAUDE_CONFIG_DIR\" claude  # then /login, then /exit" >&2
-  exit 1
+# Skip the OAuth gate when not actually launching the agent (DRY_RUN) or when
+# an API key is supplied (API-key workflows don't need an OAuth login).
+if [ "${DRY_RUN:-0}" != "1" ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+  if ! grep -q oauthAccount "$CLAUDE_CONFIG_DIR/.claude.json" 2>/dev/null; then
+    echo "benchmark Claude config is not logged in. One-time setup:" >&2
+    echo "  CLAUDE_CONFIG_DIR=\"$CLAUDE_CONFIG_DIR\" claude  # then /login, then /exit" >&2
+    exit 1
+  fi
 fi
 export CLAUDE_CONFIG_DIR
 

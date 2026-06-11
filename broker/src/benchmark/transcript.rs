@@ -28,6 +28,10 @@ fn render_event(event: Value) -> Option<String> {
 
 fn render_block(block: &Value) -> Option<String> {
     match block.get("type")?.as_str()? {
+        "thinking" => {
+            let t = block.get("thinking")?.as_str()?;
+            Some(format!("<details><summary>Thinking</summary>\n\n{t}\n\n</details>"))
+        }
         "text" => Some(block.get("text")?.as_str()?.to_string()),
         "tool_use" => {
             let name = block.get("name")?.as_str()?;
@@ -96,6 +100,13 @@ fn truncate(s: &str, max: usize) -> String {
 
 fn format_block_live(block: &Value) -> Option<String> {
     match block.get("type")?.as_str()? {
+        "thinking" => {
+            let t = block.get("thinking")?.as_str()?.trim();
+            (!t.is_empty()).then(|| {
+                let indented = t.lines().map(|l| format!("  {l}")).collect::<Vec<_>>().join("\n");
+                format!("  [thinking]\n{indented}")
+            })
+        }
         "text" => {
             let t = block.get("text")?.as_str()?.trim();
             (!t.is_empty()).then(|| format!("  {t}"))

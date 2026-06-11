@@ -428,9 +428,9 @@ async fn clock(State(s): State<MockState>, Json(body): Json<ClockBody>) -> Json<
     match body.op.as_str() {
         "pause" => c.paused = true,
         "resume" => c.paused = false,
-        // Mirrors the real game under a forced pause: tick counters keep
-        // advancing even though nothing would actually simulate.
-        "step" => c.tick += body.ticks.unwrap_or(0) as u64,
+        // Mirrors the real mod's bail under a forced pause: Step returns
+        // immediately and the tick does not move.
+        "step" if !forced_paused => c.tick += body.ticks.unwrap_or(0) as u64,
         _ => {}
     }
     Json(ClockState {

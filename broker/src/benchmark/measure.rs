@@ -61,6 +61,13 @@ pub async fn measure_window(
 /// Runs from an `EndState` snapshot so it can execute in a separate process
 /// after the agent session (and the MCP server) has exited.
 pub async fn finalize(client: &BridgeClient, end: EndState, out_dir: &Path) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        end.schema_version == SCHEMA_VERSION,
+        "end-state schema_version {} does not match this broker's SCHEMA_VERSION {} — \
+         finalize must run with the same broker build that wrote the end state",
+        end.schema_version,
+        SCHEMA_VERSION
+    );
     let cfg = end.config.clone();
 
     // Baseline is normally captured on the agent's first tool call. If the run
@@ -205,6 +212,16 @@ mod tests {
         // The measured fallback baseline must be present.
         assert_eq!(rec["baseline"]["congested_meters"], 50.0);
         assert_eq!(rec["end_reason"], "disconnect");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn finalize_bails_on_mismatched_schema_version() {
+        let c = client().await;
+        let end = EndState { schema_version: SCHEMA_VERSION + 1, ..disconnect_end_state_without_baseline() };
+        let dir = std::env::temp_dir().join(format!("sb-finalize-sv-{}", std::process::id()));
+        let err = finalize(&c, end, &dir).await.unwrap_err();
+        assert!(err.to_string().contains("schema_version"), "got: {err}");
         std::fs::remove_dir_all(&dir).ok();
     }
 

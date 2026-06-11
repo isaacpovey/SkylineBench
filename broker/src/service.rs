@@ -21,6 +21,7 @@ pub async fn get_city_overview(client: &BridgeClient) -> Result<Value, ServiceEr
     Ok(json!({
         "tick": health.tick,
         "paused": health.paused,
+        "forced_paused": health.forced_paused,
         "population": metrics.population.total,
         "funds": metrics.economy.funds,
         "traffic_flow_percent": metrics.traffic.flow_percent,
@@ -464,6 +465,7 @@ mod tests {
         let v = get_city_overview(&c).await.unwrap();
         assert_eq!(v["segment_count"], 0);
         assert_eq!(v["traffic_flow_percent"], 100.0);
+        assert_eq!(v["forced_paused"], false);
     }
 
     #[tokio::test]

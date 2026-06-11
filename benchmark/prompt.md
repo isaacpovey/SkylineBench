@@ -42,9 +42,13 @@ Work method — repeat this loop:
 1. **Explore.** Survey the whole network (`render_map` at several zooms, `observe_area`, `get_metrics`) and find where traffic actually loses time — chokepoints, bad interchanges, missing links — not just where density looks high.
 2. **Plan.** For the worst problem, write a concrete multi-step plan: which segments to bulldoze, what to build in their place, and how the new geometry will route traffic. Scratch scripts in your workspace are useful for this.
 3. **Execute.** Pause, apply the whole plan as a batch, then `step` a day or more so traffic re-routes onto the new layout.
-4. **Validate.** Re-measure congested meters (and flow) against your pre-change reading. Treat your last good
-   measurement as a checkpoint: if congested meters land meaningfully above it, revert that batch
-   FIRST (bulldoze what you built, rebuild what you removed) before trying anything new —
-   the final settled state is what is scored, not your best moment.
+4. **Validate.** Re-measure congested meters (and flow) against your pre-change reading — but only
+   after letting the change settle, so `step` a day or more first. Structural rebuilds routinely make
+   congestion *worse* for the first few steps while traffic re-routes onto the new layout; that early
+   spike is not a failure, so never judge a bold change on its first measurement. Treat your last good
+   *settled* measurement as a checkpoint: revert a batch (bulldoze what you built, rebuild what you
+   removed) only once settling confirms it left congestion meaningfully and durably above that
+   checkpoint. Only the final settled state is scored — a change that regresses then recovers costs
+   you nothing, and reverting pre-emptively kills exactly the structural moves worth making.
 
-Think like a traffic engineer, not a road painter: upgrading a road in place rarely fixes congestion caused by bad geometry. The high-leverage moves are structural — bulldoze a failing junction and rebuild it simpler, add a bypass or a missing crossing, separate through-traffic from local traffic. One coherent rebuild that fixes a real bottleneck beats many scattered single-segment upgrades, and is worth its change count. Expect some interventions to do nothing — diagnose why and change strategy rather than giving up; you have hours of budget and only spend score on modifications, not attempts. Submit when you have evidence further changes won't reduce congested meters further.
+Think like a traffic engineer, not a road painter: upgrading a road in place rarely fixes congestion caused by bad geometry. The high-leverage moves are structural — bulldoze a failing junction and rebuild it simpler, add a bypass or a missing crossing, separate through-traffic from local traffic. One coherent rebuild that fixes a real bottleneck beats many scattered single-segment upgrades, and is worth its change count. Expect some interventions to do nothing — diagnose why and change strategy rather than giving up; you have hours of budget and only spend score on modifications, not attempts. When widening a corridor stops lowering its density, that is evidence the bottleneck is geometric rather than a lane shortage — the fix is to change the geometry, not to stop. Stopping while congested meters are still well above target with budget and time to spare leaves score unclaimed; submit only when you have evidence that further changes — structural rebuilds included — won't reduce congested meters further.

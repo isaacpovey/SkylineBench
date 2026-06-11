@@ -24,8 +24,27 @@ Score a Claude Code agent on improving traffic in a bad-traffic city.
    - `transcript.md` / `transcript.jsonl` — what the agent did *(headless runs only)*, for diagnosing a poor score (harness issue vs prompt issue).
    - `renders/` — one PNG per agent `render_map` call plus an automatic
      full-map frame after every sim step, with `index.jsonl` (tick, changes,
-     flow, congested per frame). Timelapse:
-     `ffmpeg -framerate 4 -pattern_type glob -i 'benchmark/runs/<ts>/renders/*.png' -pix_fmt yuv420p timelapse.mp4`
+     flow, congested per frame).
+   - `screenshots/overview/` — a top-down overview frame captured from the live
+     game after every sim step.
+   - `screenshots/actions/` — an angled close-up captured after every successful
+     mutating action (build_road / upgrade_road / bulldoze / set_zoning /
+     apply_plan). Each screenshots directory has an `index.jsonl` sidecar with
+     per-frame metadata: seq, file, tick, trigger/action, changes, flow,
+     congested, caption.
+   - Screenshot capture is best-effort telemetry. If the mod lacks the
+     `/screenshot` endpoint (older mod) or a capture fails, the broker logs once
+     and disables screenshots for the rest of the run — a benchmark never fails
+     and no per-step latency is added retrying. Runs without screenshots simply
+     have no `screenshots/` dir.
+   - Timelapse: `skylinebench timelapse <run-dir>` (e.g.
+     `broker/target/release/skylinebench timelapse benchmark/runs/<ts>`).
+     Optional flags: `--fps <n>` (default 4), `--out <path>` (default
+     `<run-dir>/timelapse.mp4`). Requires `ffmpeg` on PATH (`brew install
+     ffmpeg`). The command composites a HUD strip (tick, flow %, congested
+     metres, changes count, and any action caption) onto each frame and
+     assembles an annotated mp4. It prefers real in-game screenshots under
+     `screenshots/` and falls back to `renders/` for older runs.
 
 ## Scoring (spec §4)
 `score = 0.60·congestion_reduction + 0.20·(1−norm(money)) + 0.20·(1−norm(changes))`,

@@ -441,6 +441,24 @@ async fn clock(State(s): State<MockState>, Json(body): Json<ClockBody>) -> Json<
     })
 }
 
+async fn screenshot(
+    State(s): State<MockState>,
+    Json(_body): Json<serde_json::Value>,
+) -> impl axum::response::IntoResponse {
+    let net = {
+        let c = s.city.lock().unwrap();
+        Network { nodes: c.nodes.clone(), segments: c.segments.clone() }
+    };
+    let opts = crate::render::RenderOptions {
+        bounds: crate::geometry::playable_bounds(),
+        width_px: 64,
+        height_px: 64,
+        grid_spacing_m: 0.0,
+    };
+    let png = crate::render::render_network(&net, &std::collections::HashMap::new(), &opts);
+    ([(axum::http::header::CONTENT_TYPE, "image/png")], png)
+}
+
 pub fn router() -> Router {
     Router::new()
         .route("/health", get(health))
@@ -457,6 +475,7 @@ pub fn router() -> Router {
         .route("/action/set-zone", post(set_zone))
         .route("/load-save", post(load_save))
         .route("/clock", post(clock))
+        .route("/screenshot", post(screenshot))
         .with_state(MockState::new())
 }
 

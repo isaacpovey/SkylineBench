@@ -189,6 +189,26 @@ impl BridgeClient {
             .await?)
     }
 
+    pub async fn screenshot(
+        &self,
+        x: f32,
+        z: f32,
+        size: f32,
+        top_down: bool,
+    ) -> Result<Vec<u8>, BridgeError> {
+        let body = serde_json::json!({ "x": x, "z": z, "size": size, "top_down": top_down });
+        Ok(self
+            .http
+            .post(format!("{}/screenshot", self.base))
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?
+            .bytes()
+            .await?
+            .to_vec())
+    }
+
     pub async fn clock(
         &self,
         op: &str,
@@ -250,6 +270,13 @@ mod tests {
         let net = client.network().await.unwrap();
         assert_eq!(net.segments.len(), 1);
         assert_eq!(net.nodes.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn fetches_screenshot_png_bytes() {
+        let client = BridgeClient::new(start_mock().await);
+        let png = client.screenshot(0.0, 0.0, 500.0, true).await.unwrap();
+        assert_eq!(&png[1..4], b"PNG");
     }
 
     #[tokio::test]

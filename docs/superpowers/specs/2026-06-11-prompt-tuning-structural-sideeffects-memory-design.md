@@ -46,7 +46,11 @@ one neutral telemetry signal — not domain hints.
 - Acceptable levers for #1/#3: soften backfiring steering, generic
   consequence-framing, surface telemetry (not instructions), and budget
   pressure. All four are in scope.
-- #3 framing stays **fully generic** — no "noise"/"livability"/road-type words.
+- #3 framing is an **explicit side-effect checklist**: prompt the agent to
+  reason about *categories* of consequence before committing — knock-on traffic
+  elsewhere in the network, livability (happiness / land value / noise), and
+  stranding parts of the city. This prompts *what to weigh*, not the map-specific
+  answer, so it stays fair: the agent must still diagnose which apply and act.
 - The optional stale-memory-dir cleanup (#6) is **out of scope** (tiny disk
   leak, not a correctness issue).
 
@@ -73,10 +77,16 @@ block.
 
 ### #3 — anticipate side-effects
 
-3. **Generic consequence-framing** (prompt). One domain-neutral sentence: every
-   modification has consequences beyond vehicle flow; reason about what is
-   adjacent to a change *before* committing, not after. No mention of noise,
-   livability, or road-type specifics.
+3. **Explicit side-effect checklist** (prompt). Before committing a change,
+   reason about its consequences beyond the immediate vehicle flow:
+   - will it push congestion onto / create new bottlenecks *elsewhere* in the
+     network (not just relieve the spot being changed)?
+   - will it hurt livability of the surrounding area — happiness, land value,
+     noise?
+   - will it strand or cut off parts of the city (lost frontage, broken
+     connections)?
+   This lists *what to weigh*, not the map-specific answer — the agent must
+   still diagnose which apply.
 4. **Telemetry (broker).** Add `happiness` (already read in `MetricsDto`, not
    yet surfaced) to the `benchmark_progress` block emitted on tool responses.
    It drops before abandonment cascades, giving a neutral early-warning the
@@ -100,8 +110,9 @@ block.
 
 ## Verification
 
-- A dry-run prompt diff review: confirm no map-specific or named-failure-mode
-  hints leaked in.
+- A dry-run prompt diff review: confirm no *map-specific* hints leaked in (the
+  side-effect checklist names categories of consequence, which is intended, but
+  must not name the specific segments/junctions/road-types of this map).
 - Broker builds; `happiness` appears in the `benchmark_progress` JSON (covered
   by the contract/serialization tests that already assert the progress block).
 - README and prompt progress-block descriptions list the same fields.

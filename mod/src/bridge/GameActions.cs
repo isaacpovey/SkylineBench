@@ -37,6 +37,7 @@ namespace SkylineBench.Bridge
                 if (!ok) return ActionResultDto.Fail(ErrorCode.Collision);
                 sm.m_currentBuildIndex += 2u;
                 result.CreatedSegments.Add(segId);
+                result.ZonedBuildingsFronting = (int)Frontage.CountZonedBuildingsNear(startPos, endPos, prefab.m_halfWidth);
                 return result;
             }, TimeoutMs);
         }
@@ -73,7 +74,22 @@ namespace SkylineBench.Bridge
             {
                 switch (req.TargetType)
                 {
-                    case "segment": Singleton<NetManager>.instance.ReleaseSegment((ushort)req.Id, false); break;
+                    case "segment":
+                    {
+                        var nm = Singleton<NetManager>.instance;
+                        var seg = nm.m_segments.m_buffer[req.Id];
+                        int fronting = -1;
+                        if ((seg.m_flags & NetSegment.Flags.Created) != NetSegment.Flags.None && seg.Info != null)
+                        {
+                            Vector3 aPos = nm.m_nodes.m_buffer[seg.m_startNode].m_position;
+                            Vector3 bPos = nm.m_nodes.m_buffer[seg.m_endNode].m_position;
+                            fronting = (int)Frontage.CountZonedBuildingsNear(aPos, bPos, seg.Info.m_halfWidth);
+                        }
+                        nm.ReleaseSegment((ushort)req.Id, false);
+                        var res = new ActionResultDto { Ok = true, ZonedBuildingsFronting = fronting };
+                        res.Destroyed.Add(req.Id);
+                        return res;
+                    }
                     case "node": Singleton<NetManager>.instance.ReleaseNode((ushort)req.Id); break;
                     case "building": Singleton<BuildingManager>.instance.ReleaseBuilding((ushort)req.Id); break;
                     default: return ActionResultDto.Fail(ErrorCode.InvalidArgs);
@@ -92,6 +108,8 @@ namespace SkylineBench.Bridge
                 var s = nm.m_segments.m_buffer[req.SegmentId];
                 if ((s.m_flags & NetSegment.Flags.Created) == NetSegment.Flags.None) return ActionResultDto.Fail(ErrorCode.InvalidArgs);
                 ushort startN = s.m_startNode, endN = s.m_endNode;
+                Vector3 aPos = nm.m_nodes.m_buffer[startN].m_position;
+                Vector3 bPos = nm.m_nodes.m_buffer[endN].m_position;
                 Vector3 sd = s.m_startDirection, ed = s.m_endDirection;
                 var sm = Singleton<SimulationManager>.instance;
                 var rand = new Randomizer(sm.m_currentBuildIndex);
@@ -100,7 +118,11 @@ namespace SkylineBench.Bridge
                 bool ok = nm.CreateSegment(out segId, ref rand, prefab, startN, endN, sd, ed, sm.m_currentBuildIndex, sm.m_currentBuildIndex, false);
                 if (!ok) return ActionResultDto.Fail(ErrorCode.Collision);
                 sm.m_currentBuildIndex += 2u;
-                var r = new ActionResultDto { Ok = true }; r.CreatedSegments.Add(segId); r.Destroyed.Add(req.SegmentId); return r;
+                var r = new ActionResultDto { Ok = true };
+                r.CreatedSegments.Add(segId);
+                r.Destroyed.Add(req.SegmentId);
+                r.ZonedBuildingsFronting = (int)Frontage.CountZonedBuildingsNear(aPos, bPos, prefab.m_halfWidth);
+                return r;
             }, TimeoutMs);
         }
 

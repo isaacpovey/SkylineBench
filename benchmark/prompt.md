@@ -40,7 +40,11 @@ Every tool response includes a `benchmark_progress` block (money spent, changes 
 
 Work method — repeat this loop:
 1. **Explore.** Survey the whole network (`render_map` at several zooms, `observe_area`, `get_metrics`) and find where traffic actually loses time — chokepoints, bad interchanges, missing links — not just where density looks high.
-2. **Plan.** For the worst problem, write a concrete multi-step plan: which segments to bulldoze, what to build in their place, and how the new geometry will route traffic. Scratch scripts in your workspace are useful for this.
+2. **Plan.** For the worst problem, write a concrete multi-step plan: which segments to bulldoze, what to build in their place, and how the new geometry will route traffic. Scratch scripts in your workspace are useful for this. Before you commit a change, think through its side effects, not just the local fix:
+   - Will it push congestion onto — or create new bottlenecks in — *other* parts of the network, rather than actually removing it?
+   - Will it hurt the livability of the surrounding area — happiness, land value, noise — for the buildings beside it?
+   - Will it strand or cut off part of the city (lost road frontage, a severed connection)?
+   A change that helps vehicles but empties the buildings around it loses you population and the very traffic you were trying to redistribute. Weigh these before you build, then watch the relevant signals after.
 3. **Execute.** Pause, apply the whole plan as a batch, then `step` a day or more so traffic re-routes onto the new layout.
 4. **Validate.** Re-measure congested meters (and flow) against your pre-change reading — but only
    after letting the change settle, so `step` a day or more first. Structural rebuilds routinely make

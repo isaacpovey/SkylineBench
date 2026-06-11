@@ -153,11 +153,18 @@ namespace SkylineBench.Bridge
                 Vector3 aPos = nm.m_nodes.m_buffer[startN].m_position;
                 Vector3 bPos = nm.m_nodes.m_buffer[endN].m_position;
                 Vector3 sd = s.m_startDirection, ed = s.m_endDirection;
+                // CreateSegment never transfers the Invert flag from the old segment,
+                // so one-way segments stored as end_to_start would silently flip.
+                // Swapping node order (and correspondingly swapping the tangent vectors)
+                // produces an equivalent non-inverted segment with the same traffic direction.
+                bool wasInverted = (s.m_flags & NetSegment.Flags.Invert) != NetSegment.Flags.None;
                 var sm = Singleton<SimulationManager>.instance;
                 var rand = new Randomizer(sm.m_currentBuildIndex);
                 nm.ReleaseSegment((ushort)req.SegmentId, true);
                 ushort segId;
-                bool ok = nm.CreateSegment(out segId, ref rand, prefab, startN, endN, sd, ed, sm.m_currentBuildIndex, sm.m_currentBuildIndex, false);
+                bool ok = wasInverted
+                    ? nm.CreateSegment(out segId, ref rand, prefab, endN, startN, ed, sd, sm.m_currentBuildIndex, sm.m_currentBuildIndex, false)
+                    : nm.CreateSegment(out segId, ref rand, prefab, startN, endN, sd, ed, sm.m_currentBuildIndex, sm.m_currentBuildIndex, false);
                 if (!ok) return ActionResultDto.Fail(ErrorCode.NetBufferFull);
                 sm.m_currentBuildIndex += 2u;
                 var r = new ActionResultDto { Ok = true };

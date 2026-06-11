@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 
 use crate::bridge_client::{BridgeClient, BridgeError};
 use crate::contract::{ActionError, Bounds, Position};
-use crate::geometry::playable_bounds;
+use crate::geometry::{in_bounds, playable_bounds};
 use crate::graph::build_connectivity;
 use crate::render::{render_network, RenderOptions};
 use crate::validate::validate_build_road;
@@ -211,7 +211,18 @@ pub async fn build_road(client: &BridgeClient, args: BuildRoadArgs) -> Result<Va
     let res = client
         .build_road(args.from, args.to, &args.road_type, args.snap)
         .await?;
-    Ok(serde_json::to_value(res).unwrap())
+    let isolated = res.ok && res.snapped_nodes.is_empty();
+    let mut v = serde_json::to_value(res).unwrap();
+    if isolated {
+        if let Value::Object(ref mut map) = v {
+            map.insert("isolated_island".into(), json!(true));
+            map.insert(
+                "warning".into(),
+                json!("Neither endpoint snapped to an existing node — this road is disconnected from the network. Traffic will not use it. To connect, place endpoints within 8 m of existing network nodes (use node positions from observe_area or start_node_pos/end_node_pos from query_segments, not midpoints)."),
+            );
+        }
+    }
+    Ok(v)
 }
 
 pub async fn list_road_types(client: &BridgeClient) -> Result<Value, ServiceError> {
@@ -250,6 +261,29 @@ pub async fn bulldoze(client: &BridgeClient, args: BulldozeArgs) -> Result<Value
     // buildings to remove (it returns INVALID_ARGS for an unknown id).
     if !matches!(args.target_type.as_str(), "segment" | "node" | "building") {
         return Ok(action_error_value(ActionError::InvalidArgs));
+    }
+    // Guard: refuse to demolish a segment whose endpoints fall outside the buildable
+    // area. The game allows such segments (outside connections, edge roads) but
+    // build_road rejects those coordinates, making demolition irreversible.
+    if args.target_type == "segment" {
+        let net = client.network().await?;
+        if let Some(seg) = net.segments.iter().find(|s| s.id == args.id) {
+            let bounds = playable_bounds();
+            let node_out = |nid: u32| {
+                net.nodes
+                    .iter()
+                    .find(|n| n.id == nid)
+                    .map(|n| !in_bounds(Position { x: n.x, y: n.y, z: n.z }, bounds))
+                    .unwrap_or(false)
+            };
+            if node_out(seg.start_node) || node_out(seg.end_node) {
+                return Ok(json!({
+                    "ok": false,
+                    "reason": "OUT_OF_BOUNDS",
+                    "warning": "Refused: one or both endpoints of this segment lie outside the buildable area. Demolition would be irreversible — build_road cannot recreate roads at those coordinates."
+                }));
+            }
+        }
     }
     let res = client.bulldoze(&args.target_type, args.id).await?;
     Ok(serde_json::to_value(res).unwrap())
@@ -434,7 +468,9 @@ pub async fn query_segments(
                         "speed_limit": s.speed_limit,
                         "length": s.length,
                         "start_node": s.start_node,
+                        "start_node_pos": { "x": ax, "z": az },
                         "end_node": s.end_node,
+                        "end_node_pos": { "x": bx, "z": bz },
                         "midpoint": { "x": (ax + bx) / 2.0, "z": (az + bz) / 2.0 },
                     }),
                 )
@@ -594,6 +630,57 @@ mod tests {
         assert_eq!(res["ok"], true);
         let obs = observe_area(&c, ObserveAreaArgs { bounds: None }).await.unwrap();
         assert_eq!(obs["network"]["segments"].as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn bulldoze_blocks_segment_with_out_of_bounds_node() {
+        // Plant an out-of-bounds segment by calling the bridge client directly —
+        // the mock has no bounds check, so this succeeds where service::build_road
+        // would reject it. This simulates a game-placed "outside connection" road.
+        let (addr, server) = crate::mock::bind("127.0.0.1:0".parse().unwrap()).await;
+        tokio::spawn(server);
+        let raw = BridgeClient::new(format!("http://{addr}"));
+        let oob = raw
+            .build_road(
+                Position { x: 0.0, y: 0.0, z: 0.0 },
+                Position { x: 20000.0, y: 0.0, z: 0.0 }, // well outside ±8640
+                "road",
+                false,
+            )
+            .await
+            .unwrap();
+        assert!(oob.ok);
+        let seg_id = oob.created_segments[0];
+
+        // Service-layer bulldoze must refuse because the endpoint is outside bounds.
+        let c = BridgeClient::new(format!("http://{addr}"));
+        let res = bulldoze(&c, BulldozeArgs { target_type: "segment".into(), id: seg_id })
+            .await
+            .unwrap();
+        assert_eq!(res["ok"], false, "out-of-bounds segment must be refused");
+        assert_eq!(res["reason"], "OUT_OF_BOUNDS");
+        assert!(res["warning"].as_str().unwrap().contains("irreversible"));
+    }
+
+    #[tokio::test]
+    async fn bulldoze_allows_segment_within_bounds() {
+        let c = client().await;
+        let built = build_road(
+            &c,
+            BuildRoadArgs {
+                from: Position { x: 0.0, y: 0.0, z: 0.0 },
+                to: Position { x: 50.0, y: 0.0, z: 0.0 },
+                road_type: "road".into(),
+                snap: false,
+            },
+        )
+        .await
+        .unwrap();
+        let seg_id = built["created_segments"][0].as_u64().unwrap() as u32;
+        let res = bulldoze(&c, BulldozeArgs { target_type: "segment".into(), id: seg_id })
+            .await
+            .unwrap();
+        assert_eq!(res["ok"], true, "in-bounds segment must be bulldozable");
     }
 
     #[tokio::test]

@@ -173,7 +173,9 @@ impl Skyline {
 
     #[tool(description = "Change an existing road segment's type. The segment is re-created \
         under a NEW id — `replaced` in the response maps old_segment_id to new_segment_id; \
-        refresh any cached ids.")]
+        refresh any cached ids. The original travel direction is preserved: an `end_to_start` \
+        segment stays `end_to_start` after upgrade. Always call `observe_area` or \
+        `query_segments` after upgrading one-way segments to confirm direction is correct.")]
     async fn upgrade_road(
         &self,
         Parameters(args): Parameters<UpgradeRoadArgs>,

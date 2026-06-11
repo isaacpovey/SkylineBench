@@ -7,6 +7,7 @@ pub mod persist;
 pub mod record;
 pub mod rolling_window;
 pub mod score;
+pub mod screenshots;
 pub mod server;
 pub mod state;
 pub mod transcript;

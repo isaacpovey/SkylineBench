@@ -53,6 +53,16 @@ enum Command {
         #[arg(long)]
         screenshots_dir: Option<std::path::PathBuf>,
     },
+    /// Assemble a run's frames (screenshots, or renders as fallback) into an
+    /// annotated timelapse mp4. Requires ffmpeg.
+    Timelapse {
+        run_dir: std::path::PathBuf,
+        #[arg(long, default_value_t = 4)]
+        fps: u32,
+        /// Output path (default: <run_dir>/timelapse.mp4).
+        #[arg(long)]
+        out: Option<std::path::PathBuf>,
+    },
     /// Finalize a finished benchmark run: read end-state.json from --out, run
     /// the settle + final measurement against the mod, and write
     /// run-record.json + score.json. Run this AFTER the agent session exits.
@@ -192,6 +202,10 @@ async fn main() -> anyhow::Result<()> {
             // submitting) is recorded as `disconnect`.
             persister.write(&*state.lock().await)?;
             eprintln!("benchmark: session ended; wrote end-state.json to {}", out.display());
+        }
+        Command::Timelapse { run_dir, fps, out } => {
+            let out = out.unwrap_or_else(|| run_dir.join("timelapse.mp4"));
+            skylinebench::timelapse::assemble(&run_dir, fps, &out)?;
         }
         Command::BenchmarkFinalize { mod_url, out } => {
             use skylinebench::benchmark::{finalize, EndState};

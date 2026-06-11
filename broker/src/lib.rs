@@ -9,4 +9,5 @@ pub mod render;
 pub mod route;
 pub mod service;
 pub mod tools;
+pub mod timelapse;
 pub mod validate;

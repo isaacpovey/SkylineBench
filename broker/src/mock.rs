@@ -230,6 +230,23 @@ async fn build_road(
     })
 }
 
+async fn validate_road(
+    State(_s): State<MockState>,
+    Json(body): Json<BuildRoadBody>,
+) -> Json<ActionResult> {
+    let known = road_types().iter().any(|r| r.name == body.prefab);
+    Json(ActionResult {
+        ok: known,
+        created_nodes: vec![],
+        created_segments: vec![],
+        snapped_nodes: vec![],
+        destroyed: vec![],
+        reason: if known { None } else { Some(ActionError::InvalidPrefab) },
+        zoned_buildings_fronting: if known { Some(0) } else { None },
+        colliding_buildings: vec![],
+    })
+}
+
 #[derive(Deserialize)]
 struct BulldozeBody {
     target_type: String,
@@ -421,6 +438,7 @@ pub fn router() -> Router {
         .route("/road-types", get(road_types_ep))
         .route("/zone-types", get(zone_types_ep))
         .route("/action/build-road", post(build_road))
+        .route("/action/validate-road", post(validate_road))
         .route("/action/bulldoze", post(bulldoze))
         .route("/action/upgrade-road", post(upgrade_road))
         .route("/action/set-zone", post(set_zone))

@@ -472,7 +472,9 @@ impl BenchmarkServer {
     #[tool(description = "Apply a batch of modifications in one call: build_road / build_polyline \
         (multi-point, auto-split under the 200 m segment cap) / upgrade_road / bulldoze / set_zoning. \
         Every op is validated and priced up front — any structurally invalid op rejects the WHOLE plan \
-        before anything executes. Set validate_only=true for a free dry-run (no changes recorded). \
+        before anything executes. Set validate_only=true for a free dry-run (no changes recorded) — \
+        build ops are also checked against the game's placement rules (collision/slope/area) and report \
+        `zoned_buildings_fronting`. \
         Each executed op counts as one change, identical to the single-op tools. The game can still \
         reject an op at execution time (e.g. COLLISION); stop_on_error (default true) then skips the rest; \
         with stop_on_error=false execution continues and `first_failed_at` reports the earliest failing op.")]
@@ -537,21 +539,42 @@ impl BenchmarkServer {
         let total_estimated_cost: i64 = validations.iter().map(|(_, _, _, c)| c).sum();
 
         if args.validate_only || !all_valid {
-            let results: Vec<Value> = validations
-                .iter()
-                .enumerate()
-                .map(|(i, (source, op, v, cost))| {
-                    serde_json::json!({
-                        "op_index": i,
-                        "source_op": source,
-                        "tool": tool_name(op),
-                        "valid": v.is_ok(),
-                        "reason": v.as_ref().err(),
-                        "estimated_cost": cost,
-                        "executed": false,
-                    })
-                })
-                .collect();
+            let mut results: Vec<Value> = Vec::with_capacity(validations.len());
+            for (i, (source, op, v, cost)) in validations.iter().enumerate() {
+                let mut row = serde_json::json!({
+                    "op_index": i,
+                    "source_op": source,
+                    "tool": tool_name(op),
+                    "valid": v.is_ok(),
+                    "reason": v.as_ref().err(),
+                    "estimated_cost": cost,
+                    "executed": false,
+                });
+                if args.validate_only && all_valid && v.is_ok() {
+                    if let ExecOp::Build { from, to, road_type, .. } = op {
+                        match self.client.validate_road(*from, *to, road_type).await {
+                            Ok(check) => {
+                                row["valid"] = serde_json::json!(check.ok);
+                                if let Some(r) = check.reason {
+                                    row["reason"] = serde_json::to_value(r).unwrap();
+                                }
+                                if let Some(n) = check.zoned_buildings_fronting {
+                                    row["zoned_buildings_fronting"] = serde_json::json!(n);
+                                }
+                                if !check.colliding_buildings.is_empty() {
+                                    row["colliding_buildings"] =
+                                        serde_json::to_value(&check.colliding_buildings).unwrap();
+                                }
+                            }
+                            Err(e) => {
+                                row["game_check_error"] = serde_json::json!(e.to_string());
+                            }
+                        }
+                    }
+                }
+                results.push(row);
+            }
+            let all_valid = results.iter().all(|r| r["valid"] == true);
             return self
                 .finish(serde_json::json!({
                     "ok": all_valid,
@@ -998,6 +1021,26 @@ mod tests {
         assert_eq!(v["results"].as_array().unwrap().len(), 4);
         assert!(v["total_estimated_cost"].as_i64().unwrap() > 0);
         assert_eq!(v["benchmark_progress"]["num_changes"], 0, "dry-run must not record changes");
+    }
+
+    #[tokio::test]
+    async fn apply_plan_validate_only_runs_game_checks_for_builds() {
+        let bench = bench_with_mock_costs().await;
+        let res = bench
+            .apply_plan(Parameters(ApplyPlanArgs {
+                ops: vec![plan_build(0.0, 50.0)],
+                validate_only: true,
+                stop_on_error: true,
+            }))
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&result_text(&res)).unwrap();
+        assert_eq!(v["ok"], true);
+        let row = &v["results"][0];
+        // The mock's validate-road returns ok with zero fronting buildings; the
+        // row must carry the game-check fact through.
+        assert_eq!(row["zoned_buildings_fronting"], 0, "row: {row}");
+        assert_eq!(v["benchmark_progress"]["num_changes"], 0);
     }
 
     #[tokio::test]

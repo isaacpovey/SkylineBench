@@ -111,6 +111,24 @@ impl BridgeClient {
             .await?)
     }
 
+    pub async fn validate_road(
+        &self,
+        start: Position,
+        end: Position,
+        prefab: &str,
+    ) -> Result<ActionResult, BridgeError> {
+        let body = BuildRoadBody { start, end, prefab, snap_to_existing_nodes: true };
+        Ok(self
+            .http
+            .post(format!("{}/action/validate-road", self.base))
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
+    }
+
     pub async fn bulldoze(&self, target_type: &str, id: u32) -> Result<ActionResult, BridgeError> {
         let body = serde_json::json!({ "target_type": target_type, "id": id });
         Ok(self

@@ -162,7 +162,9 @@ pub struct ZoneTypes {
 /// Normalised failure reasons for actions. Extends spec §5's mod-side set
 /// (`COLLISION`, `INSUFFICIENT_FUNDS`, `OUT_OF_BOUNDS`, `INVALID_PREFAB`,
 /// `SEGMENT_TOO_LONG`, `UNKNOWN`) with broker-side pre-validation reasons
-/// (`DEGENERATE_SEGMENT`, `INVALID_ARGS`).
+/// (`DEGENERATE_SEGMENT`, `INVALID_ARGS`). The placement-validation codes
+/// (`OBJECT_COLLISION`, `SLOPE_TOO_STEEP`, `OUT_OF_AREA`, `TOO_MANY_CONNECTIONS`,
+/// `NET_BUFFER_FULL`) come from the mod's BuildValidator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ActionError {
@@ -261,6 +263,26 @@ mod tests {
         let json = serde_json::to_string(&original).unwrap();
         let parsed: ActionResult = serde_json::from_str(&json).unwrap();
         assert_eq!(original, parsed);
+    }
+
+    #[test]
+    fn action_result_omits_optional_keys_when_absent() {
+        // Wire format: zoned_buildings_fronting: None and empty colliding_buildings
+        // must be absent from the JSON (skip_serializing_if guards the contract).
+        let result = ActionResult {
+            ok: true,
+            created_nodes: vec![],
+            created_segments: vec![],
+            snapped_nodes: vec![],
+            destroyed: vec![],
+            reason: None,
+            zoned_buildings_fronting: None,
+            colliding_buildings: vec![],
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(!v.as_object().unwrap().contains_key("zoned_buildings_fronting"), "key must be absent when None: {json}");
+        assert!(!v.as_object().unwrap().contains_key("colliding_buildings"), "key must be absent when empty: {json}");
     }
 
     #[test]

@@ -6,6 +6,7 @@ namespace SkylineBench.Json
     public struct SetZoneReq { public float MinX, MinZ, MaxX, MaxZ; public string ZoneType; }
     public struct ClockReq { public string Op; public int Ticks; public int Speed; }
     public struct LoadSaveReq { public string SaveName; }
+    public struct ScreenshotReq { public float X, Z, Size; public bool TopDown; }
 
     /// <summary>Pure: JsonValue (parsed request body) → typed action arg structs.
     /// Field names match the broker's bridge_client JSON bodies.</summary>
@@ -55,5 +56,16 @@ namespace SkylineBench.Json
         }
 
         public static LoadSaveReq LoadSave(JsonValue v) { return new LoadSaveReq { SaveName = v["save_name"].AsString() }; }
+
+        public static ScreenshotReq Screenshot(JsonValue v)
+        {
+            return new ScreenshotReq
+            {
+                X = (float)v["x"].AsDouble(),
+                Z = (float)v["z"].AsDouble(),
+                Size = v["size"].IsNull ? 1000f : (float)v["size"].AsDouble(),
+                TopDown = !v["top_down"].IsNull && v["top_down"].AsBool()
+            };
+        }
     }
 }

@@ -11,6 +11,7 @@ namespace SkylineBench.Tests
             tests.Add(new KeyValuePair<string, Action>("parse: build-road", BuildRoad));
             tests.Add(new KeyValuePair<string, Action>("parse: clock step", Clock));
             tests.Add(new KeyValuePair<string, Action>("parse: set-zone rect", SetZone));
+            tests.Add(new KeyValuePair<string, Action>("parse: screenshot", Screenshot));
         }
 
         static void BuildRoad()
@@ -34,6 +35,18 @@ namespace SkylineBench.Tests
             var r = RequestParse.SetZone(JsonReader.Parse("{\"rect\":{\"min_x\":0,\"min_z\":0,\"max_x\":16,\"max_z\":16},\"zone_type\":\"residential\"}"));
             Assert.Equal(0.0, r.MinX); Assert.Equal(16.0, r.MaxZ);
             Assert.Equal("residential", r.ZoneType);
+        }
+
+        static void Screenshot()
+        {
+            var r = RequestParse.Screenshot(JsonReader.Parse(
+                "{\"x\":-120.5,\"z\":340,\"size\":500,\"top_down\":true}"));
+            Assert.Equal(-120.5, r.X); Assert.Equal(340.0, r.Z); Assert.Equal(500.0, r.Size);
+            Assert.True(r.TopDown, "top_down");
+
+            var d = RequestParse.Screenshot(JsonReader.Parse("{\"x\":0,\"z\":0}"));
+            Assert.Equal(1000.0, d.Size);
+            Assert.True(!d.TopDown, "top_down defaults false");
         }
     }
 }

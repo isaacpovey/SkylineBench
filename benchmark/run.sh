@@ -104,7 +104,7 @@ cat > "$MCP_CONFIG" <<JSON
   "mcpServers": {
     "skylinebench": {
       "command": "sh",
-      "args": ["-c", "$BROKER_BIN benchmark --map $MAP --map-source $MAP_SOURCE --mod-url $MOD_URL --out $OUT_DIR --renders-dir $SESSION_DIR/renders"]
+      "args": ["-c", "$BROKER_BIN benchmark --map $MAP --map-source $MAP_SOURCE --mod-url $MOD_URL --out $OUT_DIR --renders-dir $SESSION_DIR/renders --screenshots-dir $SESSION_DIR/screenshots"]
     }
   }
 }
@@ -148,6 +148,10 @@ fi
 
 if [ -d "$SESSION_DIR/renders" ]; then
   mv "$SESSION_DIR/renders" "$OUT_DIR/renders"
+fi
+
+if [ -d "$SESSION_DIR/screenshots" ]; then
+  mv "$SESSION_DIR/screenshots" "$OUT_DIR/screenshots"
 fi
 
 if [ "$WATCH" -ne 1 ]; then

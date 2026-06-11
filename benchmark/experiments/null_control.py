@@ -38,6 +38,15 @@ def congestion_summary(segment_loads):
     }
 
 
+FROZEN_KEYS = ("population", "flow_percent", "active_vehicles", "congestion")
+
+
+def looks_frozen(prev_row, row, clock):
+    if clock.get("forced_paused"):
+        return True
+    return prev_row is not None and all(prev_row.get(k) == row.get(k) for k in FROZEN_KEYS)
+
+
 def sample(day, tick):
     m = http("/metrics")
     traffic = m.get("traffic", {})
@@ -72,12 +81,16 @@ def main():
         f.flush()
         print(f"day 0: pop={row['population']} flow={row['flow_percent']} veh={row['active_vehicles']}", flush=True)
 
+        prev_row = row
         for day in range(1, days + 1):
             clock = http("/clock", {"op": "step", "ticks": DAY_TICKS})
             if not clock.get("ok"):
                 print(f"day {day}: step failed: {clock}", file=sys.stderr, flush=True)
                 sys.exit(1)
             row = sample(day, clock["tick"])
+            if looks_frozen(prev_row, row, clock):
+                print(f"WARNING: day {day} appears frozen (game dialog?)", file=sys.stderr, flush=True)
+                row = {**row, "frozen": True}
             f.write(json.dumps(row) + "\n")
             f.flush()
             pop = row["population"].get("total") if isinstance(row["population"], dict) else row["population"]
@@ -86,6 +99,7 @@ def main():
                 f"congested_m={row['congestion'].get('congested_meters')}",
                 flush=True,
             )
+            prev_row = row
 
 
 if __name__ == "__main__":

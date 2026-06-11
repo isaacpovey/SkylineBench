@@ -63,6 +63,7 @@ async fn health(State(s): State<MockState>) -> Json<Health> {
         game_version: "mock".into(),
         city_loaded: true,
         paused: c.paused,
+        forced_paused: false,
         tick: c.tick,
     })
 }
@@ -413,11 +414,22 @@ struct ClockBody {
     speed: Option<u8>,
 }
 
+/// Test-only sentinel: a step of exactly this many ticks makes the mock report
+/// `forced_paused: true`, simulating a game modal dialog holding
+/// SimulationManager.ForcedSimulationPaused. The value must fit in a single
+/// step chunk (the benchmark server splits steps into 585-tick days and caps
+/// requests at 4095), so a larger magic number would never reach the mock.
+const FORCED_PAUSE_SENTINEL_TICKS: u32 = 424;
+
 async fn clock(State(s): State<MockState>, Json(body): Json<ClockBody>) -> Json<ClockState> {
     let mut c = s.city.lock().unwrap();
+    let forced_paused =
+        body.op == "step" && body.ticks == Some(FORCED_PAUSE_SENTINEL_TICKS);
     match body.op.as_str() {
         "pause" => c.paused = true,
         "resume" => c.paused = false,
+        // Mirrors the real game under a forced pause: tick counters keep
+        // advancing even though nothing would actually simulate.
         "step" => c.tick += body.ticks.unwrap_or(0) as u64,
         _ => {}
     }
@@ -425,6 +437,7 @@ async fn clock(State(s): State<MockState>, Json(body): Json<ClockBody>) -> Json<
         ok: true,
         paused: c.paused,
         tick: c.tick,
+        forced_paused,
     })
 }
 

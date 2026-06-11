@@ -14,6 +14,7 @@ namespace SkylineBench.Http
                 .Name("game_version").Value(h.GameVersion)
                 .Name("city_loaded").Value(h.CityLoaded)
                 .Name("paused").Value(h.Paused)
+                .Name("forced_paused").Value(h.ForcedPaused)
                 .Name("tick").Value((long)h.Tick)
              .EndObject();
             return HttpReply.Json(200, w.ToString());

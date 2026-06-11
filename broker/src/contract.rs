@@ -21,6 +21,11 @@ pub struct Health {
     pub game_version: String,
     pub city_loaded: bool,
     pub paused: bool,
+    /// True while a game modal dialog holds SimulationManager.ForcedSimulationPaused:
+    /// tick counters keep advancing but no simulation happens. Defaults for
+    /// payloads from a mod predating the field.
+    #[serde(default)]
+    pub forced_paused: bool,
     pub tick: u64,
 }
 
@@ -211,6 +216,9 @@ pub struct ClockState {
     pub ok: bool,
     pub paused: bool,
     pub tick: u64,
+    /// See Health::forced_paused. Defaults for payloads from a mod predating the field.
+    #[serde(default)]
+    pub forced_paused: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -323,6 +331,31 @@ mod tests {
         let l: SegmentLoad =
             serde_json::from_str(r#"{"segment_id": 3, "density": 0.9, "length": 52.5}"#).unwrap();
         assert_eq!(l.length, 52.5);
+    }
+
+    #[test]
+    fn clock_state_defaults_forced_paused_for_old_mod_payloads() {
+        let c: ClockState =
+            serde_json::from_str(r#"{"ok":true,"paused":false,"tick":42}"#).unwrap();
+        assert!(!c.forced_paused);
+        let c: ClockState =
+            serde_json::from_str(r#"{"ok":true,"paused":false,"tick":42,"forced_paused":true}"#)
+                .unwrap();
+        assert!(c.forced_paused);
+    }
+
+    #[test]
+    fn health_defaults_forced_paused_for_old_mod_payloads() {
+        let h: Health = serde_json::from_str(
+            r#"{"mod_version":"0.1.0","game_version":"g","city_loaded":true,"paused":false,"tick":7}"#,
+        )
+        .unwrap();
+        assert!(!h.forced_paused);
+        let h: Health = serde_json::from_str(
+            r#"{"mod_version":"0.1.0","game_version":"g","city_loaded":true,"paused":false,"forced_paused":true,"tick":7}"#,
+        )
+        .unwrap();
+        assert!(h.forced_paused);
     }
 
     #[test]

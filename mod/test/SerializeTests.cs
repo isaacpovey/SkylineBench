@@ -17,6 +17,7 @@ namespace SkylineBench.Tests
             tests.Add(new KeyValuePair<string, Action>("serialize: action includes frontage when computed", ActionIncludesFrontageWhenComputed));
             tests.Add(new KeyValuePair<string, Action>("serialize: action failure includes colliding buildings", ActionFailureIncludesCollidingBuildings));
             tests.Add(new KeyValuePair<string, Action>("serialize: clock state", Clock));
+            tests.Add(new KeyValuePair<string, Action>("serialize: clock state forced paused", ClockForcedPaused));
             tests.Add(new KeyValuePair<string, Action>("serialize: load result", Load));
             tests.Add(new KeyValuePair<string, Action>("serialize: road types shape", RoadTypesShape));
         }
@@ -87,8 +88,14 @@ namespace SkylineBench.Tests
 
         static void Clock()
         {
-            Assert.Equal("{\"ok\":true,\"paused\":false,\"tick\":42}",
+            Assert.Equal("{\"ok\":true,\"paused\":false,\"tick\":42,\"forced_paused\":false}",
                 Serialize.Clock(new ClockStateDto { Ok = true, Paused = false, Tick = 42 }));
+        }
+
+        static void ClockForcedPaused()
+        {
+            Assert.Equal("{\"ok\":true,\"paused\":false,\"tick\":42,\"forced_paused\":true}",
+                Serialize.Clock(new ClockStateDto { Ok = true, Paused = false, Tick = 42, ForcedPaused = true }));
         }
 
         static void Load()

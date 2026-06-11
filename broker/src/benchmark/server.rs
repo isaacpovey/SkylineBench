@@ -361,6 +361,21 @@ impl BenchmarkServer {
                     )),
                 );
             }
+            let forced_paused = map
+                .get("forced_paused")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            if forced_paused {
+                map.insert("forced_paused".into(), serde_json::json!(true));
+                map.insert(
+                    "warning".into(),
+                    serde_json::json!(
+                        "the simulation is force-paused by a game modal dialog; tick counters \
+                         advance but no simulation happens, so steps cannot make progress until \
+                         an operator dismisses the dialog"
+                    ),
+                );
+            }
         }
         if let Ok(m) = self.client.metrics().await {
             self.state.lock().await.observe_metrics(&m);
@@ -789,6 +804,24 @@ mod tests {
         let text = result_text(&res);
         // Mock starts at tick 0 and adds the requested ticks: default = 585.
         assert!(text.contains("\"tick\":585"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn step_under_forced_pause_reports_warning() {
+        let bench = bench_with_mock().await;
+        // 424 is the mock's test-only forced-pause sentinel (see mock.rs).
+        let res = bench
+            .control_time(Parameters(crate::service::ControlTimeArgs {
+                op: "step".into(),
+                ticks: Some(424),
+                speed: None,
+            }))
+            .await
+            .unwrap();
+        let text = result_text(&res);
+        assert!(text.contains("\"forced_paused\":true"), "got: {text}");
+        assert!(text.contains("\"warning\""), "got: {text}");
+        assert!(text.contains("force-paused"), "warning should explain the dialog pause, got: {text}");
     }
 
     #[tokio::test]

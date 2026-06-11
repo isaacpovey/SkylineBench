@@ -89,7 +89,7 @@ namespace SkylineBench.Json
         public static string Clock(ClockStateDto c)
         {
             var w = new JsonWriter();
-            w.BeginObject().Name("ok").Value(c.Ok).Name("paused").Value(c.Paused).Name("tick").Value((long)c.Tick).EndObject();
+            w.BeginObject().Name("ok").Value(c.Ok).Name("paused").Value(c.Paused).Name("tick").Value((long)c.Tick).Name("forced_paused").Value(c.ForcedPaused).EndObject();
             return w.ToString();
         }
 

@@ -196,26 +196,35 @@ namespace SkylineBench.Bridge
         public static ClockStateDto Clock(ClockReq req)
         {
             var t = ModRuntime.Threading;
-            if (t == null) return new ClockStateDto { Ok = false, Paused = false, Tick = 0 };
+            if (t == null) return new ClockStateDto { Ok = false, Paused = false, Tick = 0, ForcedPaused = GameAccess.ForcedPaused() };
             switch (req.Op)
             {
                 case "pause": t.simulationPaused = true; break;
                 case "resume": t.simulationPaused = false; break;
                 case "set-speed": t.simulationSpeed = Mathf.Clamp(req.Speed, 1, 3); break;
                 case "step": Step(t, req.Ticks); break;
-                default: return new ClockStateDto { Ok = false, Paused = t.simulationPaused, Tick = t.simulationTick };
+                default: return new ClockStateDto { Ok = false, Paused = t.simulationPaused, Tick = t.simulationTick, ForcedPaused = GameAccess.ForcedPaused() };
             }
-            return new ClockStateDto { Ok = true, Paused = t.simulationPaused, Tick = t.simulationTick };
+            return new ClockStateDto { Ok = true, Paused = t.simulationPaused, Tick = t.simulationTick, ForcedPaused = GameAccess.ForcedPaused() };
         }
 
         private static void Step(ICities.IThreading t, int ticks)
         {
             if (ticks <= 0) return;
+            // A game modal dialog force-pauses the simulation: tick counters keep
+            // advancing but nothing simulates. Don't burn the guard loop waiting —
+            // the caller sees ForcedPaused = true on the returned ClockState.
+            if (GameAccess.ForcedPaused()) return;
             uint target = t.simulationTick + (uint)ticks;
             bool wasPaused = t.simulationPaused;
             t.simulationPaused = false;
             int guard = 0;
-            while (t.simulationTick < target && guard < 600000) { System.Threading.Thread.Sleep(1); guard++; }
+            while (t.simulationTick < target && guard < 600000)
+            {
+                if (guard % 1000 == 999 && GameAccess.ForcedPaused()) break;
+                System.Threading.Thread.Sleep(1);
+                guard++;
+            }
             if (wasPaused) t.simulationPaused = true;
         }
     }

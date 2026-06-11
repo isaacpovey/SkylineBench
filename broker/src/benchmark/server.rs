@@ -101,9 +101,14 @@ impl BenchmarkServer {
     /// tool call (same policy as end-state persistence).
     async fn persist_render(&self, png: &[u8], tick: u64, trigger: &str) {
         let Some(dir) = &self.renders_dir else { return };
-        let (seq, changes, flow) = {
+        let (seq, changes, flow, congested) = {
             let mut s = self.state.lock().await;
-            (s.next_render_seq(), s.num_changes, s.flow.mean())
+            (
+                s.next_render_seq(),
+                s.num_changes,
+                s.flow.mean(),
+                (!s.congestion.is_empty()).then(|| s.congestion.mean()),
+            )
         };
         let _ = std::fs::create_dir_all(dir);
         let name = format!("{seq:05}-tick{tick}.png");
@@ -113,7 +118,7 @@ impl BenchmarkServer {
         }
         let line = serde_json::json!({
             "seq": seq, "file": name, "tick": tick, "trigger": trigger,
-            "changes": changes, "flow": flow,
+            "changes": changes, "flow": flow, "congested": congested,
         });
         let appended = std::fs::OpenOptions::new()
             .create(true)
@@ -157,10 +162,23 @@ impl BenchmarkServer {
             s.config.clone()
         };
         if let Ok(m) = measure_window(&self.client, &cfg).await {
+            // Spec §2.2: a zero-congestion baseline makes the run unscorable —
+            // abort at baseline so the problem surfaces at minute zero instead
+            // of only at finalize (whose ensure! remains the backstop).
+            let unscorable = m.stats.congested_meters <= 0.0;
+            if unscorable {
+                eprintln!(
+                    "benchmark: ERROR: baseline measured 0 congested road-meters — this run \
+                     CANNOT be scored (spec §2.2). The bridge mod may predate segment lengths \
+                     in metrics, or the map simply has no congestion. Aborting the run."
+                );
+            }
             let mut s = self.state.lock().await;
             if s.baseline.is_none() {
-                s.baseline = Some(m.stats);
-                s.baseline_flow_samples = m.samples;
+                s.set_baseline(m.stats, m.samples);
+            }
+            if unscorable && s.end_reason.is_none() {
+                s.end_reason = Some(EndReason::UnscorableBaseline);
             }
         }
     }
@@ -201,14 +219,12 @@ impl BenchmarkServer {
     #[tool(description = "Get city metrics, optionally filtered to groups: traffic, economy, population, services.")]
     async fn get_metrics(&self, Parameters(args): Parameters<GetMetricsArgs>) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
-        match service::get_metrics(&self.client, args).await {
-            Ok(v) => {
-                if let Some(flow) = v.get("traffic").and_then(|t| t.get("flow_percent")).and_then(|f| f.as_f64()) {
-                    self.state.lock().await.push_flow(flow);
-                }
-                self.finish(v).await
+        match self.client.metrics().await {
+            Ok(m) => {
+                self.state.lock().await.observe_metrics(&m);
+                self.finish(service::metrics_value(&m, &args.groups)).await
             }
-            Err(e) => Ok(tool_err(e)),
+            Err(e) => Ok(tool_err(ServiceError::Bridge(e))),
         }
     }
 
@@ -266,8 +282,10 @@ impl BenchmarkServer {
 
     #[tool(description = "Control simulation time: pause, resume, step, or set speed. \
         `step` defaults to 1 in-game day (585 ticks) when `ticks` is omitted; \
-        the maximum step is 3 days (1755 ticks). Long steps are driven in chunks; \
-        if the response has `partial: true`, call step again for the remainder of the ticks.")]
+        the maximum step is 7 days (4095 ticks). Long steps are driven in chunks; \
+        if the response has `partial: true`, call step again for the remainder of the ticks. \
+        If a response carries `forced_paused: true`, a game dialog is blocking the simulation; \
+        steps cannot progress until it is dismissed.")]
     async fn control_time(&self, Parameters(args): Parameters<ControlTimeArgs>) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
         if self.run_ended().await {
@@ -282,7 +300,7 @@ impl BenchmarkServer {
             return match service::control_time(&self.client, args).await {
                 Ok(v) => {
                     if let Ok(m) = self.client.metrics().await {
-                        self.state.lock().await.push_flow(m.traffic.flow_percent as f64);
+                        self.state.lock().await.observe_metrics(&m);
                     }
                     self.finish(v).await
                 }
@@ -303,6 +321,20 @@ impl BenchmarkServer {
         // Budget is only checked *after* a chunk completes, so worst case is
         // 450 s + the duration of one additional chunk.
         let wall_budget = std::time::Duration::from_secs(450);
+        // Zero-tick step: reads the pre-step tick without advancing, so
+        // `ticks_advanced` reports the clock's actual movement rather than
+        // trusting the request (forced-pause bails advance nothing). It also
+        // serves as the response for requested == 0.
+        let pre = match service::control_time(
+            &self.client,
+            ControlTimeArgs { op: "step".into(), ticks: Some(0), speed: None },
+        )
+        .await
+        {
+            Ok(v) => v,
+            Err(e) => return Ok(tool_err(e)),
+        };
+        let start_tick = pre.get("tick").and_then(Value::as_u64).unwrap_or(0);
         let mut advanced: u32 = 0;
         let mut last: Option<Value> = None;
         for chunk in chunks {
@@ -313,8 +345,19 @@ impl BenchmarkServer {
             .await
             {
                 Ok(v) => {
-                    advanced += chunk;
+                    let tick = v.get("tick").and_then(Value::as_u64).unwrap_or(start_tick);
+                    // Clamp to the request: the real game overshoots ~2 ticks
+                    // per chunk, which would otherwise misreport `partial`.
+                    advanced = u32::try_from(tick.saturating_sub(start_tick))
+                        .unwrap_or(u32::MAX)
+                        .min(requested);
+                    let forced_paused =
+                        v.get("forced_paused").and_then(Value::as_bool).unwrap_or(false);
                     last = Some(v);
+                    // Further chunks are pointless while a dialog blocks the sim.
+                    if forced_paused {
+                        break;
+                    }
                 }
                 Err(e) => {
                     return Ok(CallToolResult::error(vec![Content::text(format!(
@@ -327,20 +370,16 @@ impl BenchmarkServer {
                 break;
             }
         }
-        let mut out = match last {
-            Some(v) => v,
-            // requested == 0: fall through to a single zero-tick call so the
-            // response still reports the clock state.
-            None => match service::control_time(&self.client, ControlTimeArgs { op: "step".into(), ticks: Some(0), speed: None }).await {
-                Ok(v) => v,
-                Err(e) => return Ok(tool_err(e)),
-            },
-        };
+        let mut out = last.unwrap_or(pre);
         let partial = advanced < requested;
         if let Value::Object(ref mut map) = out {
             map.insert("ticks_advanced".into(), serde_json::json!(advanced));
             map.insert("partial".into(), serde_json::json!(partial));
-            if partial {
+            let forced_paused = map
+                .get("forced_paused")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            if partial && !forced_paused {
                 map.insert(
                     "message".into(),
                     serde_json::json!(format!(
@@ -349,9 +388,20 @@ impl BenchmarkServer {
                     )),
                 );
             }
+            if forced_paused {
+                map.insert("forced_paused".into(), serde_json::json!(true));
+                map.insert(
+                    "warning".into(),
+                    serde_json::json!(
+                        "the simulation is force-paused by a game modal dialog; steps return \
+                         immediately without advancing the simulation, so no progress is \
+                         possible until an operator dismisses the dialog"
+                    ),
+                );
+            }
         }
         if let Ok(m) = self.client.metrics().await {
-            self.state.lock().await.push_flow(m.traffic.flow_percent as f64);
+            self.state.lock().await.observe_metrics(&m);
         }
         if self.renders_dir.is_some() {
             let frame = service::render_map(
@@ -460,7 +510,9 @@ impl BenchmarkServer {
     #[tool(description = "Apply a batch of modifications in one call: build_road / build_polyline \
         (multi-point, auto-split under the 200 m segment cap) / upgrade_road / bulldoze / set_zoning. \
         Every op is validated and priced up front — any structurally invalid op rejects the WHOLE plan \
-        before anything executes. Set validate_only=true for a free dry-run (no changes recorded). \
+        before anything executes. Set validate_only=true for a free dry-run (no changes recorded) — \
+        build ops are also checked against the game's placement rules (collision/slope/area) and report \
+        `zoned_buildings_fronting`. \
         Each executed op counts as one change, identical to the single-op tools. The game can still \
         reject an op at execution time (e.g. COLLISION); stop_on_error (default true) then skips the rest; \
         with stop_on_error=false execution continues and `first_failed_at` reports the earliest failing op.")]
@@ -525,28 +577,49 @@ impl BenchmarkServer {
         let total_estimated_cost: i64 = validations.iter().map(|(_, _, _, c)| c).sum();
 
         if args.validate_only || !all_valid {
-            let results: Vec<Value> = validations
-                .iter()
-                .enumerate()
-                .map(|(i, (source, op, v, cost))| {
-                    serde_json::json!({
-                        "op_index": i,
-                        "source_op": source,
-                        "tool": tool_name(op),
-                        "valid": v.is_ok(),
-                        "reason": v.as_ref().err(),
-                        "estimated_cost": cost,
-                        "executed": false,
-                    })
-                })
-                .collect();
+            let mut results: Vec<Value> = Vec::with_capacity(validations.len());
+            for (i, (source, op, v, cost)) in validations.iter().enumerate() {
+                let mut row = serde_json::json!({
+                    "op_index": i,
+                    "source_op": source,
+                    "tool": tool_name(op),
+                    "valid": v.is_ok(),
+                    "reason": v.as_ref().err(),
+                    "estimated_cost": cost,
+                    "executed": false,
+                });
+                if args.validate_only && all_valid && v.is_ok() {
+                    if let ExecOp::Build { from, to, road_type, .. } = op {
+                        match self.client.validate_road(*from, *to, road_type).await {
+                            Ok(check) => {
+                                row["valid"] = serde_json::json!(check.ok);
+                                if let Some(r) = check.reason {
+                                    row["reason"] = serde_json::to_value(r).unwrap();
+                                }
+                                if let Some(n) = check.zoned_buildings_fronting {
+                                    row["zoned_buildings_fronting"] = serde_json::json!(n);
+                                }
+                                if !check.colliding_buildings.is_empty() {
+                                    row["colliding_buildings"] =
+                                        serde_json::to_value(&check.colliding_buildings).unwrap();
+                                }
+                            }
+                            Err(e) => {
+                                row["game_check_error"] = serde_json::json!(e.to_string());
+                            }
+                        }
+                    }
+                }
+                results.push(row);
+            }
+            let first_failed_at = results.iter().position(|r| r["valid"] != true);
             return self
                 .finish(serde_json::json!({
-                    "ok": all_valid,
+                    "ok": first_failed_at.is_none(),
                     "validate_only": args.validate_only,
                     "results": results,
                     "total_estimated_cost": total_estimated_cost,
-                    "first_failed_at": Value::Null,
+                    "first_failed_at": first_failed_at,
                 }))
                 .await;
         }
@@ -656,8 +729,8 @@ impl BenchmarkServer {
 impl ServerHandler for BenchmarkServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
-            "SkylineBench benchmark: improve city traffic, then call submit_solution. \
-             Each response includes benchmark_progress (resources + goal).",
+            "SkylineBench benchmark: reduce the city's congested road-meters, then call \
+             submit_solution. Each response includes benchmark_progress (resources + goal).",
         )
     }
 }
@@ -702,7 +775,10 @@ mod tests {
         let state = RunState::new(BenchConfig::default(), HashMap::new());
         let merged = with_progress(serde_json::json!({"ok": true}), &state);
         assert_eq!(merged["ok"], true);
-        assert!(merged["benchmark_progress"]["flow_target"].is_number());
+        assert!(
+            merged["benchmark_progress"]["congested_meters_current"].is_null(),
+            "no telemetry samples yet"
+        );
     }
 
     async fn bench_with_mock() -> BenchmarkServer {
@@ -724,8 +800,48 @@ mod tests {
             flow_mean: 50.0,
             active_vehicles_mean: 10.0,
             population: 100,
+            congested_meters: 100.0,
         });
         BenchmarkServer::new(client, Arc::new(Mutex::new(st)))
+    }
+
+    /// Like bench_with_mock, but WITHOUT a preset baseline, so the first tool
+    /// call drives ensure_baseline against the mock. Returns the state handle
+    /// for asserting on end_reason.
+    async fn bench_with_mock_unmeasured(
+    ) -> (BenchmarkServer, std::sync::Arc<tokio::sync::Mutex<crate::benchmark::state::RunState>>) {
+        use crate::benchmark::config::BenchConfig;
+        use crate::benchmark::state::RunState;
+        use crate::bridge_client::BridgeClient;
+        use crate::mock;
+        use std::collections::HashMap;
+        use std::sync::Arc;
+        use tokio::sync::Mutex;
+
+        let (addr, server) = mock::bind("127.0.0.1:0".parse().unwrap()).await;
+        tokio::spawn(server);
+        let client = Arc::new(BridgeClient::new(format!("http://{addr}")));
+        let state = Arc::new(Mutex::new(RunState::new(BenchConfig::default(), HashMap::new())));
+        (BenchmarkServer::new(client, state.clone()), state)
+    }
+
+    #[tokio::test]
+    async fn zero_congestion_baseline_aborts_the_run() {
+        let (bench, state) = bench_with_mock_unmeasured().await;
+        // The first tool call measures the baseline; the empty mock city has
+        // zero congested road-meters, which is unscorable (spec §2.2).
+        bench.get_city_overview().await.unwrap();
+        assert_eq!(
+            state.lock().await.end_reason,
+            Some(EndReason::UnscorableBaseline),
+            "unscorable baseline must end the run immediately"
+        );
+        // The abort behaves like any ended run: mutations are refused.
+        let after = bench
+            .bulldoze(Parameters(crate::service::BulldozeArgs { target_type: "segment".into(), id: 0 }))
+            .await
+            .unwrap();
+        assert!(result_text(&after).contains("\"run_ended\":true"), "got: {}", result_text(&after));
     }
 
     fn result_text(res: &CallToolResult) -> String {
@@ -753,19 +869,41 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn step_above_three_days_is_rejected() {
+    async fn step_under_forced_pause_reports_warning() {
+        let bench = bench_with_mock().await;
+        // 424 is the mock's test-only forced-pause sentinel (see mock.rs).
+        let res = bench
+            .control_time(Parameters(crate::service::ControlTimeArgs {
+                op: "step".into(),
+                ticks: Some(424),
+                speed: None,
+            }))
+            .await
+            .unwrap();
+        let text = result_text(&res);
+        assert!(text.contains("\"forced_paused\":true"), "got: {text}");
+        assert!(text.contains("\"warning\""), "got: {text}");
+        assert!(text.contains("force-paused"), "warning should explain the dialog pause, got: {text}");
+        // The mod's Step bails immediately under a forced pause: the tick does
+        // not move, so the accounting must report zero progress, not 424.
+        assert!(text.contains("\"ticks_advanced\":0"), "got: {text}");
+        assert!(text.contains("\"partial\":true"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn step_above_cap_is_rejected() {
         let bench = bench_with_mock().await;
         let res = bench
             .control_time(Parameters(crate::service::ControlTimeArgs {
                 op: "step".into(),
-                ticks: Some(4096),
+                ticks: Some(5000),
                 speed: None,
             }))
             .await
             .unwrap();
         assert_eq!(res.is_error, Some(true));
         let text = result_text(&res);
-        assert!(text.contains("1755"), "error should state the cap, got: {text}");
+        assert!(text.contains("4095"), "error should state the cap, got: {text}");
 
         // Rejected step must not have advanced the mock clock.
         let pause_res = bench
@@ -786,14 +924,14 @@ mod tests {
         let res = bench
             .control_time(Parameters(crate::service::ControlTimeArgs {
                 op: "step".into(),
-                ticks: Some(1755),
+                ticks: Some(4095),
                 speed: None,
             }))
             .await
             .unwrap();
         assert_ne!(res.is_error, Some(true), "exact-cap step should succeed");
         let text = result_text(&res);
-        assert!(text.contains("\"tick\":1755"), "clock should be at 1755, got: {text}");
+        assert!(text.contains("\"tick\":4095"), "clock should be at 4095, got: {text}");
     }
 
     #[tokio::test]
@@ -842,14 +980,14 @@ mod tests {
         let res = bench
             .control_time(Parameters(crate::service::ControlTimeArgs {
                 op: "step".into(),
-                ticks: Some(1755),
+                ticks: Some(4095),
                 speed: None,
             }))
             .await
             .unwrap();
         let text = result_text(&res);
-        assert!(text.contains("\"tick\":1755"), "got: {text}");
-        assert!(text.contains("\"ticks_advanced\":1755"), "got: {text}");
+        assert!(text.contains("\"tick\":4095"), "got: {text}");
+        assert!(text.contains("\"ticks_advanced\":4095"), "got: {text}");
         assert!(text.contains("\"partial\":false"), "got: {text}");
     }
 
@@ -920,6 +1058,10 @@ mod tests {
         assert_eq!(lines[0]["trigger"], "render_map");
         assert_eq!(lines[1]["trigger"], "step");
         assert!(lines[1]["tick"].is_u64());
+        assert!(
+            lines.iter().all(|l| l.as_object().unwrap().contains_key("congested")),
+            "index tracks the scored metric: {lines:?}"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -954,6 +1096,7 @@ mod tests {
             flow_mean: 50.0,
             active_vehicles_mean: 10.0,
             population: 100,
+            congested_meters: 100.0,
         });
         BenchmarkServer::new(client, Arc::new(Mutex::new(st)))
     }
@@ -977,6 +1120,26 @@ mod tests {
         assert_eq!(v["results"].as_array().unwrap().len(), 4);
         assert!(v["total_estimated_cost"].as_i64().unwrap() > 0);
         assert_eq!(v["benchmark_progress"]["num_changes"], 0, "dry-run must not record changes");
+    }
+
+    #[tokio::test]
+    async fn apply_plan_validate_only_runs_game_checks_for_builds() {
+        let bench = bench_with_mock_costs().await;
+        let res = bench
+            .apply_plan(Parameters(ApplyPlanArgs {
+                ops: vec![plan_build(0.0, 50.0)],
+                validate_only: true,
+                stop_on_error: true,
+            }))
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&result_text(&res)).unwrap();
+        assert_eq!(v["ok"], true);
+        let row = &v["results"][0];
+        // The mock's validate-road returns ok with zero fronting buildings; the
+        // row must carry the game-check fact through.
+        assert_eq!(row["zoned_buildings_fronting"], 0, "row: {row}");
+        assert_eq!(v["benchmark_progress"]["num_changes"], 0);
     }
 
     #[tokio::test]
@@ -1016,6 +1179,7 @@ mod tests {
         let results = v["results"].as_array().unwrap();
         assert_eq!(results[1]["valid"], false);
         assert_eq!(results[1]["reason"], "INVALID_ARGS");
+        assert_eq!(v["first_failed_at"], 1, "must point at the earliest invalid row");
     }
 
     #[tokio::test]

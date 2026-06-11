@@ -21,6 +21,11 @@ pub struct Health {
     pub game_version: String,
     pub city_loaded: bool,
     pub paused: bool,
+    /// True while a game modal dialog holds SimulationManager.ForcedSimulationPaused:
+    /// tick counters keep advancing but no simulation happens. Defaults for
+    /// payloads from a mod predating the field.
+    #[serde(default)]
+    pub forced_paused: bool,
     pub tick: u64,
 }
 
@@ -94,6 +99,9 @@ pub struct Zones {
 pub struct SegmentLoad {
     pub segment_id: u32,
     pub density: f32,
+    /// Metres. Defaults to 0 for payloads from a mod predating the field.
+    #[serde(default)]
+    pub length: f32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -125,6 +133,10 @@ pub struct PopulationMetrics {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ServiceMetrics {
     pub happiness: u8,
+    /// Buildings flagged Abandoned — a lagging signal that parts of the city
+    /// have lost road access or services.
+    #[serde(default)]
+    pub abandoned_buildings: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -155,7 +167,9 @@ pub struct ZoneTypes {
 /// Normalised failure reasons for actions. Extends spec §5's mod-side set
 /// (`COLLISION`, `INSUFFICIENT_FUNDS`, `OUT_OF_BOUNDS`, `INVALID_PREFAB`,
 /// `SEGMENT_TOO_LONG`, `UNKNOWN`) with broker-side pre-validation reasons
-/// (`DEGENERATE_SEGMENT`, `INVALID_ARGS`).
+/// (`DEGENERATE_SEGMENT`, `INVALID_ARGS`). The placement-validation codes
+/// (`OBJECT_COLLISION`, `SLOPE_TOO_STEEP`, `OUT_OF_AREA`, `TOO_MANY_CONNECTIONS`,
+/// `NET_BUFFER_FULL`) come from the mod's BuildValidator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ActionError {
@@ -167,6 +181,11 @@ pub enum ActionError {
     DegenerateSegment,
     InvalidArgs,
     Unknown,
+    ObjectCollision,
+    SlopeTooSteep,
+    OutOfArea,
+    TooManyConnections,
+    NetBufferFull,
 }
 
 /// Result of a mutating action. `ok == true` ⇒ the diff fields are meaningful;
@@ -184,6 +203,12 @@ pub struct ActionResult {
     pub destroyed: Vec<u32>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub reason: Option<ActionError>,
+    /// Zoned (RCIO) buildings fronting the affected segment — a neutral fact
+    /// for the agent, not a warning. None when the mod didn't compute it.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub zoned_buildings_fronting: Option<u32>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub colliding_buildings: Vec<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -191,6 +216,9 @@ pub struct ClockState {
     pub ok: bool,
     pub paused: bool,
     pub tick: u64,
+    /// See Health::forced_paused. Defaults for payloads from a mod predating the field.
+    #[serde(default)]
+    pub forced_paused: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -237,10 +265,32 @@ mod tests {
             snapped_nodes: vec![1],
             destroyed: vec![],
             reason: None,
+            zoned_buildings_fronting: None,
+            colliding_buildings: vec![],
         };
         let json = serde_json::to_string(&original).unwrap();
         let parsed: ActionResult = serde_json::from_str(&json).unwrap();
         assert_eq!(original, parsed);
+    }
+
+    #[test]
+    fn action_result_omits_optional_keys_when_absent() {
+        // Wire format: zoned_buildings_fronting: None and empty colliding_buildings
+        // must be absent from the JSON (skip_serializing_if guards the contract).
+        let result = ActionResult {
+            ok: true,
+            created_nodes: vec![],
+            created_segments: vec![],
+            snapped_nodes: vec![],
+            destroyed: vec![],
+            reason: None,
+            zoned_buildings_fronting: None,
+            colliding_buildings: vec![],
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(!v.as_object().unwrap().contains_key("zoned_buildings_fronting"), "key must be absent when None: {json}");
+        assert!(!v.as_object().unwrap().contains_key("colliding_buildings"), "key must be absent when empty: {json}");
     }
 
     #[test]
@@ -252,6 +302,8 @@ mod tests {
             snapped_nodes: vec![],
             destroyed: vec![],
             reason: Some(ActionError::Collision),
+            zoned_buildings_fronting: None,
+            colliding_buildings: vec![],
         };
         let json = serde_json::to_string(&err).unwrap();
         assert!(json.contains("\"reason\":\"COLLISION\""), "got {json}");
@@ -270,6 +322,62 @@ mod tests {
         assert!(parsed.snapped_nodes.is_empty());
         assert!(parsed.destroyed.is_empty());
         assert_eq!(parsed.reason, None);
+    }
+
+    #[test]
+    fn segment_load_defaults_length_for_old_mod_payloads() {
+        let l: SegmentLoad = serde_json::from_str(r#"{"segment_id": 3, "density": 0.9}"#).unwrap();
+        assert_eq!(l.length, 0.0);
+        let l: SegmentLoad =
+            serde_json::from_str(r#"{"segment_id": 3, "density": 0.9, "length": 52.5}"#).unwrap();
+        assert_eq!(l.length, 52.5);
+    }
+
+    #[test]
+    fn clock_state_defaults_forced_paused_for_old_mod_payloads() {
+        let c: ClockState =
+            serde_json::from_str(r#"{"ok":true,"paused":false,"tick":42}"#).unwrap();
+        assert!(!c.forced_paused);
+        let c: ClockState =
+            serde_json::from_str(r#"{"ok":true,"paused":false,"tick":42,"forced_paused":true}"#)
+                .unwrap();
+        assert!(c.forced_paused);
+    }
+
+    #[test]
+    fn health_defaults_forced_paused_for_old_mod_payloads() {
+        let h: Health = serde_json::from_str(
+            r#"{"mod_version":"0.1.0","game_version":"g","city_loaded":true,"paused":false,"tick":7}"#,
+        )
+        .unwrap();
+        assert!(!h.forced_paused);
+        let h: Health = serde_json::from_str(
+            r#"{"mod_version":"0.1.0","game_version":"g","city_loaded":true,"paused":false,"forced_paused":true,"tick":7}"#,
+        )
+        .unwrap();
+        assert!(h.forced_paused);
+    }
+
+    #[test]
+    fn service_metrics_default_abandoned_buildings() {
+        let s: ServiceMetrics = serde_json::from_str(r#"{"happiness": 80}"#).unwrap();
+        assert_eq!(s.abandoned_buildings, 0);
+    }
+
+    #[test]
+    fn action_result_defaults_new_consequence_fields() {
+        let r: ActionResult = serde_json::from_str(r#"{"ok": true}"#).unwrap();
+        assert_eq!(r.zoned_buildings_fronting, None);
+        assert!(r.colliding_buildings.is_empty());
+    }
+
+    #[test]
+    fn new_action_errors_serialize_screaming_snake() {
+        assert_eq!(serde_json::to_string(&ActionError::ObjectCollision).unwrap(), "\"OBJECT_COLLISION\"");
+        assert_eq!(serde_json::to_string(&ActionError::SlopeTooSteep).unwrap(), "\"SLOPE_TOO_STEEP\"");
+        assert_eq!(serde_json::to_string(&ActionError::OutOfArea).unwrap(), "\"OUT_OF_AREA\"");
+        assert_eq!(serde_json::to_string(&ActionError::TooManyConnections).unwrap(), "\"TOO_MANY_CONNECTIONS\"");
+        assert_eq!(serde_json::to_string(&ActionError::NetBufferFull).unwrap(), "\"NET_BUFFER_FULL\"");
     }
 
     #[test]
@@ -298,6 +406,7 @@ mod tests {
                 segment_loads: vec![SegmentLoad {
                     segment_id: 5,
                     density: 0.8,
+                    length: 0.0,
                 }],
             },
             economy: EconomyMetrics {
@@ -313,7 +422,7 @@ mod tests {
                 workplace_demand: 30,
                 employed: 1500,
             },
-            services: ServiceMetrics { happiness: 80 },
+            services: ServiceMetrics { happiness: 80, abandoned_buildings: 0 },
         };
         let json = serde_json::to_string(&m).unwrap();
         let parsed: Metrics = serde_json::from_str(&json).unwrap();

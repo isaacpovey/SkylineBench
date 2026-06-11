@@ -26,32 +26,75 @@ namespace SkylineBench.Bridge
             {
                 var nm = Singleton<NetManager>.instance;
                 var sm = Singleton<SimulationManager>.instance;
+
+                var invalid = BuildValidator.Check(prefab, startPos, endPos);
+                if (invalid != null) return invalid;
+
                 var rand = new Randomizer(sm.m_currentBuildIndex);
                 var result = new ActionResultDto { Ok = true };
                 ushort startId, endId;
-                if (!ResolveNode(nm, startPos, prefab, req.Snap, ref rand, sm, out startId, result)) return ActionResultDto.Fail(ErrorCode.Unknown);
-                if (!ResolveNode(nm, endPos, prefab, req.Snap, ref rand, sm, out endId, result)) return ActionResultDto.Fail(ErrorCode.Unknown);
+                string nodeErr = ResolveNode(nm, startPos, prefab, req.Snap, ref rand, sm, out startId, result);
+                if (nodeErr != null) return FailReleasing(nm, result, nodeErr);
+                nodeErr = ResolveNode(nm, endPos, prefab, req.Snap, ref rand, sm, out endId, result);
+                if (nodeErr != null) return FailReleasing(nm, result, nodeErr);
                 Vector3 dir = VectorUtils.NormalizeXZ(endPos - startPos);
                 ushort segId;
                 bool ok = nm.CreateSegment(out segId, ref rand, prefab, startId, endId, dir, -dir, sm.m_currentBuildIndex, sm.m_currentBuildIndex, false);
-                if (!ok) return ActionResultDto.Fail(ErrorCode.Collision);
+                if (!ok) return FailReleasing(nm, result, ErrorCode.NetBufferFull);
                 sm.m_currentBuildIndex += 2u;
                 result.CreatedSegments.Add(segId);
+                result.ZonedBuildingsFronting = (int)Frontage.CountZonedBuildingsNear(startPos, endPos, prefab.m_halfWidth);
                 return result;
             }, TimeoutMs);
         }
 
-        private static bool ResolveNode(NetManager nm, Vector3 p, NetInfo prefab, bool snap, ref Randomizer rand, SimulationManager sm, out ushort id, ActionResultDto result)
+        /// <summary>Free dry-run of BuildRoad's placement checks: same validation,
+        /// nothing created. Ok responses carry the frontage fact for the span.</summary>
+        public static ActionResultDto ValidateRoad(BuildRoadReq req)
+        {
+            var prefab = Prefabs.FindRoad(req.Prefab);
+            if (prefab == null) return ActionResultDto.Fail(ErrorCode.InvalidPrefab);
+            var startPos = new Vector3(req.StartX, req.StartY, req.StartZ);
+            var endPos = new Vector3(req.EndX, req.EndY, req.EndZ);
+            float len = VectorUtils.LengthXZ(endPos - startPos);
+            if (len < 0.001f) return ActionResultDto.Fail(ErrorCode.InvalidArgs);
+            if (len > MaxSegmentLengthM) return ActionResultDto.Fail(ErrorCode.SegmentTooLong);
+
+            return SimThread.Run<ActionResultDto>(delegate
+            {
+                var invalid = BuildValidator.Check(prefab, startPos, endPos);
+                if (invalid != null) return invalid;
+                var ok = new ActionResultDto { Ok = true };
+                ok.ZonedBuildingsFronting = (int)Frontage.CountZonedBuildingsNear(startPos, endPos, prefab.m_halfWidth);
+                return ok;
+            }, TimeoutMs);
+        }
+
+        /// <summary>null on success; otherwise a normalized ErrorCode. Snapped nodes
+        /// with a full connection budget (8 segments in CS1) are rejected rather than
+        /// silently producing a broken junction.</summary>
+        private static string ResolveNode(NetManager nm, Vector3 p, NetInfo prefab, bool snap, ref Randomizer rand, SimulationManager sm, out ushort id, ActionResultDto result)
         {
             id = 0;
             if (snap)
             {
                 ushort near = NearestNode(nm, p, SnapToleranceM);
-                if (near != 0) { id = near; result.SnappedNodes.Add(near); return true; }
+                if (near != 0)
+                {
+                    if (nm.m_nodes.m_buffer[near].CountSegments() >= 8) return ErrorCode.TooManyConnections;
+                    id = near; result.SnappedNodes.Add(near); return null;
+                }
             }
-            if (!nm.CreateNode(out id, ref rand, prefab, p, sm.m_currentBuildIndex)) return false;
+            if (!nm.CreateNode(out id, ref rand, prefab, p, sm.m_currentBuildIndex)) return ErrorCode.NetBufferFull;
             result.CreatedNodes.Add(id);
-            return true;
+            return null;
+        }
+
+        /// <summary>Failing after node creation would leak orphan nodes; release them.</summary>
+        private static ActionResultDto FailReleasing(NetManager nm, ActionResultDto partial, string reason)
+        {
+            foreach (var n in partial.CreatedNodes) nm.ReleaseNode((ushort)n);
+            return ActionResultDto.Fail(reason);
         }
 
         private static ushort NearestNode(NetManager nm, Vector3 p, float tol)
@@ -73,7 +116,22 @@ namespace SkylineBench.Bridge
             {
                 switch (req.TargetType)
                 {
-                    case "segment": Singleton<NetManager>.instance.ReleaseSegment((ushort)req.Id, false); break;
+                    case "segment":
+                    {
+                        var nm = Singleton<NetManager>.instance;
+                        var seg = nm.m_segments.m_buffer[req.Id];
+                        int fronting = -1;
+                        if ((seg.m_flags & NetSegment.Flags.Created) != NetSegment.Flags.None && seg.Info != null)
+                        {
+                            Vector3 aPos = nm.m_nodes.m_buffer[seg.m_startNode].m_position;
+                            Vector3 bPos = nm.m_nodes.m_buffer[seg.m_endNode].m_position;
+                            fronting = (int)Frontage.CountZonedBuildingsNear(aPos, bPos, seg.Info.m_halfWidth);
+                        }
+                        nm.ReleaseSegment((ushort)req.Id, false);
+                        var res = new ActionResultDto { Ok = true, ZonedBuildingsFronting = fronting };
+                        res.Destroyed.Add(req.Id);
+                        return res;
+                    }
                     case "node": Singleton<NetManager>.instance.ReleaseNode((ushort)req.Id); break;
                     case "building": Singleton<BuildingManager>.instance.ReleaseBuilding((ushort)req.Id); break;
                     default: return ActionResultDto.Fail(ErrorCode.InvalidArgs);
@@ -92,15 +150,21 @@ namespace SkylineBench.Bridge
                 var s = nm.m_segments.m_buffer[req.SegmentId];
                 if ((s.m_flags & NetSegment.Flags.Created) == NetSegment.Flags.None) return ActionResultDto.Fail(ErrorCode.InvalidArgs);
                 ushort startN = s.m_startNode, endN = s.m_endNode;
+                Vector3 aPos = nm.m_nodes.m_buffer[startN].m_position;
+                Vector3 bPos = nm.m_nodes.m_buffer[endN].m_position;
                 Vector3 sd = s.m_startDirection, ed = s.m_endDirection;
                 var sm = Singleton<SimulationManager>.instance;
                 var rand = new Randomizer(sm.m_currentBuildIndex);
                 nm.ReleaseSegment((ushort)req.SegmentId, true);
                 ushort segId;
                 bool ok = nm.CreateSegment(out segId, ref rand, prefab, startN, endN, sd, ed, sm.m_currentBuildIndex, sm.m_currentBuildIndex, false);
-                if (!ok) return ActionResultDto.Fail(ErrorCode.Collision);
+                if (!ok) return ActionResultDto.Fail(ErrorCode.NetBufferFull);
                 sm.m_currentBuildIndex += 2u;
-                var r = new ActionResultDto { Ok = true }; r.CreatedSegments.Add(segId); r.Destroyed.Add(req.SegmentId); return r;
+                var r = new ActionResultDto { Ok = true };
+                r.CreatedSegments.Add(segId);
+                r.Destroyed.Add(req.SegmentId);
+                r.ZonedBuildingsFronting = (int)Frontage.CountZonedBuildingsNear(aPos, bPos, prefab.m_halfWidth);
+                return r;
             }, TimeoutMs);
         }
 
@@ -132,26 +196,35 @@ namespace SkylineBench.Bridge
         public static ClockStateDto Clock(ClockReq req)
         {
             var t = ModRuntime.Threading;
-            if (t == null) return new ClockStateDto { Ok = false, Paused = false, Tick = 0 };
+            if (t == null) return new ClockStateDto { Ok = false, Paused = false, Tick = 0, ForcedPaused = GameAccess.ForcedPaused() };
             switch (req.Op)
             {
                 case "pause": t.simulationPaused = true; break;
                 case "resume": t.simulationPaused = false; break;
                 case "set-speed": t.simulationSpeed = Mathf.Clamp(req.Speed, 1, 3); break;
                 case "step": Step(t, req.Ticks); break;
-                default: return new ClockStateDto { Ok = false, Paused = t.simulationPaused, Tick = t.simulationTick };
+                default: return new ClockStateDto { Ok = false, Paused = t.simulationPaused, Tick = t.simulationTick, ForcedPaused = GameAccess.ForcedPaused() };
             }
-            return new ClockStateDto { Ok = true, Paused = t.simulationPaused, Tick = t.simulationTick };
+            return new ClockStateDto { Ok = true, Paused = t.simulationPaused, Tick = t.simulationTick, ForcedPaused = GameAccess.ForcedPaused() };
         }
 
         private static void Step(ICities.IThreading t, int ticks)
         {
             if (ticks <= 0) return;
+            // A game modal dialog force-pauses the simulation: tick counters keep
+            // advancing but nothing simulates. Don't burn the guard loop waiting —
+            // the caller sees ForcedPaused = true on the returned ClockState.
+            if (GameAccess.ForcedPaused()) return;
             uint target = t.simulationTick + (uint)ticks;
             bool wasPaused = t.simulationPaused;
             t.simulationPaused = false;
             int guard = 0;
-            while (t.simulationTick < target && guard < 600000) { System.Threading.Thread.Sleep(1); guard++; }
+            while (t.simulationTick < target && guard < 600000)
+            {
+                if (guard % 1000 == 999 && GameAccess.ForcedPaused()) break;
+                System.Threading.Thread.Sleep(1);
+                guard++;
+            }
             if (wasPaused) t.simulationPaused = true;
         }
     }

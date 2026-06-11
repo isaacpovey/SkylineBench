@@ -1,15 +1,16 @@
 use std::collections::VecDeque;
 
-/// Rolling buffer of recent `flow_percent` samples. The flow-target out (spec
-/// §7) fires only once the buffer is full and its mean clears the target, so a
-/// single transient post-edit spike can't end the run.
+/// Rolling buffer of recent samples, providing windowed means for both flow
+/// (diagnostic) and congested meters. The congestion end condition (spec §7)
+/// fires only once the buffer is full, so a single transient post-edit dip
+/// can't end the run.
 #[derive(Debug)]
-pub struct FlowWindow {
+pub struct RollingWindow {
     capacity: usize,
     samples: VecDeque<f64>,
 }
 
-impl FlowWindow {
+impl RollingWindow {
     pub fn new(capacity: usize) -> Self {
         Self { capacity: capacity.max(1), samples: VecDeque::new() }
     }
@@ -32,8 +33,8 @@ impl FlowWindow {
         self.samples.len() == self.capacity
     }
 
-    pub fn target_reached(&self, target: f64) -> bool {
-        self.is_full() && self.mean() >= target
+    pub fn is_empty(&self) -> bool {
+        self.samples.is_empty()
     }
 }
 
@@ -43,7 +44,7 @@ mod tests {
 
     #[test]
     fn mean_of_recent_window() {
-        let mut w = FlowWindow::new(3);
+        let mut w = RollingWindow::new(3);
         w.push(10.0);
         w.push(20.0);
         w.push(30.0);
@@ -53,21 +54,20 @@ mod tests {
 
     #[test]
     fn empty_window_mean_is_zero() {
-        assert_eq!(FlowWindow::new(4).mean(), 0.0);
+        assert_eq!(RollingWindow::new(4).mean(), 0.0);
     }
 
     #[test]
-    fn target_reached_only_on_windowed_mean() {
-        let mut w = FlowWindow::new(2);
-        w.push(100.0);
-        assert!(!w.target_reached(95.0), "single sample must not trip");
-        w.push(96.0);
-        assert!(w.target_reached(95.0));
+    fn is_empty_until_first_sample() {
+        let mut w = RollingWindow::new(4);
+        assert!(w.is_empty());
+        w.push(1.0);
+        assert!(!w.is_empty());
     }
 
     #[test]
     fn zero_capacity_is_promoted_to_one() {
-        let mut w = FlowWindow::new(0);
+        let mut w = RollingWindow::new(0);
         assert!(!w.is_full());
         w.push(50.0);
         assert!(w.is_full());

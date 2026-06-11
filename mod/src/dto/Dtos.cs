@@ -12,7 +12,7 @@ namespace SkylineBench.Dto
     public struct ZoneCellDto { public float X; public float Z; public string ZoneType; }
     public sealed class ZonesDto { public List<ZoneCellDto> Cells = new List<ZoneCellDto>(); }
 
-    public struct SegmentLoadDto { public uint SegmentId; public float Density; }
+    public struct SegmentLoadDto { public uint SegmentId; public float Density; public float Length; }
     public sealed class MetricsDto
     {
         public ulong Tick;
@@ -20,6 +20,7 @@ namespace SkylineBench.Dto
         public long Balance; public long WeeklyIncome; public long WeeklyExpenses; public long Funds;
         public uint Population; public byte ResidentialDemand; public byte CommercialDemand; public byte WorkplaceDemand; public uint Employed;
         public byte Happiness;
+        public uint AbandonedBuildings;
     }
 
     /// <summary>Result of a mutation. Ok==true ⇒ diff fields meaningful; else Reason set (a normalized code).</summary>
@@ -31,9 +32,11 @@ namespace SkylineBench.Dto
         public List<uint> SnappedNodes = new List<uint>();
         public List<uint> Destroyed = new List<uint>();
         public string Reason; // null when Ok
+        public int ZonedBuildingsFronting = -1; // -1 = not computed / not applicable
+        public List<uint> CollidingBuildings = new List<uint>();
         public static ActionResultDto Fail(string reason) { return new ActionResultDto { Ok = false, Reason = reason }; }
     }
 
-    public sealed class ClockStateDto { public bool Ok; public bool Paused; public ulong Tick; }
+    public sealed class ClockStateDto { public bool Ok; public bool Paused; public ulong Tick; public bool ForcedPaused; }
     public sealed class LoadResultDto { public bool Ok; public bool CityLoaded; }
 }

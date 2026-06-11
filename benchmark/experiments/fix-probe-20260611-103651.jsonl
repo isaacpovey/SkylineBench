@@ -1,0 +1,14 @@
+{"upgrades": [{"segment": 550, "ok": true, "fronting": 19, "reason": null}, {"segment": 7147, "ok": true, "fronting": 13, "reason": null}, {"segment": 16143, "ok": true, "fronting": 12, "reason": null}, {"segment": 21495, "ok": true, "fronting": 12, "reason": null}, {"segment": 21553, "ok": true, "fronting": 14, "reason": null}, {"segment": 22280, "ok": true, "fronting": 4, "reason": null}, {"segment": 25313, "ok": true, "fronting": 1, "reason": null}, {"segment": 26921, "ok": true, "fronting": 17, "reason": null}, {"segment": 32614, "ok": true, "fronting": 7, "reason": null}, {"segment": 34203, "ok": true, "fronting": 14, "reason": null}]}
+{"day": 0, "tick": 3391713, "wall_time": "10:36:52", "flow_percent": 62, "active_vehicles": 8, "congested_meters": 4947.3, "population": 31393, "abandoned_buildings": 0}
+{"day": 1, "tick": 3392299, "wall_time": "10:37:08", "flow_percent": 60, "active_vehicles": 2083, "congested_meters": 4451.0, "population": 30379, "abandoned_buildings": 0}
+{"day": 2, "tick": 3392885, "wall_time": "10:37:24", "flow_percent": 55, "active_vehicles": 2117, "congested_meters": 4852.3, "population": 30424, "abandoned_buildings": 1}
+{"day": 3, "tick": 3393471, "wall_time": "10:37:39", "flow_percent": 54, "active_vehicles": 2140, "congested_meters": 5289.2, "population": 30655, "abandoned_buildings": 1}
+{"day": 4, "tick": 3394057, "wall_time": "10:37:55", "flow_percent": 56, "active_vehicles": 2184, "congested_meters": 5369.7, "population": 30811, "abandoned_buildings": 1}
+{"day": 5, "tick": 3394643, "wall_time": "10:38:11", "flow_percent": 54, "active_vehicles": 2173, "congested_meters": 5373.8, "population": 30913, "abandoned_buildings": 3}
+{"day": 6, "tick": 3395229, "wall_time": "10:38:28", "flow_percent": 55, "active_vehicles": 2152, "congested_meters": 4954.3, "population": 30981, "abandoned_buildings": 3}
+{"day": 7, "tick": 3395815, "wall_time": "10:38:45", "flow_percent": 56, "active_vehicles": 2090, "congested_meters": 5316.4, "population": 31056, "abandoned_buildings": 4}
+{"day": 8, "tick": 3396401, "wall_time": "10:39:01", "flow_percent": 57, "active_vehicles": 2105, "congested_meters": 5172.7, "population": 31146, "abandoned_buildings": 4}
+{"day": 9, "tick": 3396987, "wall_time": "10:39:17", "flow_percent": 53, "active_vehicles": 2087, "congested_meters": 5408.8, "population": 31202, "abandoned_buildings": 4}
+{"day": 10, "tick": 3397573, "wall_time": "10:39:33", "flow_percent": 54, "active_vehicles": 2036, "congested_meters": 5516.0, "population": 31237, "abandoned_buildings": 5}
+{"day": 11, "tick": 3398159, "wall_time": "10:39:49", "flow_percent": 55, "active_vehicles": 2032, "congested_meters": 5021.4, "population": 31324, "abandoned_buildings": 7}
+{"day": 12, "tick": 3398745, "wall_time": "10:40:04", "flow_percent": 54, "active_vehicles": 2056, "congested_meters": 5637.9, "population": 31387, "abandoned_buildings": 5}

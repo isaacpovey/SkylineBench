@@ -28,6 +28,10 @@ fn render_event(event: Value) -> Option<String> {
 
 fn render_block(block: &Value) -> Option<String> {
     match block.get("type")?.as_str()? {
+        "thinking" => {
+            let t = block.get("thinking")?.as_str()?;
+            Some(format!("<details><summary>Thinking</summary>\n\n{t}\n\n</details>"))
+        }
         "text" => Some(block.get("text")?.as_str()?.to_string()),
         "tool_use" => {
             let name = block.get("name")?.as_str()?;
@@ -96,6 +100,13 @@ fn truncate(s: &str, max: usize) -> String {
 
 fn format_block_live(block: &Value) -> Option<String> {
     match block.get("type")?.as_str()? {
+        "thinking" => {
+            let t = block.get("thinking")?.as_str()?.trim();
+            (!t.is_empty()).then(|| {
+                let indented = t.lines().map(|l| format!("  {l}")).collect::<Vec<_>>().join("\n");
+                format!("  [thinking]\n{indented}")
+            })
+        }
         "text" => {
             let t = block.get("text")?.as_str()?.trim();
             (!t.is_empty()).then(|| format!("  {t}"))
@@ -125,12 +136,17 @@ fn format_result_live(block: &Value) -> Option<String> {
         .join(" ");
     if let Ok(v) = serde_json::from_str::<Value>(&text) {
         if let Some(p) = v.get("benchmark_progress") {
-            let f = |k: &str| p.get(k).and_then(|x| x.as_f64()).unwrap_or(0.0);
+            let opt = |k: &str, prec: usize| {
+                p.get(k)
+                    .and_then(|x| x.as_f64())
+                    .map_or("?".to_string(), |n| format!("{n:.prec$}"))
+            };
             let rejected = v.get("ok").and_then(|x| x.as_bool()) == Some(false);
+            let target = opt("congested_meters_target", 0);
             return Some(format!(
-                "    ↳ flow {:.1}/{:.0}  changes {}  spent {}  {}s left{}",
-                f("flow_current"),
-                f("flow_target"),
+                "    ↳ congested {}m/{target}m  flow {}  changes {}  spent {}  {}s left{}",
+                opt("congested_meters_current", 0),
+                opt("flow_current", 1),
                 p.get("num_changes").and_then(|x| x.as_u64()).unwrap_or(0),
                 p.get("money_spent").and_then(|x| x.as_i64()).unwrap_or(0),
                 p.get("seconds_remaining").and_then(|x| x.as_u64()).unwrap_or(0),
@@ -181,13 +197,25 @@ mod tests {
     #[test]
     fn live_surfaces_benchmark_progress() {
         let event: Value = serde_json::from_str(
-            r#"{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"{\"ok\":true,\"benchmark_progress\":{\"money_spent\":12000,\"num_changes\":3,\"flow_current\":12.3,\"flow_target\":95.0,\"seconds_remaining\":580}}"}]}]}}"#,
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"{\"ok\":true,\"benchmark_progress\":{\"money_spent\":12000,\"num_changes\":3,\"congested_meters_current\":840.0,\"congested_meters_target\":50.0,\"flow_current\":12.3,\"seconds_remaining\":580}}"}]}]}}"#,
         )
         .unwrap();
         let line = format_event_live(&event).unwrap();
-        assert!(line.contains("flow 12.3/95"), "flow vs target: {line}");
+        assert!(line.contains("congested 840m/50m"), "congestion vs target: {line}");
+        assert!(line.contains("flow 12.3"), "flow diagnostic: {line}");
         assert!(line.contains("changes 3"), "changes: {line}");
         assert!(line.contains("580s left"), "time: {line}");
+    }
+
+    #[test]
+    fn live_renders_question_mark_for_null_current() {
+        let event: Value = serde_json::from_str(
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"{\"ok\":true,\"benchmark_progress\":{\"money_spent\":0,\"num_changes\":0,\"congested_meters_current\":null,\"congested_meters_target\":50.0,\"flow_current\":null,\"seconds_remaining\":10800}}"}]}]}}"#,
+        )
+        .unwrap();
+        let line = format_event_live(&event).unwrap();
+        assert!(line.contains("congested ?m/50m"), "null current renders ?: {line}");
+        assert!(line.contains("flow ?"), "null flow renders ?: {line}");
     }
 
     #[test]

@@ -63,6 +63,7 @@ async fn health(State(s): State<MockState>) -> Json<Health> {
         game_version: "mock".into(),
         city_loaded: true,
         paused: c.paused,
+        forced_paused: false,
         tick: c.tick,
     })
 }
@@ -102,6 +103,7 @@ async fn metrics(State(s): State<MockState>) -> Json<Metrics> {
                 .map(|sg| SegmentLoad {
                     segment_id: sg.id,
                     density: (sg.id % 10) as f32 / 10.0,
+                    length: sg.length,
                 })
                 .collect(),
         },
@@ -118,7 +120,7 @@ async fn metrics(State(s): State<MockState>) -> Json<Metrics> {
             workplace_demand: 30,
             employed: 700,
         },
-        services: ServiceMetrics { happiness: 75 },
+        services: ServiceMetrics { happiness: 75, abandoned_buildings: 0 },
     })
 }
 
@@ -174,6 +176,8 @@ async fn build_road(
             snapped_nodes: vec![],
             destroyed: vec![],
             reason: Some(ActionError::InvalidPrefab),
+            zoned_buildings_fronting: None,
+            colliding_buildings: vec![],
         });
     }
 
@@ -222,6 +226,25 @@ async fn build_road(
         snapped_nodes,
         destroyed: vec![],
         reason: None,
+        zoned_buildings_fronting: Some(0),
+        colliding_buildings: vec![],
+    })
+}
+
+async fn validate_road(
+    State(_s): State<MockState>,
+    Json(body): Json<BuildRoadBody>,
+) -> Json<ActionResult> {
+    let known = road_types().iter().any(|r| r.name == body.prefab);
+    Json(ActionResult {
+        ok: known,
+        created_nodes: vec![],
+        created_segments: vec![],
+        snapped_nodes: vec![],
+        destroyed: vec![],
+        reason: if known { None } else { Some(ActionError::InvalidPrefab) },
+        zoned_buildings_fronting: if known { Some(0) } else { None },
+        colliding_buildings: vec![],
     })
 }
 
@@ -257,6 +280,8 @@ async fn bulldoze(
             snapped_nodes: vec![],
             destroyed: vec![body.id],
             reason: None,
+            zoned_buildings_fronting: None,
+            colliding_buildings: vec![],
         })
     } else {
         Json(ActionResult {
@@ -266,6 +291,8 @@ async fn bulldoze(
             snapped_nodes: vec![],
             destroyed: vec![],
             reason: Some(ActionError::InvalidArgs),
+            zoned_buildings_fronting: None,
+            colliding_buildings: vec![],
         })
     }
 }
@@ -289,6 +316,8 @@ async fn upgrade_road(
             snapped_nodes: vec![],
             destroyed: vec![],
             reason: Some(ActionError::InvalidPrefab),
+            zoned_buildings_fronting: None,
+            colliding_buildings: vec![],
         });
     }
     match c.segments.iter_mut().find(|sg| sg.id == body.segment_id) {
@@ -301,6 +330,8 @@ async fn upgrade_road(
                 snapped_nodes: vec![],
                 destroyed: vec![],
                 reason: None,
+                zoned_buildings_fronting: None,
+                colliding_buildings: vec![],
             })
         }
         None => Json(ActionResult {
@@ -310,6 +341,8 @@ async fn upgrade_road(
             snapped_nodes: vec![],
             destroyed: vec![],
             reason: Some(ActionError::InvalidArgs),
+            zoned_buildings_fronting: None,
+            colliding_buildings: vec![],
         }),
     }
 }
@@ -330,6 +363,8 @@ async fn set_zone(State(s): State<MockState>, Json(body): Json<SetZoneBody>) -> 
             snapped_nodes: vec![],
             destroyed: vec![],
             reason: Some(ActionError::InvalidArgs),
+            zoned_buildings_fronting: None,
+            colliding_buildings: vec![],
         });
     }
     c.zones.push(ZoneCell {
@@ -344,6 +379,8 @@ async fn set_zone(State(s): State<MockState>, Json(body): Json<SetZoneBody>) -> 
         snapped_nodes: vec![],
         destroyed: vec![],
         reason: None,
+        zoned_buildings_fronting: None,
+        colliding_buildings: vec![],
     })
 }
 
@@ -377,18 +414,30 @@ struct ClockBody {
     speed: Option<u8>,
 }
 
+/// Test-only sentinel: a step of exactly this many ticks makes the mock report
+/// `forced_paused: true`, simulating a game modal dialog holding
+/// SimulationManager.ForcedSimulationPaused. The value must fit in a single
+/// step chunk (the benchmark server splits steps into 585-tick days and caps
+/// requests at 4095), so a larger magic number would never reach the mock.
+const FORCED_PAUSE_SENTINEL_TICKS: u32 = 424;
+
 async fn clock(State(s): State<MockState>, Json(body): Json<ClockBody>) -> Json<ClockState> {
     let mut c = s.city.lock().unwrap();
+    let forced_paused =
+        body.op == "step" && body.ticks == Some(FORCED_PAUSE_SENTINEL_TICKS);
     match body.op.as_str() {
         "pause" => c.paused = true,
         "resume" => c.paused = false,
-        "step" => c.tick += body.ticks.unwrap_or(0) as u64,
+        // Mirrors the real mod's bail under a forced pause: Step returns
+        // immediately and the tick does not move.
+        "step" if !forced_paused => c.tick += body.ticks.unwrap_or(0) as u64,
         _ => {}
     }
     Json(ClockState {
         ok: true,
         paused: c.paused,
         tick: c.tick,
+        forced_paused,
     })
 }
 
@@ -402,6 +451,7 @@ pub fn router() -> Router {
         .route("/road-types", get(road_types_ep))
         .route("/zone-types", get(zone_types_ep))
         .route("/action/build-road", post(build_road))
+        .route("/action/validate-road", post(validate_road))
         .route("/action/bulldoze", post(bulldoze))
         .route("/action/upgrade-road", post(upgrade_road))
         .route("/action/set-zone", post(set_zone))

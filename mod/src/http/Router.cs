@@ -23,6 +23,7 @@ namespace SkylineBench.Http
                 case "/road-types": return method == "GET" ? Handlers.RoadTypes() : MethodNotAllowed();
                 case "/zone-types": return method == "GET" ? Handlers.ZoneTypes() : MethodNotAllowed();
                 case "/action/build-road": return method == "POST" ? Handlers.BuildRoad(body) : MethodNotAllowed();
+                case "/action/validate-road": return method == "POST" ? Handlers.ValidateRoad(body) : MethodNotAllowed();
                 case "/action/bulldoze": return method == "POST" ? Handlers.Bulldoze(body) : MethodNotAllowed();
                 case "/action/upgrade-road": return method == "POST" ? Handlers.UpgradeRoad(body) : MethodNotAllowed();
                 case "/action/set-zone": return method == "POST" ? Handlers.SetZone(body) : MethodNotAllowed();

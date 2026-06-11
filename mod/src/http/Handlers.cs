@@ -14,6 +14,7 @@ namespace SkylineBench.Http
                 .Name("game_version").Value(h.GameVersion)
                 .Name("city_loaded").Value(h.CityLoaded)
                 .Name("paused").Value(h.Paused)
+                .Name("forced_paused").Value(h.ForcedPaused)
                 .Name("tick").Value((long)h.Tick)
              .EndObject();
             return HttpReply.Json(200, w.ToString());
@@ -47,6 +48,7 @@ namespace SkylineBench.Http
         }
 
         public static HttpReply BuildRoad(string body) { return HttpReply.Json(200, Serialize.Action(GameActions.BuildRoad(RequestParse.BuildRoad(JsonReader.Parse(body))))); }
+        public static HttpReply ValidateRoad(string body) { return HttpReply.Json(200, Serialize.Action(GameActions.ValidateRoad(RequestParse.BuildRoad(JsonReader.Parse(body))))); }
         public static HttpReply Bulldoze(string body) { return HttpReply.Json(200, Serialize.Action(GameActions.Bulldoze(RequestParse.Bulldoze(JsonReader.Parse(body))))); }
         public static HttpReply UpgradeRoad(string body) { return HttpReply.Json(200, Serialize.Action(GameActions.UpgradeRoad(RequestParse.UpgradeRoad(JsonReader.Parse(body))))); }
         public static HttpReply SetZone(string body) { return HttpReply.Json(200, Serialize.Action(GameActions.SetZone(RequestParse.SetZone(JsonReader.Parse(body))))); }

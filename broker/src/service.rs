@@ -21,6 +21,7 @@ pub async fn get_city_overview(client: &BridgeClient) -> Result<Value, ServiceEr
     Ok(json!({
         "tick": health.tick,
         "paused": health.paused,
+        "forced_paused": health.forced_paused,
         "population": metrics.population.total,
         "funds": metrics.economy.funds,
         "traffic_flow_percent": metrics.traffic.flow_percent,
@@ -104,12 +105,11 @@ pub struct GetMetricsArgs {
     pub groups: Vec<String>,
 }
 
-pub async fn get_metrics(
-    client: &BridgeClient,
-    args: GetMetricsArgs,
-) -> Result<Value, ServiceError> {
-    let m = client.metrics().await?;
-    let want = |g: &str| args.groups.is_empty() || args.groups.iter().any(|x| x == g);
+/// Group-filtered metrics JSON from an already-fetched snapshot, so callers
+/// that need the typed `Metrics` (the benchmark server's telemetry) don't
+/// fetch twice.
+pub fn metrics_value(m: &crate::contract::Metrics, groups: &[String]) -> Value {
+    let want = |g: &str| groups.is_empty() || groups.iter().any(|x| x == g);
     let mut out = json!({ "tick": m.tick });
     if want("traffic") {
         out["traffic"] = serde_json::to_value(&m.traffic).unwrap();
@@ -123,7 +123,15 @@ pub async fn get_metrics(
     if want("services") {
         out["services"] = serde_json::to_value(&m.services).unwrap();
     }
-    Ok(out)
+    out
+}
+
+pub async fn get_metrics(
+    client: &BridgeClient,
+    args: GetMetricsArgs,
+) -> Result<Value, ServiceError> {
+    let m = client.metrics().await?;
+    Ok(metrics_value(&m, &args.groups))
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -457,6 +465,7 @@ mod tests {
         let v = get_city_overview(&c).await.unwrap();
         assert_eq!(v["segment_count"], 0);
         assert_eq!(v["traffic_flow_percent"], 100.0);
+        assert_eq!(v["forced_paused"], false);
     }
 
     #[tokio::test]

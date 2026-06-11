@@ -24,18 +24,27 @@ def http(path, body=None, timeout=600):
 
 
 def congestion_summary(segment_loads):
-    densities = sorted((s["density"] for s in segment_loads), reverse=True)
-    if not densities:
+    if not segment_loads:
         return {"segments": 0}
-    congested = sum(1 for d in densities if d >= 128)
+    densities = sorted((s["density"] for s in segment_loads), reverse=True)
+    congested = [s for s in segment_loads if s["density"] >= 0.7]
     worst_decile = densities[: max(1, len(densities) // 10)]
     return {
-        "segments": len(densities),
-        "congested_128": congested,
-        "congested_share": round(congested / len(densities), 4),
-        "mean_density": round(sum(densities) / len(densities), 2),
-        "worst_decile_mean": round(sum(worst_decile) / len(worst_decile), 2),
+        "segments": len(segment_loads),
+        "congested_count": len(congested),
+        "congested_meters": round(sum(s.get("length", 0.0) for s in congested), 1),
+        "mean_density": round(sum(densities) / len(densities), 3),
+        "worst_decile_mean": round(sum(worst_decile) / len(worst_decile), 3),
     }
+
+
+FROZEN_KEYS = ("population", "flow_percent", "active_vehicles", "congestion")
+
+
+def looks_frozen(prev_row, row, clock):
+    if clock.get("forced_paused"):
+        return True
+    return prev_row is not None and all(prev_row.get(k) == row.get(k) for k in FROZEN_KEYS)
 
 
 def sample(day, tick):
@@ -72,20 +81,25 @@ def main():
         f.flush()
         print(f"day 0: pop={row['population']} flow={row['flow_percent']} veh={row['active_vehicles']}", flush=True)
 
+        prev_row = row
         for day in range(1, days + 1):
             clock = http("/clock", {"op": "step", "ticks": DAY_TICKS})
             if not clock.get("ok"):
                 print(f"day {day}: step failed: {clock}", file=sys.stderr, flush=True)
                 sys.exit(1)
             row = sample(day, clock["tick"])
+            if looks_frozen(prev_row, row, clock):
+                print(f"WARNING: day {day} appears frozen (game dialog?)", file=sys.stderr, flush=True)
+                row = {**row, "frozen": True}
             f.write(json.dumps(row) + "\n")
             f.flush()
             pop = row["population"].get("total") if isinstance(row["population"], dict) else row["population"]
             print(
                 f"day {day}: pop={pop} flow={row['flow_percent']} veh={row['active_vehicles']} "
-                f"congested={row['congestion'].get('congested_share')}",
+                f"congested_m={row['congestion'].get('congested_meters')}",
                 flush=True,
             )
+            prev_row = row
 
 
 if __name__ == "__main__":

@@ -53,14 +53,14 @@ namespace SkylineBench.Json
             w.Name("traffic").BeginObject().Name("flow_percent").Value(m.FlowPercent).Name("active_vehicles").Value((long)m.ActiveVehicles)
                 .Name("segment_loads").BeginArray();
             foreach (var sl in m.SegmentLoads)
-                w.BeginObject().Name("segment_id").Value((long)sl.SegmentId).Name("density").Value(sl.Density).EndObject();
+                w.BeginObject().Name("segment_id").Value((long)sl.SegmentId).Name("density").Value(sl.Density).Name("length").Value(sl.Length).EndObject();
             w.EndArray().EndObject();
             w.Name("economy").BeginObject().Name("balance").Value(m.Balance).Name("weekly_income").Value(m.WeeklyIncome)
                 .Name("weekly_expenses").Value(m.WeeklyExpenses).Name("funds").Value(m.Funds).EndObject();
             w.Name("population").BeginObject().Name("total").Value((long)m.Population).Name("residential_demand").Value((long)m.ResidentialDemand)
                 .Name("commercial_demand").Value((long)m.CommercialDemand).Name("workplace_demand").Value((long)m.WorkplaceDemand)
                 .Name("employed").Value((long)m.Employed).EndObject();
-            w.Name("services").BeginObject().Name("happiness").Value((long)m.Happiness).EndObject();
+            w.Name("services").BeginObject().Name("happiness").Value((long)m.Happiness).Name("abandoned_buildings").Value((long)m.AbandonedBuildings).EndObject();
             w.EndObject();
             return w.ToString();
         }
@@ -75,8 +75,13 @@ namespace SkylineBench.Json
                 WriteUintArray(w, "created_segments", r.CreatedSegments);
                 WriteUintArray(w, "snapped_nodes", r.SnappedNodes);
                 WriteUintArray(w, "destroyed", r.Destroyed);
+                if (r.ZonedBuildingsFronting >= 0) w.Name("zoned_buildings_fronting").Value((long)r.ZonedBuildingsFronting);
             }
-            else { w.Name("reason").Value(r.Reason); }
+            else
+            {
+                w.Name("reason").Value(r.Reason);
+                if (r.CollidingBuildings.Count > 0) WriteUintArray(w, "colliding_buildings", r.CollidingBuildings);
+            }
             w.EndObject();
             return w.ToString();
         }
@@ -84,7 +89,7 @@ namespace SkylineBench.Json
         public static string Clock(ClockStateDto c)
         {
             var w = new JsonWriter();
-            w.BeginObject().Name("ok").Value(c.Ok).Name("paused").Value(c.Paused).Name("tick").Value((long)c.Tick).EndObject();
+            w.BeginObject().Name("ok").Value(c.Ok).Name("paused").Value(c.Paused).Name("tick").Value((long)c.Tick).Name("forced_paused").Value(c.ForcedPaused).EndObject();
             return w.ToString();
         }
 

@@ -24,17 +24,17 @@ def http(path, body=None, timeout=600):
 
 
 def congestion_summary(segment_loads):
-    densities = sorted((s["density"] for s in segment_loads), reverse=True)
-    if not densities:
+    if not segment_loads:
         return {"segments": 0}
-    congested = sum(1 for d in densities if d >= 128)
+    densities = sorted((s["density"] for s in segment_loads), reverse=True)
+    congested = [s for s in segment_loads if s["density"] >= 0.7]
     worst_decile = densities[: max(1, len(densities) // 10)]
     return {
-        "segments": len(densities),
-        "congested_128": congested,
-        "congested_share": round(congested / len(densities), 4),
-        "mean_density": round(sum(densities) / len(densities), 2),
-        "worst_decile_mean": round(sum(worst_decile) / len(worst_decile), 2),
+        "segments": len(segment_loads),
+        "congested_count": len(congested),
+        "congested_meters": round(sum(s.get("length", 0.0) for s in congested), 1),
+        "mean_density": round(sum(densities) / len(densities), 3),
+        "worst_decile_mean": round(sum(worst_decile) / len(worst_decile), 3),
     }
 
 
@@ -83,7 +83,7 @@ def main():
             pop = row["population"].get("total") if isinstance(row["population"], dict) else row["population"]
             print(
                 f"day {day}: pop={pop} flow={row['flow_percent']} veh={row['active_vehicles']} "
-                f"congested={row['congestion'].get('congested_share')}",
+                f"congested_m={row['congestion'].get('congested_meters')}",
                 flush=True,
             )
 

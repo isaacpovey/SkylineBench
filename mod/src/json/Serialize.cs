@@ -75,8 +75,13 @@ namespace SkylineBench.Json
                 WriteUintArray(w, "created_segments", r.CreatedSegments);
                 WriteUintArray(w, "snapped_nodes", r.SnappedNodes);
                 WriteUintArray(w, "destroyed", r.Destroyed);
+                if (r.ZonedBuildingsFronting >= 0) w.Name("zoned_buildings_fronting").Value((long)r.ZonedBuildingsFronting);
             }
-            else { w.Name("reason").Value(r.Reason); }
+            else
+            {
+                w.Name("reason").Value(r.Reason);
+                if (r.CollidingBuildings.Count > 0) WriteUintArray(w, "colliding_buildings", r.CollidingBuildings);
+            }
             w.EndObject();
             return w.ToString();
         }

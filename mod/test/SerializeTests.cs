@@ -14,6 +14,8 @@ namespace SkylineBench.Tests
             tests.Add(new KeyValuePair<string, Action>("serialize: metrics segment length and abandoned buildings", MetricsIncludesSegmentLengthAndAbandoned));
             tests.Add(new KeyValuePair<string, Action>("serialize: action ok", ActionOk));
             tests.Add(new KeyValuePair<string, Action>("serialize: action error omits diff", ActionErr));
+            tests.Add(new KeyValuePair<string, Action>("serialize: action includes frontage when computed", ActionIncludesFrontageWhenComputed));
+            tests.Add(new KeyValuePair<string, Action>("serialize: action failure includes colliding buildings", ActionFailureIncludesCollidingBuildings));
             tests.Add(new KeyValuePair<string, Action>("serialize: clock state", Clock));
             tests.Add(new KeyValuePair<string, Action>("serialize: load result", Load));
             tests.Add(new KeyValuePair<string, Action>("serialize: road types shape", RoadTypesShape));
@@ -62,6 +64,25 @@ namespace SkylineBench.Tests
         static void ActionErr()
         {
             Assert.Equal("{\"ok\":false,\"reason\":\"INVALID_PREFAB\"}", Serialize.Action(ActionResultDto.Fail("INVALID_PREFAB")));
+        }
+
+        static void ActionIncludesFrontageWhenComputed()
+        {
+            var r = new ActionResultDto { Ok = true, ZonedBuildingsFronting = 3 };
+            Assert.True(Serialize.Action(r).Contains("\"zoned_buildings_fronting\":3"), "should include frontage count");
+
+            var none = new ActionResultDto { Ok = true };
+            Assert.True(!Serialize.Action(none).Contains("zoned_buildings_fronting"), "should omit frontage when not computed");
+        }
+
+        static void ActionFailureIncludesCollidingBuildings()
+        {
+            var r = ActionResultDto.Fail("OBJECT_COLLISION");
+            r.CollidingBuildings.Add(41);
+            r.CollidingBuildings.Add(99);
+            string json = Serialize.Action(r);
+            Assert.True(json.Contains("\"reason\":\"OBJECT_COLLISION\""), "reason in json: " + json);
+            Assert.True(json.Contains("\"colliding_buildings\":[41,99]"), "colliding_buildings in json: " + json);
         }
 
         static void Clock()

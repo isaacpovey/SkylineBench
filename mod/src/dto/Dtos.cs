@@ -32,6 +32,8 @@ namespace SkylineBench.Dto
         public List<uint> SnappedNodes = new List<uint>();
         public List<uint> Destroyed = new List<uint>();
         public string Reason; // null when Ok
+        public int ZonedBuildingsFronting = -1; // -1 = not computed / not applicable
+        public List<uint> CollidingBuildings = new List<uint>();
         public static ActionResultDto Fail(string reason) { return new ActionResultDto { Ok = false, Reason = reason }; }
     }
 

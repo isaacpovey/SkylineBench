@@ -1,6 +1,7 @@
 using ColossalFramework;
 using ICities;
 using SkylineBench.Http;
+using UnityEngine;
 
 namespace SkylineBench.Bridge
 {
@@ -47,6 +48,7 @@ namespace SkylineBench.Bridge
     public static class ModRuntime
     {
         private static HttpServer _server;
+        private static GameObject _capture;
         public static IThreading Threading { get; private set; }
 
         public static void SetThreading(IThreading t) { Threading = t; }
@@ -56,11 +58,15 @@ namespace SkylineBench.Bridge
             if (_server != null) return;
             _server = new HttpServer(8787, Router.Route);
             _server.Start();
+            _capture = new GameObject("SkylineBenchCapture");
+            _capture.AddComponent<CaptureBehaviour>();
+            UnityEngine.Object.DontDestroyOnLoad(_capture);
         }
 
         public static void Stop()
         {
             if (_server != null) { _server.Stop(); _server = null; }
+            if (_capture != null) { UnityEngine.Object.Destroy(_capture); _capture = null; }
             Threading = null;
         }
     }

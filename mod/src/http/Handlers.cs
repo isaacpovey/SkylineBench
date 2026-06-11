@@ -1,3 +1,4 @@
+using System;
 using SkylineBench.Bridge;
 using SkylineBench.Json;
 
@@ -54,5 +55,19 @@ namespace SkylineBench.Http
         public static HttpReply SetZone(string body) { return HttpReply.Json(200, Serialize.Action(GameActions.SetZone(RequestParse.SetZone(JsonReader.Parse(body))))); }
         public static HttpReply Clock(string body) { return HttpReply.Json(200, Serialize.Clock(GameActions.Clock(RequestParse.Clock(JsonReader.Parse(body))))); }
         public static HttpReply LoadSave(string body) { return HttpReply.Json(200, Serialize.Load(SaveLoader.Load(RequestParse.LoadSave(JsonReader.Parse(body)).SaveName))); }
+
+        public static HttpReply Screenshot(string body)
+        {
+            var req = RequestParse.Screenshot(JsonReader.Parse(body));
+            try
+            {
+                byte[] png = CaptureBehaviour.Capture(req.X, req.Z, req.Size, req.TopDown, 5000);
+                return HttpReply.Png(png);
+            }
+            catch (Exception e)
+            {
+                return HttpReply.Json(500, "{\"error\":\"capture_failed\",\"message\":\"" + e.Message.Replace("\"", "'") + "\"}");
+            }
+        }
     }
 }

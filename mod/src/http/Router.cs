@@ -29,6 +29,7 @@ namespace SkylineBench.Http
                 case "/action/set-zone": return method == "POST" ? Handlers.SetZone(body) : MethodNotAllowed();
                 case "/clock": return method == "POST" ? Handlers.Clock(body) : MethodNotAllowed();
                 case "/load-save": return method == "POST" ? Handlers.LoadSave(body) : MethodNotAllowed();
+                case "/screenshot": return method == "POST" ? Handlers.Screenshot(body) : MethodNotAllowed();
                 default: return HttpReply.Json(404, "{\"error\":\"unknown_route\",\"path\":\"" + path + "\"}");
             }
         }

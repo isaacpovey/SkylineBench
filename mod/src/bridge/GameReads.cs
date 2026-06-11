@@ -111,7 +111,7 @@ namespace SkylineBench.Bridge
                     // m_trafficDensity is a byte the game rolls up to a max of
                     // 100, not 255 — dividing by 255 pinned every saturated
                     // segment at 0.39 and destroyed congestion ranking.
-                    dto.SegmentLoads.Add(new SegmentLoadDto { SegmentId = i, Density = Mathf.Min(1f, s.m_trafficDensity / 100f) });
+                    dto.SegmentLoads.Add(new SegmentLoadDto { SegmentId = i, Density = Mathf.Min(1f, s.m_trafficDensity / 100f), Length = s.m_averageLength });
                 }
                 var em = Singleton<EconomyManager>.instance;
                 dto.Funds = em.LastCashAmount;
@@ -129,6 +129,15 @@ namespace SkylineBench.Bridge
                 // Employment isn't cleanly exposed by a single manager field; left at 0.
                 dto.Employed = 0;
                 dto.Happiness = (byte)Mathf.Clamp((int)dm.m_districts.m_buffer[0].m_finalHappiness, 0, 100);
+                var bm = Singleton<BuildingManager>.instance;
+                uint abandoned = 0;
+                for (uint i = 0; i < bm.m_buildings.m_buffer.Length; i++)
+                {
+                    var b = bm.m_buildings.m_buffer[i];
+                    if ((b.m_flags & Building.Flags.Created) == Building.Flags.None) continue;
+                    if ((b.m_flags & Building.Flags.Abandoned) != Building.Flags.None) abandoned++;
+                }
+                dto.AbandonedBuildings = abandoned;
                 return dto;
             }, TimeoutMs);
         }

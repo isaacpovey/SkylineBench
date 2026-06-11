@@ -53,14 +53,14 @@ namespace SkylineBench.Json
             w.Name("traffic").BeginObject().Name("flow_percent").Value(m.FlowPercent).Name("active_vehicles").Value((long)m.ActiveVehicles)
                 .Name("segment_loads").BeginArray();
             foreach (var sl in m.SegmentLoads)
-                w.BeginObject().Name("segment_id").Value((long)sl.SegmentId).Name("density").Value(sl.Density).EndObject();
+                w.BeginObject().Name("segment_id").Value((long)sl.SegmentId).Name("density").Value(sl.Density).Name("length").Value(sl.Length).EndObject();
             w.EndArray().EndObject();
             w.Name("economy").BeginObject().Name("balance").Value(m.Balance).Name("weekly_income").Value(m.WeeklyIncome)
                 .Name("weekly_expenses").Value(m.WeeklyExpenses).Name("funds").Value(m.Funds).EndObject();
             w.Name("population").BeginObject().Name("total").Value((long)m.Population).Name("residential_demand").Value((long)m.ResidentialDemand)
                 .Name("commercial_demand").Value((long)m.CommercialDemand).Name("workplace_demand").Value((long)m.WorkplaceDemand)
                 .Name("employed").Value((long)m.Employed).EndObject();
-            w.Name("services").BeginObject().Name("happiness").Value((long)m.Happiness).EndObject();
+            w.Name("services").BeginObject().Name("happiness").Value((long)m.Happiness).Name("abandoned_buildings").Value((long)m.AbandonedBuildings).EndObject();
             w.EndObject();
             return w.ToString();
         }

@@ -34,6 +34,19 @@ namespace SkylineBench.Bridge
             return req.Png;
         }
 
+        public static void CancelAll(Exception reason)
+        {
+            lock (_lock)
+            {
+                while (_queue.Count > 0)
+                {
+                    var req = _queue.Dequeue();
+                    req.Error = reason;
+                    req.Done.Set();
+                }
+            }
+        }
+
         private void Update()
         {
             CaptureRequest req = null;
@@ -67,10 +80,16 @@ namespace SkylineBench.Bridge
             try
             {
                 var tex = new Texture2D(Screen.width, Screen.height, TextureFormat.RGB24, false);
-                tex.ReadPixels(new Rect(0f, 0f, Screen.width, Screen.height), 0, 0);
-                tex.Apply();
-                req.Png = tex.EncodeToPNG();
-                UnityEngine.Object.Destroy(tex);
+                try
+                {
+                    tex.ReadPixels(new Rect(0f, 0f, Screen.width, Screen.height), 0, 0);
+                    tex.Apply();
+                    req.Png = tex.EncodeToPNG();
+                }
+                finally
+                {
+                    UnityEngine.Object.Destroy(tex);
+                }
             }
             catch (Exception e) { req.Error = e; }
             finally

@@ -66,7 +66,9 @@ namespace SkylineBench.Http
             }
             catch (Exception e)
             {
-                return HttpReply.Json(500, "{\"error\":\"capture_failed\",\"message\":\"" + e.Message.Replace("\"", "'") + "\"}");
+                var w = new JsonWriter();
+                w.BeginObject().Name("error").Value("capture_failed").Name("message").Value(e.Message).EndObject();
+                return HttpReply.Json(500, w.ToString());
             }
         }
     }

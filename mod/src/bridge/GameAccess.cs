@@ -1,3 +1,4 @@
+using System;
 using ColossalFramework;
 using ICities;
 using SkylineBench.Http;
@@ -66,7 +67,12 @@ namespace SkylineBench.Bridge
         public static void Stop()
         {
             if (_server != null) { _server.Stop(); _server = null; }
-            if (_capture != null) { UnityEngine.Object.Destroy(_capture); _capture = null; }
+            if (_capture != null)
+            {
+                CaptureBehaviour.CancelAll(new Exception("mod stopping"));
+                UnityEngine.Object.Destroy(_capture);
+                _capture = null;
+            }
             Threading = null;
         }
     }

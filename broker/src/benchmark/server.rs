@@ -34,6 +34,7 @@ pub struct BenchmarkServer {
     state: Arc<Mutex<RunState>>,
     persist: Option<Arc<EndStatePersister>>,
     renders_dir: Option<std::path::PathBuf>,
+    screenshots: Option<Arc<crate::benchmark::screenshots::ScreenshotSink>>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -86,7 +87,14 @@ fn tool_err(err: ServiceError) -> CallToolResult {
 
 impl BenchmarkServer {
     pub fn new(client: Arc<BridgeClient>, state: Arc<Mutex<RunState>>) -> Self {
-        Self { client, state, persist: None, renders_dir: None, tool_router: Self::tool_router() }
+        Self {
+            client,
+            state,
+            persist: None,
+            renders_dir: None,
+            screenshots: None,
+            tool_router: Self::tool_router(),
+        }
     }
 
     pub fn with_persist(self, persist: Arc<EndStatePersister>) -> Self {
@@ -95,6 +103,40 @@ impl BenchmarkServer {
 
     pub fn with_renders_dir(self, dir: std::path::PathBuf) -> Self {
         Self { renders_dir: Some(dir), ..self }
+    }
+
+    pub fn with_screenshots_dir(self, dir: std::path::PathBuf) -> Self {
+        Self {
+            screenshots: Some(Arc::new(crate::benchmark::screenshots::ScreenshotSink::new(dir))),
+            ..self
+        }
+    }
+
+    async fn shoot_overview(&self) {
+        let Some(sink) = &self.screenshots else { return };
+        let Ok(net) = self.client.network().await else { return };
+        sink.capture(
+            &self.client,
+            &self.state,
+            crate::service::overview_shot(&net),
+            crate::benchmark::screenshots::Stream::Overview,
+            "step",
+            None,
+        )
+        .await;
+    }
+
+    async fn shoot_action(&self, x: f32, z: f32, action: &str, caption: String) {
+        let Some(sink) = &self.screenshots else { return };
+        sink.capture(
+            &self.client,
+            &self.state,
+            crate::service::closeup_shot(x, z),
+            crate::benchmark::screenshots::Stream::Action,
+            action,
+            Some(caption),
+        )
+        .await;
     }
 
     /// Best-effort frame write: a failed render persist must never fail the
@@ -419,6 +461,7 @@ impl BenchmarkServer {
                 self.persist_render(&png, tick, "step").await;
             }
         }
+        self.shoot_overview().await;
         self.finish(out).await
     }
 
@@ -430,12 +473,15 @@ impl BenchmarkServer {
         }
         let length = horizontal_distance(args.from, args.to);
         let road_type = args.road_type.clone();
+        let (mx, mz) = ((args.from.x + args.to.x) / 2.0, (args.from.z + args.to.z) / 2.0);
         match service::build_road(&self.client, args).await {
             Ok(v) => {
                 if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
                     let mut s = self.state.lock().await;
                     let cost = s.build_cost(&road_type, length);
                     s.record_mutation("build_road", cost);
+                    drop(s);
+                    self.shoot_action(mx, mz, "build_road", format!("build_road: {road_type}")).await;
                 }
                 self.finish(v).await
             }
@@ -453,19 +499,27 @@ impl BenchmarkServer {
         }
         let segment_id = args.segment;
         let road_type = args.road_type.clone();
-        let length = self
-            .client
-            .network()
-            .await
-            .ok()
-            .and_then(|n| n.segments.into_iter().find(|s| s.id == segment_id).map(|s| s.length))
+        let net = self.client.network().await.ok();
+        let length = net
+            .as_ref()
+            .and_then(|n| n.segments.iter().find(|s| s.id == segment_id).map(|s| s.length))
             .unwrap_or(0.0);
+        let midpoint = net.as_ref().and_then(|n| {
+            let seg = n.segments.iter().find(|s| s.id == segment_id)?;
+            let start = n.nodes.iter().find(|nd| nd.id == seg.start_node)?;
+            let end = n.nodes.iter().find(|nd| nd.id == seg.end_node)?;
+            Some(((start.x + end.x) / 2.0, (start.z + end.z) / 2.0))
+        });
         match service::upgrade_road(&self.client, args).await {
             Ok(v) => {
                 if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
                     let mut s = self.state.lock().await;
                     let cost = s.build_cost(&road_type, length);
                     s.record_mutation("upgrade_road", cost);
+                    drop(s);
+                    if let Some((mx, mz)) = midpoint {
+                        self.shoot_action(mx, mz, "upgrade_road", format!("upgrade_road: segment {segment_id} → {road_type}")).await;
+                    }
                 }
                 self.finish(v).await
             }
@@ -479,10 +533,34 @@ impl BenchmarkServer {
         if self.run_ended().await {
             return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
         }
+        let target_type = args.target_type.clone();
+        let id = args.id;
+        let pre_location: Option<(f32, f32)> = if self.screenshots.is_some() {
+            match args.target_type.as_str() {
+                "segment" => self.client.network().await.ok().and_then(|n| {
+                    let seg = n.segments.iter().find(|s| s.id == id)?;
+                    let start = n.nodes.iter().find(|nd| nd.id == seg.start_node)?;
+                    let end = n.nodes.iter().find(|nd| nd.id == seg.end_node)?;
+                    Some(((start.x + end.x) / 2.0, (start.z + end.z) / 2.0))
+                }),
+                "node" => self.client.network().await.ok().and_then(|n| {
+                    n.nodes.iter().find(|nd| nd.id == id).map(|nd| (nd.x, nd.z))
+                }),
+                "building" => self.client.buildings().await.ok().and_then(|b| {
+                    b.buildings.iter().find(|bd| bd.id == id).map(|bd| (bd.x, bd.z))
+                }),
+                _ => None,
+            }
+        } else {
+            None
+        };
         match service::bulldoze(&self.client, args).await {
             Ok(v) => {
                 if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
                     self.state.lock().await.record_mutation("bulldoze", 0);
+                    if let Some((x, z)) = pre_location {
+                        self.shoot_action(x, z, "bulldoze", format!("bulldoze: {target_type} {id}")).await;
+                    }
                 }
                 self.finish(v).await
             }
@@ -496,10 +574,16 @@ impl BenchmarkServer {
         if self.run_ended().await {
             return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
         }
+        let zone_type = args.zone_type.clone();
+        let (cx, cz) = (
+            (args.area.min_x + args.area.max_x) / 2.0,
+            (args.area.min_z + args.area.max_z) / 2.0,
+        );
         match service::set_zoning(&self.client, args).await {
             Ok(v) => {
                 if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
                     self.state.lock().await.record_mutation("set_zoning", 0);
+                    self.shoot_action(cx, cz, "set_zoning", format!("set_zoning: {zone_type}")).await;
                 }
                 self.finish(v).await
             }
@@ -624,8 +708,16 @@ impl BenchmarkServer {
                 .await;
         }
 
+        let seg_midpoint = |segment_id: u32| -> Option<(f32, f32)> {
+            let seg = net.segments.iter().find(|s| s.id == segment_id)?;
+            let start = net.nodes.iter().find(|nd| nd.id == seg.start_node)?;
+            let end = net.nodes.iter().find(|nd| nd.id == seg.end_node)?;
+            Some(((start.x + end.x) / 2.0, (start.z + end.z) / 2.0))
+        };
+
         let mut results: Vec<Value> = Vec::with_capacity(validations.len());
         let mut first_failed_at: Option<usize> = None;
+        let mut successful_positions: Vec<(f32, f32)> = Vec::new();
         for (i, (source, op, _, cost)) in validations.iter().enumerate() {
             if first_failed_at.is_some() && args.stop_on_error {
                 results.push(serde_json::json!({
@@ -654,6 +746,27 @@ impl BenchmarkServer {
                     let ok = v.get("ok").and_then(|b| b.as_bool()) == Some(true);
                     if ok {
                         self.state.lock().await.record_mutation(tool_name(op), *cost);
+                        if self.screenshots.is_some() {
+                            let pos = match op {
+                                ExecOp::Build { from, to, .. } => {
+                                    Some(((from.x + to.x) / 2.0, (from.z + to.z) / 2.0))
+                                }
+                                ExecOp::Upgrade { segment, .. } => seg_midpoint(*segment),
+                                ExecOp::Bulldoze { target_type, id } => match target_type.as_str() {
+                                    "segment" => seg_midpoint(*id),
+                                    "node" => net.nodes.iter().find(|nd| nd.id == *id).map(|nd| (nd.x, nd.z)),
+                                    _ => None,
+                                },
+                                ExecOp::Zone { area, .. } => Some((
+                                    (area.min_x + area.max_x) / 2.0,
+                                    (area.min_z + area.max_z) / 2.0,
+                                )),
+                                ExecOp::Invalid => None,
+                            };
+                            if let Some(p) = pos {
+                                successful_positions.push(p);
+                            }
+                        }
                     } else if first_failed_at.is_none() {
                         first_failed_at = Some(i);
                     }
@@ -680,6 +793,15 @@ impl BenchmarkServer {
                         .await;
                 }
             }
+        }
+
+        let n_ok = successful_positions.len();
+        if n_ok > 0 {
+            let (sum_x, sum_z) = successful_positions
+                .iter()
+                .fold((0.0_f32, 0.0_f32), |(ax, az), (x, z)| (ax + x, az + z));
+            let count = n_ok as f32;
+            self.shoot_action(sum_x / count, sum_z / count, "apply_plan", format!("apply_plan: {n_ok} ops")).await;
         }
 
         self.finish(serde_json::json!({
@@ -1062,6 +1184,59 @@ mod tests {
             lines.iter().all(|l| l.as_object().unwrap().contains_key("congested")),
             "index tracks the scored metric: {lines:?}"
         );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn step_persists_an_overview_screenshot() {
+        let dir = std::env::temp_dir().join(format!("sb-srv-shots-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        let bench = bench_with_mock().await.with_screenshots_dir(dir.clone());
+        bench
+            .control_time(Parameters(crate::service::ControlTimeArgs {
+                op: "step".into(),
+                ticks: Some(10),
+                speed: None,
+            }))
+            .await
+            .unwrap();
+        let index = std::fs::read_to_string(dir.join("overview/index.jsonl")).unwrap();
+        let entry: serde_json::Value = serde_json::from_str(index.lines().next().unwrap()).unwrap();
+        assert_eq!(entry["trigger"], "step");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn successful_build_persists_an_action_closeup() {
+        let dir = std::env::temp_dir().join(format!("sb-srv-shots2-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        let bench = bench_with_mock().await.with_screenshots_dir(dir.clone());
+        bench
+            .build_road(Parameters(crate::service::BuildRoadArgs {
+                from: crate::contract::Position { x: 0.0, y: 0.0, z: 0.0 },
+                to: crate::contract::Position { x: 50.0, y: 0.0, z: 0.0 },
+                road_type: "road".into(),
+                snap: true,
+            }))
+            .await
+            .unwrap();
+        let index = std::fs::read_to_string(dir.join("actions/index.jsonl")).unwrap();
+        let entry: serde_json::Value = serde_json::from_str(index.lines().next().unwrap()).unwrap();
+        assert_eq!(entry["action"], "build_road");
+        assert_eq!(entry["caption"], "build_road: road");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn failed_action_persists_no_screenshot() {
+        let dir = std::env::temp_dir().join(format!("sb-srv-shots3-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        let bench = bench_with_mock().await.with_screenshots_dir(dir.clone());
+        bench
+            .bulldoze(Parameters(crate::service::BulldozeArgs { target_type: "segment".into(), id: 9999 }))
+            .await
+            .unwrap();
+        assert!(!dir.join("actions/index.jsonl").exists());
         std::fs::remove_dir_all(&dir).ok();
     }
 

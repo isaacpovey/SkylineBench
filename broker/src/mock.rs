@@ -102,6 +102,7 @@ async fn metrics(State(s): State<MockState>) -> Json<Metrics> {
                 .map(|sg| SegmentLoad {
                     segment_id: sg.id,
                     density: (sg.id % 10) as f32 / 10.0,
+                    length: sg.length,
                 })
                 .collect(),
         },
@@ -118,7 +119,7 @@ async fn metrics(State(s): State<MockState>) -> Json<Metrics> {
             workplace_demand: 30,
             employed: 700,
         },
-        services: ServiceMetrics { happiness: 75 },
+        services: ServiceMetrics { happiness: 75, abandoned_buildings: 0 },
     })
 }
 
@@ -174,6 +175,8 @@ async fn build_road(
             snapped_nodes: vec![],
             destroyed: vec![],
             reason: Some(ActionError::InvalidPrefab),
+            zoned_buildings_fronting: None,
+            colliding_buildings: vec![],
         });
     }
 
@@ -222,6 +225,8 @@ async fn build_road(
         snapped_nodes,
         destroyed: vec![],
         reason: None,
+        zoned_buildings_fronting: Some(0),
+        colliding_buildings: vec![],
     })
 }
 
@@ -257,6 +262,8 @@ async fn bulldoze(
             snapped_nodes: vec![],
             destroyed: vec![body.id],
             reason: None,
+            zoned_buildings_fronting: None,
+            colliding_buildings: vec![],
         })
     } else {
         Json(ActionResult {
@@ -266,6 +273,8 @@ async fn bulldoze(
             snapped_nodes: vec![],
             destroyed: vec![],
             reason: Some(ActionError::InvalidArgs),
+            zoned_buildings_fronting: None,
+            colliding_buildings: vec![],
         })
     }
 }
@@ -289,6 +298,8 @@ async fn upgrade_road(
             snapped_nodes: vec![],
             destroyed: vec![],
             reason: Some(ActionError::InvalidPrefab),
+            zoned_buildings_fronting: None,
+            colliding_buildings: vec![],
         });
     }
     match c.segments.iter_mut().find(|sg| sg.id == body.segment_id) {
@@ -301,6 +312,8 @@ async fn upgrade_road(
                 snapped_nodes: vec![],
                 destroyed: vec![],
                 reason: None,
+                zoned_buildings_fronting: None,
+                colliding_buildings: vec![],
             })
         }
         None => Json(ActionResult {
@@ -310,6 +323,8 @@ async fn upgrade_road(
             snapped_nodes: vec![],
             destroyed: vec![],
             reason: Some(ActionError::InvalidArgs),
+            zoned_buildings_fronting: None,
+            colliding_buildings: vec![],
         }),
     }
 }
@@ -330,6 +345,8 @@ async fn set_zone(State(s): State<MockState>, Json(body): Json<SetZoneBody>) -> 
             snapped_nodes: vec![],
             destroyed: vec![],
             reason: Some(ActionError::InvalidArgs),
+            zoned_buildings_fronting: None,
+            colliding_buildings: vec![],
         });
     }
     c.zones.push(ZoneCell {
@@ -344,6 +361,8 @@ async fn set_zone(State(s): State<MockState>, Json(body): Json<SetZoneBody>) -> 
         snapped_nodes: vec![],
         destroyed: vec![],
         reason: None,
+        zoned_buildings_fronting: None,
+        colliding_buildings: vec![],
     })
 }
 

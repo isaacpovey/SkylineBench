@@ -13,8 +13,10 @@ namespace SkylineBench.Http
         public int Status;
         public string ContentType;
         public string Body;
+        public byte[] Bytes;
         public static HttpReply Json(int status, string body) { return new HttpReply { Status = status, ContentType = "application/json", Body = body }; }
         public static HttpReply Text(int status, string body) { return new HttpReply { Status = status, ContentType = "text/plain", Body = body }; }
+        public static HttpReply Png(byte[] bytes) { return new HttpReply { Status = 200, ContentType = "image/png", Bytes = bytes }; }
     }
 
     public sealed class HttpServer
@@ -75,7 +77,7 @@ namespace SkylineBench.Http
             try { reply = _dispatch(req.HttpMethod, path, query, body); }
             catch (Exception e) { reply = HttpReply.Text(500, "internal: " + e.Message); }
 
-            byte[] buf = Encoding.UTF8.GetBytes(reply.Body ?? "");
+            byte[] buf = reply.Bytes != null ? reply.Bytes : Encoding.UTF8.GetBytes(reply.Body ?? "");
             ctx.Response.StatusCode = reply.Status;
             ctx.Response.ContentType = reply.ContentType ?? "text/plain";
             ctx.Response.ContentLength64 = buf.Length;

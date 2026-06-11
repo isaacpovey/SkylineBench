@@ -13,6 +13,11 @@ namespace SkylineBench.Bridge
         public const string SegmentTooLong = "SEGMENT_TOO_LONG";
         public const string InvalidArgs = "INVALID_ARGS";
         public const string Unknown = "UNKNOWN";
+        public const string ObjectCollision = "OBJECT_COLLISION";
+        public const string SlopeTooSteep = "SLOPE_TOO_STEEP";
+        public const string OutOfArea = "OUT_OF_AREA";
+        public const string TooManyConnections = "TOO_MANY_CONNECTIONS";
+        public const string NetBufferFull = "NET_BUFFER_FULL";
     }
 
     public struct RoadInfo { public string Name; public long ConstructionCost; }

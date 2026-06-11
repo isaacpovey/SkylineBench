@@ -797,10 +797,9 @@ impl BenchmarkServer {
 
         let n_ok = successful_positions.len();
         if n_ok > 0 {
-            let (sum_x, sum_z) = successful_positions
+            let (sum_x, sum_z, count) = successful_positions
                 .iter()
-                .fold((0.0_f32, 0.0_f32), |(ax, az), (x, z)| (ax + x, az + z));
-            let count = n_ok as f32;
+                .fold((0.0_f32, 0.0_f32, 0.0_f32), |(ax, az, ac), (x, z)| (ax + x, az + z, ac + 1.0));
             self.shoot_action(sum_x / count, sum_z / count, "apply_plan", format!("apply_plan: {n_ok} ops")).await;
         }
 

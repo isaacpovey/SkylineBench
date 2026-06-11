@@ -400,6 +400,48 @@ fn action_error_value(reason: ActionError) -> Value {
     json!({ "ok": false, "reason": reason })
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct CameraShot {
+    pub x: f32,
+    pub z: f32,
+    pub size: f32,
+    pub top_down: bool,
+}
+
+/// Floor for the overview zoom so tiny networks aren't framed from 10 m up.
+const OVERVIEW_MIN_SIZE_M: f32 = 1200.0;
+const OVERVIEW_MARGIN: f32 = 1.15;
+/// Close-up zoom: wide enough to show an intersection plus surroundings.
+const CLOSEUP_SIZE_M: f32 = 350.0;
+
+pub fn overview_shot(net: &crate::contract::Network) -> CameraShot {
+    let bounds = net.nodes.iter().fold(None, |acc, n| {
+        let (min_x, max_x, min_z, max_z) = acc.unwrap_or((n.x, n.x, n.z, n.z));
+        Some((min_x.min(n.x), max_x.max(n.x), min_z.min(n.z), max_z.max(n.z)))
+    });
+    match bounds {
+        None => CameraShot { x: 0.0, z: 0.0, size: 2000.0, top_down: true },
+        Some((min_x, max_x, min_z, max_z)) => CameraShot {
+            x: (min_x + max_x) / 2.0,
+            z: (min_z + max_z) / 2.0,
+            size: ((max_x - min_x).max(max_z - min_z) * OVERVIEW_MARGIN / 2.0)
+                .max(OVERVIEW_MIN_SIZE_M),
+            top_down: true,
+        },
+    }
+}
+
+pub fn closeup_shot(x: f32, z: f32) -> CameraShot {
+    CameraShot { x, z, size: CLOSEUP_SIZE_M, top_down: false }
+}
+
+pub async fn capture_screenshot(
+    client: &BridgeClient,
+    shot: CameraShot,
+) -> Result<Vec<u8>, ServiceError> {
+    Ok(client.screenshot(shot.x, shot.z, shot.size, shot.top_down).await?)
+}
+
 #[derive(Deserialize, schemars::JsonSchema)]
 pub struct QuerySegmentsArgs {
     /// Sort key, descending: "density" (default), "length", or "speed_limit".
@@ -996,6 +1038,39 @@ mod tests {
         .unwrap();
         assert_eq!(v["ok"], true);
         assert_eq!(v["reachable"], false);
+    }
+
+    #[test]
+    fn overview_shot_frames_the_network_with_margin() {
+        let net = crate::contract::Network {
+            nodes: vec![
+                crate::contract::NetNode { id: 1, x: -1000.0, y: 0.0, z: -500.0 },
+                crate::contract::NetNode { id: 2, x: 1000.0, y: 0.0, z: 500.0 },
+            ],
+            segments: vec![],
+        };
+        let shot = overview_shot(&net);
+        assert_eq!(shot.x, 0.0);
+        assert_eq!(shot.z, 0.0);
+        assert!(shot.top_down);
+        // span 2000m * 1.15 margin / 2 = 1150, below the 1200 floor → clamped.
+        assert_eq!(shot.size, 1200.0);
+    }
+
+    #[test]
+    fn overview_shot_of_empty_network_uses_default_frame() {
+        let net = crate::contract::Network { nodes: vec![], segments: vec![] };
+        let shot = overview_shot(&net);
+        assert_eq!((shot.x, shot.z), (0.0, 0.0));
+        assert_eq!(shot.size, 2000.0);
+    }
+
+    #[test]
+    fn closeup_shot_targets_the_location() {
+        let shot = closeup_shot(150.0, -75.0);
+        assert_eq!((shot.x, shot.z), (150.0, -75.0));
+        assert!(!shot.top_down);
+        assert_eq!(shot.size, 350.0);
     }
 
     #[tokio::test]

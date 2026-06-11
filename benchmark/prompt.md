@@ -19,7 +19,7 @@ You have MCP tools to observe and modify the city:
 - Time: `control_time` (pause / resume / step / speed). Build while paused, then `step` to let traffic respond before measuring. A `step` with no `ticks` advances one in-game day (585 ticks). The maximum step is 7 days (4095 ticks) — traffic patterns repeat daily, so longer waits only burn your wall-clock budget.
 - Finish: `submit_solution` when you are satisfied. It returns immediately; the city is settled and scored after your session ends, so finish your turn once it succeeds.
 
-You may write and execute scratch code in your working directory (e.g. scripts that parse tool output or plan a batch of changes). But the city is reachable ONLY through the MCP tools, and you must not attempt to read the benchmark's implementation, its scoring code, or any files outside your working directory — runs that try are disqualified.
+You may write and execute scratch code in your working directory (e.g. scripts that parse tool output or plan a batch of changes), and you are encouraged to keep a running record — scratch notes or memory — of what you have tried and what worked or backfired, updated as the run progresses so each decision builds on the last rather than repeating it. But the city is reachable ONLY through the MCP tools, and you must not attempt to read the benchmark's implementation, its scoring code, or any files outside your working directory — runs that try are disqualified.
 
 Goal: reduce the city's congested road-meters — `congested_meters` is the total length of road segments whose traffic density is at or above 0.7 (densities are 0..1, from `query_segments` / `get_metrics`). Lower is better.
 

@@ -717,6 +717,7 @@ impl BenchmarkServer {
 
         let mut results: Vec<Value> = Vec::with_capacity(validations.len());
         let mut first_failed_at: Option<usize> = None;
+        let mut n_all_ok: usize = 0;
         let mut successful_positions: Vec<(f32, f32)> = Vec::new();
         for (i, (source, op, _, cost)) in validations.iter().enumerate() {
             if first_failed_at.is_some() && args.stop_on_error {
@@ -745,6 +746,7 @@ impl BenchmarkServer {
                 Ok(v) => {
                     let ok = v.get("ok").and_then(|b| b.as_bool()) == Some(true);
                     if ok {
+                        n_all_ok += 1;
                         self.state.lock().await.record_mutation(tool_name(op), *cost);
                         if self.screenshots.is_some() {
                             let pos = match op {
@@ -755,6 +757,7 @@ impl BenchmarkServer {
                                 ExecOp::Bulldoze { target_type, id } => match target_type.as_str() {
                                     "segment" => seg_midpoint(*id),
                                     "node" => net.nodes.iter().find(|nd| nd.id == *id).map(|nd| (nd.x, nd.z)),
+                                    "building" => buildings.iter().find(|bd| bd.id == *id).map(|bd| (bd.x, bd.z)),
                                     _ => None,
                                 },
                                 ExecOp::Zone { area, .. } => Some((
@@ -795,12 +798,11 @@ impl BenchmarkServer {
             }
         }
 
-        let n_ok = successful_positions.len();
-        if n_ok > 0 {
+        if !successful_positions.is_empty() {
             let (sum_x, sum_z, count) = successful_positions
                 .iter()
                 .fold((0.0_f32, 0.0_f32, 0.0_f32), |(ax, az, ac), (x, z)| (ax + x, az + z, ac + 1.0));
-            self.shoot_action(sum_x / count, sum_z / count, "apply_plan", format!("apply_plan: {n_ok} ops")).await;
+            self.shoot_action(sum_x / count, sum_z / count, "apply_plan", format!("apply_plan: {n_all_ok} ops")).await;
         }
 
         self.finish(serde_json::json!({

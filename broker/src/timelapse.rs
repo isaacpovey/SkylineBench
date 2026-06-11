@@ -121,18 +121,26 @@ pub fn annotate(png: &[u8], frame: &Frame) -> Result<Vec<u8>, anyhow::Error> {
     out.encode_png().map_err(|e| anyhow::anyhow!("frame encode failed: {e}"))
 }
 
+/// Select the frames to assemble for `run_dir`. Prefers real screenshots when
+/// they exist and are non-empty; falls back to synthetic renders otherwise.
+/// Calling `parse_index` on a missing directory is safe — it returns `vec![]`.
+pub fn select_frames(run_dir: &Path) -> Vec<Frame> {
+    let shots = run_dir.join("screenshots");
+    let screenshot_frames = merge_frames(
+        parse_index(&shots.join("overview"), 1),
+        parse_index(&shots.join("actions"), ACTION_HOLD),
+    );
+    if screenshot_frames.is_empty() {
+        parse_index(&run_dir.join("renders"), 1)
+    } else {
+        screenshot_frames
+    }
+}
+
 /// Assemble `<run_dir>` frames into an mp4. Prefers real screenshots; falls
 /// back to synthetic renders for runs captured before screenshots existed.
 pub fn assemble(run_dir: &Path, fps: u32, out: &Path) -> Result<(), anyhow::Error> {
-    let shots = run_dir.join("screenshots");
-    let frames = if shots.is_dir() {
-        merge_frames(
-            parse_index(&shots.join("overview"), 1),
-            parse_index(&shots.join("actions"), ACTION_HOLD),
-        )
-    } else {
-        parse_index(&run_dir.join("renders"), 1)
-    };
+    let frames = select_frames(run_dir);
     anyhow::ensure!(!frames.is_empty(), "no frames found under {}", run_dir.display());
 
     let staging = run_dir.join("timelapse-frames");
@@ -199,6 +207,51 @@ mod tests {
         assert_eq!(frames[0].tick, 5);
         assert_eq!(frames[0].path, dir.join("a.png"));
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn select_frames_falls_back_to_renders_when_screenshots_dir_is_empty() {
+        let run_dir = std::env::temp_dir().join(format!("sb-tl-sel-{}", std::process::id()));
+        // screenshots/ exists but has no index files
+        std::fs::create_dir_all(run_dir.join("screenshots")).unwrap();
+        // renders/ has one valid frame
+        let renders = run_dir.join("renders");
+        std::fs::create_dir_all(&renders).unwrap();
+        std::fs::write(
+            renders.join("index.jsonl"),
+            "{\"seq\":1,\"file\":\"r1.png\",\"tick\":10,\"trigger\":\"step\",\"changes\":0,\"flow\":null,\"congested\":null}\n",
+        )
+        .unwrap();
+        let frames = select_frames(&run_dir);
+        assert_eq!(frames.len(), 1, "should fall back to renders when screenshots are empty");
+        assert_eq!(frames[0].tick, 10);
+        assert_eq!(frames[0].path, renders.join("r1.png"));
+        std::fs::remove_dir_all(&run_dir).ok();
+    }
+
+    #[test]
+    fn select_frames_prefers_screenshots_when_present() {
+        let run_dir = std::env::temp_dir().join(format!("sb-tl-sel2-{}", std::process::id()));
+        // screenshots/overview has one valid frame
+        let overview = run_dir.join("screenshots/overview");
+        std::fs::create_dir_all(&overview).unwrap();
+        std::fs::write(
+            overview.join("index.jsonl"),
+            "{\"seq\":1,\"file\":\"s1.png\",\"tick\":5,\"trigger\":\"step\",\"changes\":0,\"flow\":null,\"congested\":null}\n",
+        )
+        .unwrap();
+        // renders/ also has a frame — should be ignored
+        let renders = run_dir.join("renders");
+        std::fs::create_dir_all(&renders).unwrap();
+        std::fs::write(
+            renders.join("index.jsonl"),
+            "{\"seq\":1,\"file\":\"r1.png\",\"tick\":10,\"trigger\":\"step\",\"changes\":0,\"flow\":null,\"congested\":null}\n",
+        )
+        .unwrap();
+        let frames = select_frames(&run_dir);
+        assert_eq!(frames.len(), 1, "should use screenshots when they have frames");
+        assert_eq!(frames[0].tick, 5, "should be the screenshot frame, not the render");
+        std::fs::remove_dir_all(&run_dir).ok();
     }
 
     #[test]

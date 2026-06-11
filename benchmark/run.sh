@@ -77,6 +77,22 @@ fi
 export MCP_TIMEOUT="${MCP_TIMEOUT:-600000}"
 export MCP_TOOL_TIMEOUT="${MCP_TOOL_TIMEOUT:-600000}"
 
+# Isolated Claude config: a dedicated CLAUDE_CONFIG_DIR so the agent inherits
+# none of the operator's plugins, hooks, skills, or global CLAUDE.md (run
+# 2026-06-11 loaded the operator's superpowers plugin via a SessionStart hook,
+# polluting the agent's context). The dir is persistent — credentials don't
+# transfer from the operator's config (macOS keeps them keyed to it), so the
+# operator logs into this dir ONCE and every run reuses it.
+CLAUDE_CONFIG_DIR="${BENCH_CLAUDE_CONFIG:-$HOME/Library/Application Support/skylinebench/claude-config}"
+mkdir -p "$CLAUDE_CONFIG_DIR"
+[ -f "$CLAUDE_CONFIG_DIR/.claude.json" ] || printf '{"hasCompletedOnboarding": true}\n' > "$CLAUDE_CONFIG_DIR/.claude.json"
+if ! grep -q oauthAccount "$CLAUDE_CONFIG_DIR/.claude.json" 2>/dev/null; then
+  echo "benchmark Claude config is not logged in. One-time setup:" >&2
+  echo "  CLAUDE_CONFIG_DIR=\"$CLAUDE_CONFIG_DIR\" claude  # then /login, then /exit" >&2
+  exit 1
+fi
+export CLAUDE_CONFIG_DIR
+
 # Generate the MCP config: Claude Code spawns `broker benchmark` over stdio.
 MCP_CONFIG="$SESSION_DIR/mcp.json"
 cat > "$MCP_CONFIG" <<JSON

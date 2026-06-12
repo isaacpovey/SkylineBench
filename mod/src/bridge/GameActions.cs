@@ -219,8 +219,11 @@ namespace SkylineBench.Bridge
         {
             if (ticks <= 0) return;
             // A game modal dialog force-pauses the simulation: tick counters keep
-            // advancing but nothing simulates. Don't burn the guard loop waiting —
-            // the caller sees ForcedPaused = true on the returned ClockState.
+            // advancing but nothing simulates. There is no operator in a benchmark
+            // run, so dismiss the modal ourselves rather than freezing for the rest
+            // of the run. If it still won't clear, bail — the caller sees
+            // ForcedPaused = true on the returned ClockState.
+            if (GameAccess.ForcedPaused()) GameAccess.DismissForcedPauseModal();
             if (GameAccess.ForcedPaused()) return;
             uint target = t.simulationTick + (uint)ticks;
             bool wasPaused = t.simulationPaused;
@@ -228,7 +231,13 @@ namespace SkylineBench.Bridge
             int guard = 0;
             while (t.simulationTick < target && guard < 600000)
             {
-                if (guard % 1000 == 999 && GameAccess.ForcedPaused()) break;
+                if (guard % 1000 == 999 && GameAccess.ForcedPaused())
+                {
+                    // A modal appeared mid-step (e.g. a milestone crossed while
+                    // stepping). Try to clear it and keep going; bail only if it sticks.
+                    GameAccess.DismissForcedPauseModal();
+                    if (GameAccess.ForcedPaused()) break;
+                }
                 System.Threading.Thread.Sleep(1);
                 guard++;
             }

@@ -1,5 +1,6 @@
 using System;
 using ColossalFramework;
+using ColossalFramework.UI;
 using ICities;
 using SkylineBench.Http;
 using UnityEngine;
@@ -37,6 +38,39 @@ namespace SkylineBench.Bridge
         {
             try { return Singleton<SimulationManager>.instance.ForcedSimulationPaused; }
             catch { return false; }
+        }
+
+        /// <summary>Dismiss the modal dialog that force-pauses the simulation.
+        /// A benchmark run has no operator, so when the game pops a modal — the
+        /// population-milestone celebration ("UnlockingPanel") is the common one
+        /// past ~35k pop — nothing dismisses it and the sim is frozen for the
+        /// rest of the run. Closing it must happen on Unity's main thread (UI
+        /// access), so we dispatch through CaptureBehaviour. Each step retries
+        /// this, so the modal is cleared the next time the game tries to advance
+        /// time. All UI work is best-effort; clearing the flag is the actual
+        /// unblock and is generic to whatever dialog was showing.</summary>
+        public static void DismissForcedPauseModal()
+        {
+            try { CaptureBehaviour.RunOnMain(ClearModalOnMainThread, 5000); }
+            catch { /* dispatch timed out; Step re-checks ForcedPaused and bails */ }
+        }
+
+        private static void ClearModalOnMainThread()
+        {
+            try
+            {
+                var view = UIView.GetAView();
+                if (view != null)
+                {
+                    int guard = 0;
+                    while (UIView.HasModalInput() && guard++ < 16) UIView.PopModal();
+                    var panel = view.FindUIComponent<UIComponent>("UnlockingPanel");
+                    if (panel != null && panel.isVisible) panel.Hide();
+                }
+            }
+            catch { /* UI shape varies by game version; flag-clear below is the fallback */ }
+            try { Singleton<SimulationManager>.instance.ForcedSimulationPaused = false; }
+            catch { }
         }
 
         private static string GameVersionString()

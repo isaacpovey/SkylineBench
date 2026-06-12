@@ -15,13 +15,26 @@ namespace SkylineBench.Bridge
         public readonly ManualResetEvent Done = new ManualResetEvent(false);
     }
 
+    /// <summary>A unit of work that must run on Unity's main thread. Used for
+    /// UI operations (e.g. dismissing a modal dialog) that cannot run on the
+    /// HTTP thread. The caller enqueues and blocks on Done.</summary>
+    public sealed class MainThreadAction
+    {
+        public Action Work;
+        public Exception Error;
+        public readonly ManualResetEvent Done = new ManualResetEvent(false);
+    }
+
     /// <summary>Runs screenshot captures on Unity's main thread. The HTTP
     /// thread enqueues a request and blocks on Done; Update() drains the queue
     /// and runs one coroutine per request (the sim is paused between agent
-    /// steps, so requests never race game mutations).</summary>
+    /// steps, so requests never race game mutations). Also drains a generic
+    /// main-thread action queue (see RunOnMain) for UI work like dismissing a
+    /// modal dialog.</summary>
     public sealed class CaptureBehaviour : MonoBehaviour
     {
         private static readonly Queue<CaptureRequest> _queue = new Queue<CaptureRequest>();
+        private static readonly Queue<MainThreadAction> _actions = new Queue<MainThreadAction>();
         private static readonly object _lock = new object();
 
         public static byte[] Capture(float x, float z, float size, bool topDown, int timeoutMs)
@@ -34,6 +47,18 @@ namespace SkylineBench.Bridge
             return req.Png;
         }
 
+        /// <summary>Run an action on Unity's main thread and block until it
+        /// completes. Update() drains the queue, so this works even while the
+        /// simulation is force-paused (the main loop keeps running).</summary>
+        public static void RunOnMain(Action work, int timeoutMs)
+        {
+            var job = new MainThreadAction { Work = work };
+            lock (_lock) { _actions.Enqueue(job); }
+            if (!job.Done.WaitOne(timeoutMs))
+                throw new TimeoutException("main-thread action timed out after " + timeoutMs + "ms");
+            if (job.Error != null) throw job.Error;
+        }
+
         public static void CancelAll(Exception reason)
         {
             lock (_lock)
@@ -44,11 +69,26 @@ namespace SkylineBench.Bridge
                     req.Error = reason;
                     req.Done.Set();
                 }
+                while (_actions.Count > 0)
+                {
+                    var job = _actions.Dequeue();
+                    job.Error = reason;
+                    job.Done.Set();
+                }
             }
         }
 
         private void Update()
         {
+            MainThreadAction action = null;
+            lock (_lock) { if (_actions.Count > 0) action = _actions.Dequeue(); }
+            if (action != null)
+            {
+                try { action.Work(); }
+                catch (Exception e) { action.Error = e; }
+                finally { action.Done.Set(); }
+            }
+
             CaptureRequest req = null;
             lock (_lock) { if (_queue.Count > 0) req = _queue.Dequeue(); }
             if (req != null) StartCoroutine(Run(req));

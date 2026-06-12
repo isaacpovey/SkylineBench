@@ -233,6 +233,46 @@ mod tests {
     }
 
     #[test]
+    fn live_congested_junctions_flows_into_progress() {
+        use crate::contract::{NetNode, NetSegment, Network};
+        let mut s = state();
+        // congested_junctions is null until topology has been observed.
+        s.observe_metrics(&sample_metrics(0.9));
+        assert!(s.progress()["congested_junctions"].is_null(), "null before topology observed");
+
+        let node = |id| NetNode { id, x: 0.0, y: 0.0, z: 0.0 };
+        let seg = |id, a, b| NetSegment {
+            id, start_node: a, end_node: b, prefab: "road".into(), lanes: 2,
+            length: 100.0, one_way: false, travel_direction: "both".into(), speed_limit: 1.0,
+        };
+        // Node 1 is a 3-way junction; segments 10 and 11 are congested, 12 is not.
+        let net = Network {
+            nodes: vec![node(1), node(3), node(4), node(5)],
+            segments: vec![seg(10, 1, 3), seg(11, 1, 4), seg(12, 1, 5)],
+        };
+        s.observe_network(&net);
+
+        use crate::contract::*;
+        let m = Metrics {
+            tick: 0,
+            traffic: TrafficMetrics {
+                flow_percent: 50.0,
+                active_vehicles: 100,
+                segment_loads: vec![
+                    SegmentLoad { segment_id: 10, density: 0.9, length: 100.0 },
+                    SegmentLoad { segment_id: 11, density: 0.9, length: 100.0 },
+                    SegmentLoad { segment_id: 12, density: 0.2, length: 100.0 },
+                ],
+            },
+            economy: EconomyMetrics { balance: 0, weekly_income: 0, weekly_expenses: 0, funds: 0 },
+            population: PopulationMetrics { total: 1000, residential_demand: 0, commercial_demand: 0, workplace_demand: 0, employed: 0 },
+            services: ServiceMetrics { happiness: 80, abandoned_buildings: 0 },
+        };
+        s.observe_metrics(&m);
+        assert_eq!(s.progress()["congested_junctions"], 1, "node 1 has 2 congested approaches");
+    }
+
+    #[test]
     fn end_state_snapshots_run_and_defaults_to_disconnect() {
         use crate::benchmark::record::{EndReason, MapInfo};
 

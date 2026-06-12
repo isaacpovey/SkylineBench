@@ -15,6 +15,9 @@ Score a Claude Code agent on improving traffic in a bad-traffic city.
      `skylinebench benchmark-finalize`, which settles the sim, measures the
      final window, scores, and writes the artifacts.
    - Use `--watch` to observe an interactive session instead of headless.
+   - Use `--model <name>` (e.g. `claude-opus-4-8`, `claude-sonnet-4-6`) to pick
+     the Claude Code model; omitted = the config's default. The choice is
+     recorded in the run dir as `model.txt`.
    - Runs are serialized by a lock at `${TMPDIR:-/tmp}/skylinebench.lock`; never start
      two runs against one game instance. `run.sh` keeps the machine awake
      (`caffeinate`) for the whole session.

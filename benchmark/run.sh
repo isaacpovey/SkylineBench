@@ -4,6 +4,7 @@ set -euo pipefail
 MAP=""
 MOD_URL="http://127.0.0.1:8787"
 MAP_SOURCE="test"
+MODEL=""
 WATCH=0
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_ID="$(date +%Y%m%d-%H%M%S)"
@@ -15,12 +16,13 @@ while [ $# -gt 0 ]; do
     --map-source) MAP_SOURCE="$2"; shift 2 ;;
     --mod-url) MOD_URL="$2"; shift 2 ;;
     --out) OUT_DIR="$2"; shift 2 ;;
+    --model) MODEL="$2"; shift 2 ;;
     --watch|--interactive) WATCH=1; shift ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
 
-[ -n "$MAP" ] || { echo "usage: run.sh --map <id> [--watch] [--mod-url URL] [--map-source SRC] [--out DIR]" >&2; exit 2; }
+[ -n "$MAP" ] || { echo "usage: run.sh --map <id> [--watch] [--model NAME] [--mod-url URL] [--map-source SRC] [--out DIR]" >&2; exit 2; }
 case "$MAP" in
   *[!A-Za-z0-9_-]*) echo "map id must be alphanumeric, dash, or underscore" >&2; exit 2 ;;
 esac
@@ -120,10 +122,15 @@ SANDBOX=(sandbox-exec -f "$SANDBOX_PROFILE")
 # the agent session. Machine sleep killed run 20260609-210135 ~2.8h in.
 KEEPAWAKE=()
 if command -v caffeinate >/dev/null; then KEEPAWAKE=(caffeinate -dims); fi
+MODEL_ARGS=()
+if [ -n "$MODEL" ]; then
+  MODEL_ARGS=(--model "$MODEL")
+  printf '%s\n' "$MODEL" > "$OUT_DIR/model.txt"
+fi
 if [ "$WATCH" -eq 1 ]; then
-  CMD=(${KEEPAWAKE[@]:+"${KEEPAWAKE[@]}"} "${SANDBOX[@]}" claude --mcp-config "$MCP_CONFIG" --strict-mcp-config --allowedTools "$ALLOWED" --disallowedTools "$DISALLOWED" --permission-mode bypassPermissions "$PROMPT")
+  CMD=(${KEEPAWAKE[@]:+"${KEEPAWAKE[@]}"} "${SANDBOX[@]}" claude ${MODEL_ARGS[@]:+"${MODEL_ARGS[@]}"} --mcp-config "$MCP_CONFIG" --strict-mcp-config --allowedTools "$ALLOWED" --disallowedTools "$DISALLOWED" --permission-mode bypassPermissions "$PROMPT")
 else
-  CMD=(${KEEPAWAKE[@]:+"${KEEPAWAKE[@]}"} "${SANDBOX[@]}" claude -p "$PROMPT" --mcp-config "$MCP_CONFIG" --strict-mcp-config --allowedTools "$ALLOWED" --disallowedTools "$DISALLOWED" --permission-mode bypassPermissions --output-format stream-json --verbose)
+  CMD=(${KEEPAWAKE[@]:+"${KEEPAWAKE[@]}"} "${SANDBOX[@]}" claude -p "$PROMPT" ${MODEL_ARGS[@]:+"${MODEL_ARGS[@]}"} --mcp-config "$MCP_CONFIG" --strict-mcp-config --allowedTools "$ALLOWED" --disallowedTools "$DISALLOWED" --permission-mode bypassPermissions --output-format stream-json --verbose)
 fi
 
 if [ "${DRY_RUN:-0}" = "1" ]; then

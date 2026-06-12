@@ -8,6 +8,18 @@ pub struct BenchConfig {
     pub w_changes: f64,
     /// Segment density (0..1) at or above which a segment counts as congested.
     pub congestion_threshold: f64,
+    /// Congestion term blends length- and junction-reduction:
+    /// blend_meters·meters_reduction + blend_junctions·junction_reduction (sum to 1.0).
+    pub blend_meters: f64,
+    pub blend_junctions: f64,
+    /// A node counts as a junction only at this degree or above.
+    pub junction_min_degree: u32,
+    /// A junction is congested when >= this many incident segments are congested.
+    pub junction_min_congested: u32,
+    /// Graded population-health factor: 1.0 at population ratio >= health_full,
+    /// 0.0 at <= health_zero, linear between (replaces the old hard cliff).
+    pub health_full: f64,
+    pub health_zero: f64,
     pub budget: f64,
     pub change_cap: f64,
     /// Early-success: the run ends when windowed congested meters fall to this
@@ -38,6 +50,12 @@ impl Default for BenchConfig {
             w_money: 0.20,
             w_changes: 0.20,
             congestion_threshold: 0.7,
+            blend_meters: 0.5,
+            blend_junctions: 0.5,
+            junction_min_degree: 3,
+            junction_min_congested: 2,
+            health_full: 0.95,
+            health_zero: 0.75,
             budget: 10_000_000.0,
             change_cap: 300.0,
             congestion_end_ratio: 0.05,
@@ -93,5 +111,16 @@ mod tests {
         let c = BenchConfig::default();
         assert_eq!(c.budget, 10_000_000.0);
         assert_eq!(c.change_cap, 300.0);
+    }
+
+    #[test]
+    fn blend_and_health_constants_are_calibrated() {
+        let c = BenchConfig::default();
+        assert!((c.blend_meters + c.blend_junctions - 1.0).abs() < 1e-9);
+        assert_eq!(c.junction_min_degree, 3);
+        assert_eq!(c.junction_min_congested, 2);
+        assert!(c.health_full > c.health_zero);
+        assert_eq!(c.health_full, 0.95);
+        assert_eq!(c.health_zero, 0.75);
     }
 }

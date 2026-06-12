@@ -924,6 +924,7 @@ mod tests {
             active_vehicles_mean: 10.0,
             population: 100,
             congested_meters: 100.0,
+            congested_junctions: 0,
         });
         BenchmarkServer::new(client, Arc::new(Mutex::new(st)))
     }
@@ -1273,6 +1274,7 @@ mod tests {
             active_vehicles_mean: 10.0,
             population: 100,
             congested_meters: 100.0,
+            congested_junctions: 0,
         });
         BenchmarkServer::new(client, Arc::new(Mutex::new(st)))
     }

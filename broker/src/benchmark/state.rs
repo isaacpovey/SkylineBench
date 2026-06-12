@@ -236,6 +236,7 @@ mod tests {
                 active_vehicles_mean: 100.0,
                 population: 1000,
                 congested_meters: 100.0,
+                congested_junctions: 0,
             },
             Vec::new(),
         );

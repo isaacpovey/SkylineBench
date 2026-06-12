@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::benchmark::config::BenchConfig;
-use crate::benchmark::congestion::WindowAccum;
+use crate::benchmark::congestion::{congested_junctions, Topology, WindowAccum};
 use crate::benchmark::record::{EndState, FlowSamples, RunRecord, WindowStats, SCHEMA_VERSION};
 use crate::benchmark::score::score_run;
 use crate::bridge_client::{BridgeClient, BridgeError};
@@ -28,6 +28,7 @@ pub async fn measure_window(
     // steady-state flow %.
     client.clock("set-speed", None, Some(3)).await?;
     client.clock("pause", None, None).await?;
+    let topology = Topology::from_network(&client.network().await?);
 
     let mut flow_sum = 0.0_f64;
     let mut veh_sum = 0.0_f64;
@@ -51,6 +52,13 @@ pub async fn measure_window(
             active_vehicles_mean: veh_sum / n,
             population: last_pop,
             congested_meters: accum.congested_meters(cfg.congestion_threshold),
+            congested_junctions: congested_junctions(
+                &topology,
+                |id| accum.mean_density(id),
+                cfg.congestion_threshold,
+                cfg.junction_min_degree as usize,
+                cfg.junction_min_congested as usize,
+            ),
         },
         samples,
     })
@@ -133,6 +141,7 @@ mod tests {
         assert_eq!(m.stats.flow_mean, 100.0);
         assert_eq!(m.stats.active_vehicles_mean, 0.0);
         assert_eq!(m.stats.congested_meters, 0.0);
+        assert_eq!(m.stats.congested_junctions, 0);
         assert_eq!(m.samples.len(), cfg.window_samples as usize);
     }
 
@@ -148,7 +157,7 @@ mod tests {
             started_at: "t0".into(),
             ended_at: "t1".into(),
             end_reason: EndReason::Submit,
-            baseline: Some(WindowStats { flow_mean: 80.0, active_vehicles_mean: 0.0, population: 0, congested_meters: 500.0 }),
+            baseline: Some(WindowStats { flow_mean: 80.0, active_vehicles_mean: 0.0, population: 0, congested_meters: 500.0, congested_junctions: 0 }),
             baseline_flow_samples: vec![80.0],
             tally: Tally { num_changes: 2, money_spent: 5_000 },
             actions: vec![ActionEntry { seq: 1, tool: "build_road".into(), cost: 5_000 }],

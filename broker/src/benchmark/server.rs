@@ -875,8 +875,9 @@ impl BenchmarkServer {
 impl ServerHandler for BenchmarkServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
-            "SkylineBench benchmark: reduce the city's congested road-meters, then call \
-             submit_solution. Each response includes city_status (resources + goal).",
+            "You are optimising this city's traffic in a live simulation. Observe and modify \
+             the road network, then call submit_solution when you are satisfied. Each tool \
+             response includes a city_status readout of observable city facts.",
         )
     }
 }

@@ -135,21 +135,29 @@ fn format_result_live(block: &Value) -> Option<String> {
         .collect::<Vec<_>>()
         .join(" ");
     if let Ok(v) = serde_json::from_str::<Value>(&text) {
-        if let Some(p) = v.get("benchmark_progress") {
-            let opt = |k: &str, prec: usize| {
-                p.get(k)
+        if let Some(p) = v.get("city_status").or_else(|| v.get("benchmark_progress")) {
+            let optf = |new: &str, old: &str, prec: usize| {
+                p.get(new)
+                    .or_else(|| p.get(old))
                     .and_then(|x| x.as_f64())
                     .map_or("?".to_string(), |n| format!("{n:.prec$}"))
             };
+            let getu = |new: &str, old: &str| {
+                p.get(new).or_else(|| p.get(old)).and_then(|x| x.as_u64()).unwrap_or(0)
+            };
             let rejected = v.get("ok").and_then(|x| x.as_bool()) == Some(false);
-            let target = opt("congested_meters_target", 0);
+            let junctions = p
+                .get("congested_junctions")
+                .and_then(|x| x.as_u64())
+                .map_or("?".to_string(), |n| n.to_string());
             return Some(format!(
-                "    ↳ congested {}m/{target}m  flow {}  changes {}  spent {}  {}s left{}",
-                opt("congested_meters_current", 0),
-                opt("flow_current", 1),
-                p.get("num_changes").and_then(|x| x.as_u64()).unwrap_or(0),
+                "    ↳ congested {}m / {} junctions  flow {}  changes {}  spent {}  {}s left{}",
+                optf("congested_road_meters", "congested_meters_current", 0),
+                junctions,
+                optf("traffic_flow", "flow_current", 1),
+                getu("changes_made", "num_changes"),
                 p.get("money_spent").and_then(|x| x.as_i64()).unwrap_or(0),
-                p.get("seconds_remaining").and_then(|x| x.as_u64()).unwrap_or(0),
+                getu("time_remaining", "seconds_remaining"),
                 if rejected { "  (rejected)" } else { "" },
             ));
         }
@@ -201,9 +209,21 @@ mod tests {
         )
         .unwrap();
         let line = format_event_live(&event).unwrap();
-        assert!(line.contains("congested 840m/50m"), "congestion vs target: {line}");
+        assert!(line.contains("congested 840m"), "congestion meters: {line}");
         assert!(line.contains("flow 12.3"), "flow diagnostic: {line}");
         assert!(line.contains("changes 3"), "changes: {line}");
+        assert!(line.contains("580s left"), "time: {line}");
+    }
+
+    #[test]
+    fn live_surfaces_city_status_with_junctions() {
+        let event: Value = serde_json::from_str(
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"{\"ok\":true,\"city_status\":{\"money_spent\":12000,\"changes_made\":3,\"congested_road_meters\":840.0,\"congested_junctions\":7,\"traffic_flow\":12.3,\"time_remaining\":580}}"}]}]}}"#,
+        )
+        .unwrap();
+        let line = format_event_live(&event).unwrap();
+        assert!(line.contains("840m"), "congestion meters: {line}");
+        assert!(line.contains("7 junctions"), "junction count: {line}");
         assert!(line.contains("580s left"), "time: {line}");
     }
 
@@ -214,7 +234,7 @@ mod tests {
         )
         .unwrap();
         let line = format_event_live(&event).unwrap();
-        assert!(line.contains("congested ?m/50m"), "null current renders ?: {line}");
+        assert!(line.contains("congested ?m"), "null current renders ?: {line}");
         assert!(line.contains("flow ?"), "null flow renders ?: {line}");
     }
 

@@ -10,6 +10,10 @@ pub fn score_run(record: &RunRecord, cfg: &BenchConfig) -> Score {
         cfg.budget > 0.0 && cfg.change_cap > 0.0,
         "BenchConfig normalization denominators must be positive"
     );
+    debug_assert!(
+        cfg.health_full > cfg.health_zero,
+        "health_full must exceed health_zero or the health ramp divides by zero"
+    );
     let baseline_cm = record.baseline.congested_meters;
     let final_cm = record.final_stats.congested_meters;
     let baseline_j = record.baseline.congested_junctions;

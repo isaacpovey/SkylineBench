@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::contract::SegmentLoad;
+use crate::contract::{Network, SegmentLoad};
 
 /// Densities arrive as f32; comparing them against an f64 threshold directly
 /// would exclude segments sitting exactly at the threshold (0.7f32 widens to
@@ -62,6 +62,57 @@ impl WindowAccum {
             .map(|s| s.length)
             .sum()
     }
+
+    /// Mean density of one segment over the window, or None if it never
+    /// appeared. Shared with the junction counter.
+    pub fn mean_density(&self, segment_id: u32) -> Option<f64> {
+        self.per_segment
+            .get(&segment_id)
+            .filter(|s| s.samples > 0)
+            .map(|s| s.density_sum / f64::from(s.samples))
+    }
+}
+
+/// Road-graph adjacency: node id -> incident segment ids. A node's degree is
+/// the number of incident segments; the 200 m auto-split makes many degree-2
+/// nodes that are not real intersections, so the counter filters on min degree.
+#[derive(Debug, Default)]
+pub struct Topology {
+    incidence: HashMap<u32, Vec<u32>>,
+}
+
+impl Topology {
+    pub fn from_network(net: &Network) -> Self {
+        let mut incidence: HashMap<u32, Vec<u32>> = HashMap::new();
+        for s in &net.segments {
+            incidence.entry(s.start_node).or_default().push(s.id);
+            incidence.entry(s.end_node).or_default().push(s.id);
+        }
+        Self { incidence }
+    }
+}
+
+/// Count congested junctions: nodes of degree >= `min_degree` with at least
+/// `min_congested` incident segments at/above `threshold`. `density_of` returns
+/// a segment's density (window-mean or latest sample), or None when unknown —
+/// which counts as not congested.
+pub fn congested_junctions(
+    topo: &Topology,
+    density_of: impl Fn(u32) -> Option<f64>,
+    threshold: f64,
+    min_degree: usize,
+    min_congested: usize,
+) -> u32 {
+    topo.incidence
+        .values()
+        .filter(|segs| segs.len() >= min_degree)
+        .filter(|segs| {
+            segs.iter()
+                .filter(|id| density_of(**id).is_some_and(|d| meets(d, threshold)))
+                .count()
+                >= min_congested
+        })
+        .count() as u32
 }
 
 #[cfg(test)]
@@ -106,5 +157,52 @@ mod tests {
         w.push(&[load(1, 0.7, 25.0)]);
         w.push(&[load(1, 0.7, 25.0)]);
         assert_eq!(w.congested_meters(0.7), 25.0);
+    }
+
+    use crate::contract::{NetNode, NetSegment, Network};
+
+    fn node(id: u32) -> NetNode { NetNode { id, x: 0.0, y: 0.0, z: 0.0 } }
+    fn seg(id: u32, a: u32, b: u32) -> NetSegment {
+        NetSegment {
+            id, start_node: a, end_node: b, prefab: "road".into(), lanes: 2,
+            length: 100.0, one_way: false, travel_direction: "both".into(), speed_limit: 1.0,
+        }
+    }
+
+    #[test]
+    fn junction_needs_degree_at_least_min_and_two_congested_approaches() {
+        let net = Network {
+            nodes: vec![node(1), node(2), node(3), node(4), node(5)],
+            segments: vec![seg(10, 1, 3), seg(11, 1, 4), seg(12, 1, 5), seg(20, 2, 3)],
+        };
+        let topo = Topology::from_network(&net);
+        let dense = |id: u32| match id { 10 | 11 => Some(0.9), _ => Some(0.2) };
+        assert_eq!(congested_junctions(&topo, dense, 0.7, 3, 2), 1);
+        let one = |id: u32| match id { 10 => Some(0.9), _ => Some(0.2) };
+        assert_eq!(congested_junctions(&topo, one, 0.7, 3, 2), 0);
+    }
+
+    #[test]
+    fn degree_two_node_is_never_a_junction_even_if_both_congested() {
+        let net = Network { nodes: vec![node(2), node(3), node(4)], segments: vec![seg(20, 2, 3), seg(21, 2, 4)] };
+        let topo = Topology::from_network(&net);
+        assert_eq!(congested_junctions(&topo, |_| Some(0.9), 0.7, 3, 2), 0);
+    }
+
+    #[test]
+    fn missing_density_counts_as_not_congested() {
+        let net = Network { nodes: vec![node(1), node(3), node(4), node(5)], segments: vec![seg(10, 1, 3), seg(11, 1, 4), seg(12, 1, 5)] };
+        let topo = Topology::from_network(&net);
+        let dense = |id: u32| match id { 10 | 11 => Some(0.9), _ => None };
+        assert_eq!(congested_junctions(&topo, dense, 0.7, 3, 2), 1);
+    }
+
+    #[test]
+    fn window_mean_density_reads_back_per_segment() {
+        let mut w = WindowAccum::new();
+        w.push(&[load(1, 0.8, 100.0)]);
+        w.push(&[load(1, 0.6, 100.0)]);
+        assert!((w.mean_density(1).unwrap() - 0.7).abs() < 1e-6);
+        assert_eq!(w.mean_density(999), None);
     }
 }

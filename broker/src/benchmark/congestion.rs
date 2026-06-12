@@ -83,11 +83,14 @@ pub struct Topology {
 
 impl Topology {
     pub fn from_network(net: &Network) -> Self {
-        let mut incidence: HashMap<u32, Vec<u32>> = HashMap::new();
-        for s in &net.segments {
-            incidence.entry(s.start_node).or_default().push(s.id);
-            incidence.entry(s.end_node).or_default().push(s.id);
-        }
+        let incidence = net.segments.iter().fold(
+            HashMap::<u32, Vec<u32>>::new(),
+            |mut acc, s| {
+                acc.entry(s.start_node).or_default().push(s.id);
+                acc.entry(s.end_node).or_default().push(s.id);
+                acc
+            },
+        );
         Self { incidence }
     }
 }
@@ -118,6 +121,7 @@ pub fn congested_junctions(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::contract::{NetNode, NetSegment, Network};
 
     fn load(id: u32, density: f32, length: f32) -> SegmentLoad {
         SegmentLoad { segment_id: id, density, length }
@@ -159,8 +163,6 @@ mod tests {
         assert_eq!(w.congested_meters(0.7), 25.0);
     }
 
-    use crate::contract::{NetNode, NetSegment, Network};
-
     fn node(id: u32) -> NetNode { NetNode { id, x: 0.0, y: 0.0, z: 0.0 } }
     fn seg(id: u32, a: u32, b: u32) -> NetSegment {
         NetSegment {
@@ -191,10 +193,14 @@ mod tests {
 
     #[test]
     fn missing_density_counts_as_not_congested() {
+        // Node 1 has degree 3. Only segment 10 is congested; 11 is below
+        // threshold and 12 has no density. With min_congested=2 the count is 1
+        // (not a junction) — but only if a missing density is treated as
+        // not-congested. If None counted as congested it would be 2 → 1 junction.
         let net = Network { nodes: vec![node(1), node(3), node(4), node(5)], segments: vec![seg(10, 1, 3), seg(11, 1, 4), seg(12, 1, 5)] };
         let topo = Topology::from_network(&net);
-        let dense = |id: u32| match id { 10 | 11 => Some(0.9), _ => None };
-        assert_eq!(congested_junctions(&topo, dense, 0.7, 3, 2), 1);
+        let dense = |id: u32| match id { 10 => Some(0.9), 11 => Some(0.2), _ => None };
+        assert_eq!(congested_junctions(&topo, dense, 0.7, 3, 2), 0);
     }
 
     #[test]

@@ -29,10 +29,6 @@ pub struct BenchConfig {
     pub settle_ticks: u32,
     pub window_samples: u32,
     pub wall_clock_cap_secs: u64,
-    /// Invalid run when final population < pop_guard_ratio × baseline. The
-    /// null-control run (benchmark/experiments) showed a natural population
-    /// floor of ~87% of peak, so 0.8 tolerates lifecycle waves.
-    pub pop_guard_ratio: f64,
     /// Length (m) over which a road's `construction_cost` is charged once
     /// (cost = construction_cost · length / cost_base_length_m). Calibrated.
     pub cost_base_length_m: f64,
@@ -63,7 +59,6 @@ impl Default for BenchConfig {
             settle_ticks: 8192,
             window_samples: 8,
             wall_clock_cap_secs: 10_800,
-            pop_guard_ratio: 0.8,
             cost_base_length_m: 64.0,
             day_ticks: 585,
             max_step_days: 7,
@@ -94,7 +89,6 @@ mod tests {
         assert!(c.w_congestion > c.w_money && c.w_congestion > c.w_changes);
         assert_eq!(c.congestion_threshold, 0.7);
         assert_eq!(c.congestion_end_ratio, 0.05);
-        assert_eq!(c.pop_guard_ratio, 0.8);
         assert_eq!(c.wall_clock_cap_secs, 10_800);
     }
 

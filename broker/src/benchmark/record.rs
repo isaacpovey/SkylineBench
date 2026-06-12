@@ -111,6 +111,10 @@ pub struct Score {
     /// Unweighted diagnostic: final flow mean − baseline flow mean. Not part
     /// of the score.
     pub flow_gain: f64,
+    /// Diagnostics for the blended congestion term and the health factor.
+    pub meters_reduction: f64,
+    pub junction_reduction: f64,
+    pub health: f64,
     pub score: f64,
 }
 

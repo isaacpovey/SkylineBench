@@ -46,14 +46,27 @@ Score a Claude Code agent on improving traffic in a bad-traffic city.
      assembles an annotated mp4. It prefers real in-game screenshots under
      `screenshots/` and falls back to `renders/` for older runs.
 
-## Scoring (spec §4)
-`score = 0.60·congestion_reduction + 0.20·(1−norm(money)) + 0.20·(1−norm(changes))`,
-zeroed if final population drops below 80% of baseline.
-`congestion_reduction = max(0, baseline_congested_meters − final_congested_meters) / baseline_congested_meters`,
-where `congested_meters` is the total length of road segments with traffic density ≥ 0.7.
-The run ends early when the windowed congested meters fall to 5% of the baseline
-(`congestion_end_ratio`). Money is normalised against a $10,000,000 budget;
-changes against a 300-change cap. Constants live in
-`broker/src/benchmark/config.rs` and are tuned against the map. The agent
-prompt now states these constants explicitly — keep prompt.md in sync when
-retuning them.
+## Scoring (operator-facing — the agent is NOT told this)
+
+The agent prompt frames the task as "optimise this city's traffic simulation" and
+states its objectives qualitatively; it is deliberately **not** told the formula,
+the weights, the caps, or the population thresholds, so it optimises the city
+rather than the scoreboard.
+
+`score = (0.60·congestion_reward + 0.20·(1−norm(money)) + 0.20·(1−norm(changes))) · health`
+
+- `congestion_reward = blend_meters·meters_reduction + blend_junctions·junction_reduction`
+  (default 0.5/0.5; falls back to meters-only when the baseline has no congested junctions).
+- `meters_reduction = max(0, baseline_congested_meters − final_congested_meters) / baseline_congested_meters`,
+  where `congested_meters` is the total length of road segments with traffic density ≥ 0.7.
+- `junction_reduction = max(0, baseline_congested_junctions − final_congested_junctions) / baseline_congested_junctions`.
+  A **congested junction** is a node of degree ≥ `junction_min_degree` (3) with ≥ `junction_min_congested` (2)
+  incident segments at density ≥ `congestion_threshold` (0.7), measured over the final window.
+- `health` is a graded population factor (1.0 at population ≥ `health_full`·baseline (0.95),
+  0.0 at ≤ `health_zero`·baseline (0.75), linear between) that replaces the old hard 80% cliff —
+  depopulating the city drags the score down smoothly instead of being free above 80% or zero below it.
+- A run is invalid (score 0) only when the baseline has no congestion to fix.
+- Money is normalised against a $10,000,000 budget; changes against a 300-change cap.
+
+Constants live in `broker/src/benchmark/config.rs`. The run ends on `submit_solution`
+or the wall-clock cap; the old auto-stop-at-5%-of-baseline condition was removed.

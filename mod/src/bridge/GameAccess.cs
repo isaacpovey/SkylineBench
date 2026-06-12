@@ -51,24 +51,46 @@ namespace SkylineBench.Bridge
         /// unblock and is generic to whatever dialog was showing.</summary>
         public static void DismissForcedPauseModal()
         {
-            try { CaptureBehaviour.RunOnMain(ClearModalOnMainThread, 5000); }
+            try { CaptureBehaviour.RunOnMain(ClearModalNow, 5000); }
             catch { /* dispatch timed out; Step re-checks ForcedPaused and bails */ }
         }
 
-        private static void ClearModalOnMainThread()
+        /// <summary>Main-thread-only modal teardown. The milestone celebration
+        /// must be closed through the game's own handler (OnClosed — the same
+        /// path as clicking its close button): that stops the fireworks
+        /// particle system, pops the modal, fades out the grey dim overlay and
+        /// un-force-pauses. Hiding the raw UIComponent leaves the fireworks
+        /// playing and the dim overlay burnt into every later frame.</summary>
+        public static void ClearModalNow()
         {
+            bool closing = false;
             try
             {
-                var view = UIView.GetAView();
-                if (view != null)
+                var panel = ToolsModifierControl.unlockingPanel;
+                if (panel != null && panel.isVisible) { panel.OnClosed(); closing = true; }
+            }
+            catch { /* panel lookup varies by game version; fall through */ }
+            if (!closing)
+            {
+                // Some other dialog: pop and hide it directly, and clear any
+                // leftover dim overlay. Skipped when OnClosed ran — the game's
+                // own teardown pops the modal itself and a second PopModal here
+                // would underflow the modal stack.
+                try
                 {
                     int guard = 0;
-                    while (UIView.HasModalInput() && guard++ < 16) UIView.PopModal();
-                    var panel = view.FindUIComponent<UIComponent>("UnlockingPanel");
-                    if (panel != null && panel.isVisible) panel.Hide();
+                    while (UIView.HasModalInput() && guard++ < 16)
+                    {
+                        var modal = UIView.GetModalComponent();
+                        UIView.PopModal();
+                        if (modal != null && modal.isVisible) modal.Hide();
+                    }
+                    var view = UIView.GetAView();
+                    var dim = view != null ? view.panelsLibraryModalEffect : null;
+                    if (dim != null && dim.isVisible) dim.Hide();
                 }
+                catch { /* UI shape varies by game version; flag-clear below is the fallback */ }
             }
-            catch { /* UI shape varies by game version; flag-clear below is the fallback */ }
             try { Singleton<SimulationManager>.instance.ForcedSimulationPaused = false; }
             catch { }
         }

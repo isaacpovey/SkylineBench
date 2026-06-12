@@ -49,6 +49,22 @@ impl ScreenshotSink {
         self.disabled.load(Ordering::Relaxed)
     }
 
+    /// Capture a frame without persisting it. Used for "before" shots that are
+    /// only written once the action they precede succeeds.
+    pub async fn grab(&self, client: &BridgeClient, shot: CameraShot) -> Option<Vec<u8>> {
+        if self.disabled() {
+            return None;
+        }
+        match client.screenshot(shot.x, shot.z, shot.size, shot.top_down).await {
+            Ok(png) => Some(png),
+            Err(e) => {
+                eprintln!("benchmark: screenshot capture failed ({e}); disabling screenshots for this run");
+                self.disabled.store(true, Ordering::Relaxed);
+                None
+            }
+        }
+    }
+
     pub async fn capture(
         &self,
         client: &BridgeClient,
@@ -58,17 +74,23 @@ impl ScreenshotSink {
         trigger: &str,
         caption: Option<String>,
     ) {
+        if let Some(png) = self.grab(client, shot).await {
+            self.persist(client, state, &png, stream, trigger, caption).await;
+        }
+    }
+
+    pub async fn persist(
+        &self,
+        client: &BridgeClient,
+        state: &Mutex<RunState>,
+        png: &[u8],
+        stream: Stream,
+        trigger: &str,
+        caption: Option<String>,
+    ) {
         if self.disabled() {
             return;
         }
-        let png = match client.screenshot(shot.x, shot.z, shot.size, shot.top_down).await {
-            Ok(png) => png,
-            Err(e) => {
-                eprintln!("benchmark: screenshot capture failed ({e}); disabling screenshots for this run");
-                self.disabled.store(true, Ordering::Relaxed);
-                return;
-            }
-        };
         let tick = client.health().await.map(|h| h.tick).unwrap_or(0);
         let seq = match stream {
             Stream::Overview => self.overview_seq.fetch_add(1, Ordering::Relaxed) + 1,
@@ -81,7 +103,7 @@ impl ScreenshotSink {
         let dir = self.dir.join(stream.subdir());
         let name = format!("{seq:05}-tick{tick}.png");
         let written = std::fs::create_dir_all(&dir)
-            .and_then(|()| std::fs::write(dir.join(&name), &png))
+            .and_then(|()| std::fs::write(dir.join(&name), png))
             .and_then(|()| {
                 let action = matches!(stream, Stream::Action).then_some(trigger);
                 let line = serde_json::json!({

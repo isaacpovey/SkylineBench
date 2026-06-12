@@ -96,6 +96,18 @@ namespace SkylineBench.Bridge
 
         private IEnumerator Run(CaptureRequest req)
         {
+            // A milestone modal that popped up mid-step would otherwise be
+            // burnt into the frame (fireworks + grey dim overlay). Close it
+            // and give the close/fade animations (~0.7 s) time to finish.
+            bool modalUp = false;
+            try { modalUp = GameAccess.ForcedPaused() || ColossalFramework.UI.UIView.HasModalInput(); }
+            catch { }
+            if (modalUp)
+            {
+                try { GameAccess.ClearModalNow(); } catch { }
+                yield return new WaitForSecondsRealtime(1f);
+            }
+
             CameraController cc = null;
             bool prevFree = false;
             try

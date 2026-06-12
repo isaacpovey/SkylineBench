@@ -242,6 +242,10 @@ namespace SkylineBench.Bridge
                 guard++;
             }
             if (wasPaused) t.simulationPaused = true;
+            // A modal that appeared in the step's final stretch would otherwise
+            // be reported as ForcedPaused to the caller (stopping its chunk
+            // loop) and contaminate the post-step screenshot.
+            if (GameAccess.ForcedPaused()) GameAccess.DismissForcedPauseModal();
         }
     }
 }

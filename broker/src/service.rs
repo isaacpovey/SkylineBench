@@ -411,17 +411,32 @@ pub struct CameraShot {
 /// Floor for the overview zoom so tiny networks aren't framed from 10 m up.
 const OVERVIEW_MIN_SIZE_M: f32 = 1200.0;
 const OVERVIEW_MARGIN: f32 = 1.15;
+/// Fraction of node coordinates trimmed from each end per axis, so the
+/// outside-connection highways running to the map edge don't drag the frame
+/// off the city or zoom it out to the whole map.
+const OVERVIEW_TRIM: f32 = 0.10;
 /// Close-up zoom: wide enough to show an intersection plus surroundings.
 const CLOSEUP_SIZE_M: f32 = 350.0;
+const CLOSEUP_MARGIN: f32 = 1.3;
+
+fn trimmed_bounds(values: impl Iterator<Item = f32>) -> Option<(f32, f32)> {
+    let sorted = {
+        let mut v: Vec<f32> = values.collect();
+        v.sort_by(f32::total_cmp);
+        v
+    };
+    let last = sorted.len().checked_sub(1)?;
+    let lo = (last as f32 * OVERVIEW_TRIM).floor() as usize;
+    let hi = (last as f32 * (1.0 - OVERVIEW_TRIM)).ceil() as usize;
+    Some((sorted[lo], sorted[hi]))
+}
 
 pub fn overview_shot(net: &crate::contract::Network) -> CameraShot {
-    let bounds = net.nodes.iter().fold(None, |acc, n| {
-        let (min_x, max_x, min_z, max_z) = acc.unwrap_or((n.x, n.x, n.z, n.z));
-        Some((min_x.min(n.x), max_x.max(n.x), min_z.min(n.z), max_z.max(n.z)))
-    });
+    let bounds = trimmed_bounds(net.nodes.iter().map(|n| n.x))
+        .zip(trimmed_bounds(net.nodes.iter().map(|n| n.z)));
     match bounds {
         None => CameraShot { x: 0.0, z: 0.0, size: 2000.0, top_down: true },
-        Some((min_x, max_x, min_z, max_z)) => CameraShot {
+        Some(((min_x, max_x), (min_z, max_z))) => CameraShot {
             x: (min_x + max_x) / 2.0,
             z: (min_z + max_z) / 2.0,
             size: ((max_x - min_x).max(max_z - min_z) * OVERVIEW_MARGIN / 2.0)
@@ -433,6 +448,23 @@ pub fn overview_shot(net: &crate::contract::Network) -> CameraShot {
 
 pub fn closeup_shot(x: f32, z: f32) -> CameraShot {
     CameraShot { x, z, size: CLOSEUP_SIZE_M, top_down: false }
+}
+
+/// Frame a set of edit locations in one shot: a plain close-up for a single
+/// point, zoomed out just enough to contain all of them otherwise. Replaces
+/// averaging the positions, which aimed the camera at empty land whenever a
+/// plan's ops were scattered.
+pub fn region_shot(positions: &[(f32, f32)]) -> Option<CameraShot> {
+    let (min_x, max_x, min_z, max_z) = positions.iter().fold(None, |acc, &(x, z)| {
+        let (min_x, max_x, min_z, max_z) = acc.unwrap_or((x, x, z, z));
+        Some((min_x.min(x), max_x.max(x), min_z.min(z), max_z.max(z)))
+    })?;
+    Some(CameraShot {
+        x: (min_x + max_x) / 2.0,
+        z: (min_z + max_z) / 2.0,
+        size: ((max_x - min_x).max(max_z - min_z) * CLOSEUP_MARGIN / 2.0).max(CLOSEUP_SIZE_M),
+        top_down: false,
+    })
 }
 
 pub async fn capture_screenshot(
@@ -1071,6 +1103,43 @@ mod tests {
         assert_eq!((shot.x, shot.z), (150.0, -75.0));
         assert!(!shot.top_down);
         assert_eq!(shot.size, 350.0);
+    }
+
+    #[test]
+    fn overview_shot_ignores_outlying_highway_nodes() {
+        let cluster = (0..40).map(|i| crate::contract::NetNode {
+            id: i,
+            x: (i % 8) as f32 * 100.0,
+            y: 0.0,
+            z: (i / 8) as f32 * 100.0,
+        });
+        let outliers = [(100, -8000.0, -8000.0), (101, 8000.0, 8000.0)]
+            .into_iter()
+            .map(|(id, x, z)| crate::contract::NetNode { id, x, y: 0.0, z });
+        let net = crate::contract::Network { nodes: cluster.chain(outliers).collect(), segments: vec![] };
+        let shot = overview_shot(&net);
+        // Trimming drops the two map-edge nodes: centred on the 700×400 city
+        // grid, not the 16 km outlier span, and at the minimum height floor.
+        assert!((shot.x - 350.0).abs() < 100.0, "x {} should be near the cluster centre", shot.x);
+        assert!((shot.z - 200.0).abs() < 100.0, "z {} should be near the cluster centre", shot.z);
+        assert_eq!(shot.size, 1200.0);
+    }
+
+    #[test]
+    fn region_shot_of_single_position_is_a_closeup() {
+        let shot = region_shot(&[(150.0, -75.0)]).unwrap();
+        assert_eq!((shot.x, shot.z), (150.0, -75.0));
+        assert_eq!(shot.size, 350.0);
+        assert!(!shot.top_down);
+    }
+
+    #[test]
+    fn region_shot_frames_scattered_positions() {
+        let shot = region_shot(&[(0.0, 0.0), (1000.0, 400.0)]).unwrap();
+        assert_eq!((shot.x, shot.z), (500.0, 200.0));
+        // span 1000m * 1.3 margin / 2 = 650 — wide enough to contain both edits.
+        assert_eq!(shot.size, 650.0);
+        assert!(region_shot(&[]).is_none());
     }
 
     #[tokio::test]

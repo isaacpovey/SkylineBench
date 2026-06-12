@@ -126,17 +126,33 @@ impl BenchmarkServer {
         .await;
     }
 
-    async fn shoot_action(&self, x: f32, z: f32, action: &str, caption: String) {
-        let Some(sink) = &self.screenshots else { return };
-        sink.capture(
-            &self.client,
-            &self.state,
-            crate::service::closeup_shot(x, z),
-            crate::benchmark::screenshots::Stream::Action,
-            action,
-            Some(caption),
-        )
-        .await;
+    /// Capture (without persisting) the state of an edit location before the
+    /// edit runs. Persisted by shoot_action_pair only if the edit succeeds, so
+    /// failed actions still leave no frames behind.
+    async fn grab_before(&self, shot: Option<crate::service::CameraShot>) -> Option<Vec<u8>> {
+        match (&self.screenshots, shot) {
+            (Some(sink), Some(shot)) => sink.grab(&self.client, shot).await,
+            _ => None,
+        }
+    }
+
+    /// Persist the pre-edit frame and capture the post-edit frame with the
+    /// SAME framing, so the timelapse shows a true before/after of the change.
+    async fn shoot_action_pair(
+        &self,
+        shot: Option<crate::service::CameraShot>,
+        before: Option<Vec<u8>>,
+        action: &str,
+        caption: String,
+    ) {
+        let (Some(sink), Some(shot)) = (&self.screenshots, shot) else { return };
+        let stream = crate::benchmark::screenshots::Stream::Action;
+        if let Some(png) = before {
+            sink.persist(&self.client, &self.state, &png, stream, action, Some(format!("{caption} (before)")))
+                .await;
+        }
+        sink.capture(&self.client, &self.state, shot, stream, action, Some(format!("{caption} (after)")))
+            .await;
     }
 
     /// Best-effort frame write: a failed render persist must never fail the
@@ -420,6 +436,9 @@ impl BenchmarkServer {
                     ))]))
                 }
             }
+            // One overview frame per chunk (~1 in-game day), not per tool call,
+            // so long steps still produce a fluid timelapse.
+            self.shoot_overview().await;
             if started.elapsed() > wall_budget {
                 break;
             }
@@ -473,7 +492,6 @@ impl BenchmarkServer {
                 self.persist_render(&png, tick, "step").await;
             }
         }
-        self.shoot_overview().await;
         self.finish(out).await
     }
 
@@ -486,6 +504,8 @@ impl BenchmarkServer {
         let length = horizontal_distance(args.from, args.to);
         let road_type = args.road_type.clone();
         let (mx, mz) = ((args.from.x + args.to.x) / 2.0, (args.from.z + args.to.z) / 2.0);
+        let shot = Some(crate::service::closeup_shot(mx, mz));
+        let before = self.grab_before(shot).await;
         match service::build_road(&self.client, args).await {
             Ok(v) => {
                 if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
@@ -494,7 +514,7 @@ impl BenchmarkServer {
                     s.record_mutation("build_road", cost);
                     drop(s);
                     self.refresh_topology().await;
-                    self.shoot_action(mx, mz, "build_road", format!("build_road: {road_type}")).await;
+                    self.shoot_action_pair(shot, before, "build_road", format!("build_road: {road_type}")).await;
                 }
                 self.finish(v).await
             }
@@ -523,6 +543,8 @@ impl BenchmarkServer {
             let end = n.nodes.iter().find(|nd| nd.id == seg.end_node)?;
             Some(((start.x + end.x) / 2.0, (start.z + end.z) / 2.0))
         });
+        let shot = midpoint.map(|(mx, mz)| crate::service::closeup_shot(mx, mz));
+        let before = self.grab_before(shot).await;
         match service::upgrade_road(&self.client, args).await {
             Ok(v) => {
                 if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
@@ -531,9 +553,7 @@ impl BenchmarkServer {
                     s.record_mutation("upgrade_road", cost);
                     drop(s);
                     self.refresh_topology().await;
-                    if let Some((mx, mz)) = midpoint {
-                        self.shoot_action(mx, mz, "upgrade_road", format!("upgrade_road: segment {segment_id} → {road_type}")).await;
-                    }
+                    self.shoot_action_pair(shot, before, "upgrade_road", format!("upgrade_road: segment {segment_id} → {road_type}")).await;
                 }
                 self.finish(v).await
             }
@@ -568,14 +588,14 @@ impl BenchmarkServer {
         } else {
             None
         };
+        let shot = pre_location.map(|(x, z)| crate::service::closeup_shot(x, z));
+        let before = self.grab_before(shot).await;
         match service::bulldoze(&self.client, args).await {
             Ok(v) => {
                 if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
                     self.state.lock().await.record_mutation("bulldoze", 0);
                     self.refresh_topology().await;
-                    if let Some((x, z)) = pre_location {
-                        self.shoot_action(x, z, "bulldoze", format!("bulldoze: {target_type} {id}")).await;
-                    }
+                    self.shoot_action_pair(shot, before, "bulldoze", format!("bulldoze: {target_type} {id}")).await;
                 }
                 self.finish(v).await
             }
@@ -594,12 +614,14 @@ impl BenchmarkServer {
             (args.area.min_x + args.area.max_x) / 2.0,
             (args.area.min_z + args.area.max_z) / 2.0,
         );
+        let shot = Some(crate::service::closeup_shot(cx, cz));
+        let before = self.grab_before(shot).await;
         match service::set_zoning(&self.client, args).await {
             Ok(v) => {
                 if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
                     self.state.lock().await.record_mutation("set_zoning", 0);
                     self.refresh_topology().await;
-                    self.shoot_action(cx, cz, "set_zoning", format!("set_zoning: {zone_type}")).await;
+                    self.shoot_action_pair(shot, before, "set_zoning", format!("set_zoning: {zone_type}")).await;
                 }
                 self.finish(v).await
             }
@@ -731,10 +753,33 @@ impl BenchmarkServer {
             Some(((start.x + end.x) / 2.0, (start.z + end.z) / 2.0))
         };
 
+        // One shot framing every planned edit, fixed before execution so the
+        // before/after frames are directly comparable.
+        let planned_positions: Vec<(f32, f32)> = exec
+            .iter()
+            .filter_map(|(_, op)| match op {
+                ExecOp::Build { from, to, .. } => {
+                    Some(((from.x + to.x) / 2.0, (from.z + to.z) / 2.0))
+                }
+                ExecOp::Upgrade { segment, .. } => seg_midpoint(*segment),
+                ExecOp::Bulldoze { target_type, id } => match target_type.as_str() {
+                    "segment" => seg_midpoint(*id),
+                    "node" => net.nodes.iter().find(|nd| nd.id == *id).map(|nd| (nd.x, nd.z)),
+                    "building" => buildings.iter().find(|bd| bd.id == *id).map(|bd| (bd.x, bd.z)),
+                    _ => None,
+                },
+                ExecOp::Zone { area, .. } => {
+                    Some(((area.min_x + area.max_x) / 2.0, (area.min_z + area.max_z) / 2.0))
+                }
+                ExecOp::Invalid => None,
+            })
+            .collect();
+        let shot = crate::service::region_shot(&planned_positions);
+        let before = self.grab_before(shot).await;
+
         let mut results: Vec<Value> = Vec::with_capacity(validations.len());
         let mut first_failed_at: Option<usize> = None;
         let mut n_all_ok: usize = 0;
-        let mut successful_positions: Vec<(f32, f32)> = Vec::new();
         for (i, (source, op, _, cost)) in validations.iter().enumerate() {
             if first_failed_at.is_some() && args.stop_on_error {
                 results.push(serde_json::json!({
@@ -764,28 +809,6 @@ impl BenchmarkServer {
                     if ok {
                         n_all_ok += 1;
                         self.state.lock().await.record_mutation(tool_name(op), *cost);
-                        if self.screenshots.is_some() {
-                            let pos = match op {
-                                ExecOp::Build { from, to, .. } => {
-                                    Some(((from.x + to.x) / 2.0, (from.z + to.z) / 2.0))
-                                }
-                                ExecOp::Upgrade { segment, .. } => seg_midpoint(*segment),
-                                ExecOp::Bulldoze { target_type, id } => match target_type.as_str() {
-                                    "segment" => seg_midpoint(*id),
-                                    "node" => net.nodes.iter().find(|nd| nd.id == *id).map(|nd| (nd.x, nd.z)),
-                                    "building" => buildings.iter().find(|bd| bd.id == *id).map(|bd| (bd.x, bd.z)),
-                                    _ => None,
-                                },
-                                ExecOp::Zone { area, .. } => Some((
-                                    (area.min_x + area.max_x) / 2.0,
-                                    (area.min_z + area.max_z) / 2.0,
-                                )),
-                                ExecOp::Invalid => None,
-                            };
-                            if let Some(p) = pos {
-                                successful_positions.push(p);
-                            }
-                        }
                     } else if first_failed_at.is_none() {
                         first_failed_at = Some(i);
                     }
@@ -819,13 +842,7 @@ impl BenchmarkServer {
 
         if n_all_ok > 0 {
             self.refresh_topology().await;
-        }
-
-        if !successful_positions.is_empty() {
-            let (sum_x, sum_z, count) = successful_positions
-                .iter()
-                .fold((0.0_f32, 0.0_f32, 0.0_f32), |(ax, az, ac), (x, z)| (ax + x, az + z, ac + 1.0));
-            self.shoot_action(sum_x / count, sum_z / count, "apply_plan", format!("apply_plan: {n_all_ok} ops")).await;
+            self.shoot_action_pair(shot, before, "apply_plan", format!("apply_plan: {n_all_ok} ops")).await;
         }
 
         self.finish(serde_json::json!({
@@ -1214,26 +1231,29 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn step_persists_an_overview_screenshot() {
+    async fn step_persists_an_overview_screenshot_per_chunk() {
         let dir = std::env::temp_dir().join(format!("sb-srv-shots-{}", std::process::id()));
         std::fs::remove_dir_all(&dir).ok();
         let bench = bench_with_mock().await.with_screenshots_dir(dir.clone());
+        // 1170 ticks = 2 day-sized chunks → one overview frame per chunk.
         bench
             .control_time(Parameters(crate::service::ControlTimeArgs {
                 op: "step".into(),
-                ticks: Some(10),
+                ticks: Some(1170),
                 speed: None,
             }))
             .await
             .unwrap();
         let index = std::fs::read_to_string(dir.join("overview/index.jsonl")).unwrap();
-        let entry: serde_json::Value = serde_json::from_str(index.lines().next().unwrap()).unwrap();
-        assert_eq!(entry["trigger"], "step");
+        let entries: Vec<serde_json::Value> =
+            index.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(entries.len(), 2, "one frame per chunk: {entries:?}");
+        assert!(entries.iter().all(|e| e["trigger"] == "step"));
         std::fs::remove_dir_all(&dir).ok();
     }
 
     #[tokio::test]
-    async fn successful_build_persists_an_action_closeup() {
+    async fn successful_build_persists_before_and_after_closeups() {
         let dir = std::env::temp_dir().join(format!("sb-srv-shots2-{}", std::process::id()));
         std::fs::remove_dir_all(&dir).ok();
         let bench = bench_with_mock().await.with_screenshots_dir(dir.clone());
@@ -1247,9 +1267,34 @@ mod tests {
             .await
             .unwrap();
         let index = std::fs::read_to_string(dir.join("actions/index.jsonl")).unwrap();
-        let entry: serde_json::Value = serde_json::from_str(index.lines().next().unwrap()).unwrap();
-        assert_eq!(entry["action"], "build_road");
-        assert_eq!(entry["caption"], "build_road: road");
+        let entries: Vec<serde_json::Value> =
+            index.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(entries.len(), 2, "a before and an after frame: {entries:?}");
+        assert_eq!(entries[0]["action"], "build_road");
+        assert_eq!(entries[0]["caption"], "build_road: road (before)");
+        assert_eq!(entries[1]["caption"], "build_road: road (after)");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn apply_plan_persists_one_before_after_pair_framing_all_ops() {
+        let dir = std::env::temp_dir().join(format!("sb-srv-shots4-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        let bench = bench_with_mock().await.with_screenshots_dir(dir.clone());
+        bench
+            .apply_plan(Parameters(ApplyPlanArgs {
+                ops: vec![plan_build(0.0, 50.0), plan_build(1000.0, 1050.0)],
+                validate_only: false,
+                stop_on_error: true,
+            }))
+            .await
+            .unwrap();
+        let index = std::fs::read_to_string(dir.join("actions/index.jsonl")).unwrap();
+        let entries: Vec<serde_json::Value> =
+            index.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(entries.len(), 2, "one pair for the whole plan: {entries:?}");
+        assert_eq!(entries[0]["caption"], "apply_plan: 2 ops (before)");
+        assert_eq!(entries[1]["caption"], "apply_plan: 2 ops (after)");
         std::fs::remove_dir_all(&dir).ok();
     }
 

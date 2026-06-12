@@ -22,9 +22,6 @@ pub struct BenchConfig {
     pub health_zero: f64,
     pub budget: f64,
     pub change_cap: f64,
-    /// Early-success: the run ends when windowed congested meters fall to this
-    /// fraction of the baseline.
-    pub congestion_end_ratio: f64,
     pub window_ticks: u32,
     pub settle_ticks: u32,
     pub window_samples: u32,
@@ -54,7 +51,6 @@ impl Default for BenchConfig {
             health_zero: 0.75,
             budget: 10_000_000.0,
             change_cap: 300.0,
-            congestion_end_ratio: 0.05,
             window_ticks: 2048,
             settle_ticks: 8192,
             window_samples: 8,
@@ -88,7 +84,6 @@ mod tests {
         let c = BenchConfig::default();
         assert!(c.w_congestion > c.w_money && c.w_congestion > c.w_changes);
         assert_eq!(c.congestion_threshold, 0.7);
-        assert_eq!(c.congestion_end_ratio, 0.05);
         assert_eq!(c.wall_clock_cap_secs, 10_800);
     }
 

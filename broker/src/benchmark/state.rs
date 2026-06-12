@@ -4,13 +4,13 @@ use std::time::Instant;
 use serde_json::{json, Value};
 
 use crate::benchmark::config::BenchConfig;
-use crate::benchmark::congestion::instant_congested_meters;
+use crate::benchmark::congestion::{congested_junctions, instant_congested_meters, Topology};
 use crate::benchmark::cost::road_cost;
 use crate::benchmark::record::{
     ActionEntry, EndReason, EndState, MapInfo, Tally, WindowStats, SCHEMA_VERSION,
 };
 use crate::benchmark::rolling_window::RollingWindow;
-use crate::contract::Metrics;
+use crate::contract::{Metrics, Network};
 
 pub struct RunState {
     pub config: BenchConfig,
@@ -27,6 +27,8 @@ pub struct RunState {
     pub last_population: Option<u32>,
     pub last_abandoned_buildings: Option<u32>,
     pub last_happiness: Option<u8>,
+    pub topology: Option<Topology>,
+    pub last_densities: HashMap<u32, f64>,
     pub start: Instant,
     pub end_reason: Option<EndReason>,
     pub render_seq: u32,
@@ -48,6 +50,8 @@ impl RunState {
             last_population: None,
             last_abandoned_buildings: None,
             last_happiness: None,
+            topology: None,
+            last_densities: HashMap::new(),
             start: Instant::now(),
             end_reason: None,
             render_seq: 0,
@@ -85,9 +89,6 @@ impl RunState {
         });
     }
 
-    /// Fold one metrics sample into the run telemetry. The congestion end
-    /// condition needs the baseline (for the ratio), so it only arms once the
-    /// baseline window has been measured.
     pub fn observe_metrics(&mut self, m: &Metrics) {
         self.flow.push(m.traffic.flow_percent as f64);
         self.congestion
@@ -95,16 +96,29 @@ impl RunState {
         self.last_population = Some(m.population.total);
         self.last_abandoned_buildings = Some(m.services.abandoned_buildings);
         self.last_happiness = Some(m.services.happiness);
-        let baseline_cm = self.baseline.as_ref().map(|b| b.congested_meters);
-        if let Some(base) = baseline_cm {
-            if base > 0.0
-                && self.congestion.is_full()
-                && self.congestion.mean() <= self.config.congestion_end_ratio * base
-                && self.end_reason.is_none()
-            {
-                self.end_reason = Some(EndReason::CongestionTarget);
-            }
-        }
+        self.last_densities = m
+            .traffic
+            .segment_loads
+            .iter()
+            .map(|l| (l.segment_id, f64::from(l.density)))
+            .collect();
+    }
+
+    /// Cache the road graph so the live readout can count congested junctions.
+    pub fn observe_network(&mut self, net: &Network) {
+        self.topology = Some(Topology::from_network(net));
+    }
+
+    fn live_congested_junctions(&self) -> Option<u32> {
+        self.topology.as_ref().map(|t| {
+            congested_junctions(
+                t,
+                |id| self.last_densities.get(&id).copied(),
+                self.config.congestion_threshold,
+                self.config.junction_min_degree as usize,
+                self.config.junction_min_congested as usize,
+            )
+        })
     }
 
     pub fn seconds_remaining(&self) -> u64 {
@@ -134,21 +148,21 @@ impl RunState {
         }
     }
 
-    /// Agent-facing telemetry (spec §7 + 2026-06-10 §3): resources, the scored
-    /// congestion signal, and neutral city-health facts. Never the score.
+    /// Neutral simulation readout merged into every tool response — no scoring
+    /// formula, weights, caps, or thresholds, just observable city facts.
     pub fn progress(&self) -> Value {
-        let baseline_cm = self.baseline.as_ref().map(|b| b.congested_meters);
         json!({
             "money_spent": self.money_spent,
-            "num_changes": self.num_changes,
-            "congested_meters_current": (!self.congestion.is_empty()).then(|| self.congestion.mean()),
-            "congested_meters_baseline": baseline_cm,
-            "congested_meters_target": baseline_cm.map(|b| self.config.congestion_end_ratio * b),
-            "flow_current": (!self.flow.is_empty()).then(|| self.flow.mean()),
+            "changes_made": self.num_changes,
+            "congested_road_meters": (!self.congestion.is_empty()).then(|| self.congestion.mean()),
+            "congested_road_meters_at_start": self.baseline.as_ref().map(|b| b.congested_meters),
+            "congested_junctions": self.live_congested_junctions(),
+            "congested_junctions_at_start": self.baseline.as_ref().map(|b| b.congested_junctions),
+            "traffic_flow": (!self.flow.is_empty()).then(|| self.flow.mean()),
             "population": self.last_population,
             "abandoned_buildings": self.last_abandoned_buildings,
             "happiness": self.last_happiness,
-            "seconds_remaining": self.seconds_remaining(),
+            "time_remaining": self.seconds_remaining(),
         })
     }
 }
@@ -201,55 +215,21 @@ mod tests {
     fn progress_omits_score_fields() {
         let mut s = state();
         let p = s.progress();
-        assert!(p["congested_meters_current"].is_null(), "no samples yet");
-        assert!(p["flow_current"].is_null(), "no samples yet");
-        assert!(p["congested_meters_baseline"].is_null(), "no baseline yet");
-        assert!(p["seconds_remaining"].as_u64().unwrap() <= 10_800);
+        assert!(p["congested_road_meters"].is_null(), "no samples yet");
+        assert!(p["traffic_flow"].is_null(), "no samples yet");
+        assert!(p["congested_road_meters_at_start"].is_null(), "no baseline yet");
+        assert!(p["time_remaining"].as_u64().unwrap() <= 10_800);
         assert!(p.get("score").is_none());
         assert!(p.get("composite_score").is_none());
         assert!(p.get("weights").is_none());
-
+        assert!(p.get("congested_meters_target").is_none(), "scoring target must not leak");
         assert!(p["happiness"].is_null(), "no happiness before first sample");
 
         s.observe_metrics(&sample_metrics(0.9));
         let p = s.progress();
-        assert!(p["congested_meters_current"].is_number(), "current appears after first sample");
-        assert!(p["flow_current"].is_number());
+        assert!(p["congested_road_meters"].is_number(), "current appears after first sample");
+        assert!(p["traffic_flow"].is_number());
         assert_eq!(p["happiness"], 80, "happiness surfaced from the latest sample");
-    }
-
-    #[test]
-    fn congestion_end_condition_arms_only_with_baseline() {
-        use crate::benchmark::record::{EndReason, WindowStats};
-
-        let mut s = state();
-        let window = s.config.window_samples as usize;
-        // Without a baseline, even a fully clear window must not end the run.
-        for _ in 0..window {
-            s.observe_metrics(&sample_metrics(0.0));
-        }
-        assert_eq!(s.end_reason, None);
-
-        s.set_baseline(
-            WindowStats {
-                flow_mean: 50.0,
-                active_vehicles_mean: 100.0,
-                population: 1000,
-                congested_meters: 100.0,
-                congested_junctions: 0,
-            },
-            Vec::new(),
-        );
-        // The pre-baseline samples were discarded: the end condition needs a
-        // full window of FRESH post-baseline observations before it can fire.
-        for _ in 0..window - 1 {
-            s.observe_metrics(&sample_metrics(0.0)); // 0 ≤ 0.05 × 100
-        }
-        assert_eq!(s.end_reason, None, "stale pre-baseline samples must not count");
-        s.observe_metrics(&sample_metrics(0.0));
-        assert_eq!(s.end_reason, Some(EndReason::CongestionTarget));
-        assert_eq!(s.progress()["population"], 1000);
-        assert_eq!(s.progress()["abandoned_buildings"], 2);
     }
 
     #[test]

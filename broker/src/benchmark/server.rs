@@ -899,7 +899,7 @@ mod tests {
         let merged = with_progress(serde_json::json!({"ok": true}), &state);
         assert_eq!(merged["ok"], true);
         assert!(
-            merged["benchmark_progress"]["congested_meters_current"].is_null(),
+            merged["benchmark_progress"]["congested_road_meters"].is_null(),
             "no telemetry samples yet"
         );
     }
@@ -1297,7 +1297,7 @@ mod tests {
         // 50m span = 1 op; 400m span = 3 chunks → 4 expanded ops priced.
         assert_eq!(v["results"].as_array().unwrap().len(), 4);
         assert!(v["total_estimated_cost"].as_i64().unwrap() > 0);
-        assert_eq!(v["benchmark_progress"]["num_changes"], 0, "dry-run must not record changes");
+        assert_eq!(v["benchmark_progress"]["changes_made"], 0, "dry-run must not record changes");
     }
 
     #[tokio::test]
@@ -1317,7 +1317,7 @@ mod tests {
         // The mock's validate-road returns ok with zero fronting buildings; the
         // row must carry the game-check fact through.
         assert_eq!(row["zoned_buildings_fronting"], 0, "row: {row}");
-        assert_eq!(v["benchmark_progress"]["num_changes"], 0);
+        assert_eq!(v["benchmark_progress"]["changes_made"], 0);
     }
 
     #[tokio::test]
@@ -1333,7 +1333,7 @@ mod tests {
             .unwrap();
         let v: serde_json::Value = serde_json::from_str(&result_text(&res)).unwrap();
         assert_eq!(v["ok"], true);
-        assert_eq!(v["benchmark_progress"]["num_changes"], 4);
+        assert_eq!(v["benchmark_progress"]["changes_made"], 4);
         assert!(v["results"].as_array().unwrap().iter().all(|r| r["executed"] == true && r["ok"] == true));
     }
 
@@ -1353,7 +1353,7 @@ mod tests {
             .unwrap();
         let v: serde_json::Value = serde_json::from_str(&result_text(&res)).unwrap();
         assert_eq!(v["ok"], false);
-        assert_eq!(v["benchmark_progress"]["num_changes"], 0, "nothing may execute when validation fails");
+        assert_eq!(v["benchmark_progress"]["changes_made"], 0, "nothing may execute when validation fails");
         let results = v["results"].as_array().unwrap();
         assert_eq!(results[1]["valid"], false);
         assert_eq!(results[1]["reason"], "INVALID_ARGS");
@@ -1398,7 +1398,7 @@ mod tests {
         assert_eq!(results[1]["ok"], false);
         assert_eq!(results[2]["executed"], false, "ops after the failure are skipped");
         // 1 change from the setup build + 1 from the successful bulldoze.
-        assert_eq!(v["benchmark_progress"]["num_changes"], 2);
+        assert_eq!(v["benchmark_progress"]["changes_made"], 2);
     }
 
     #[tokio::test]
@@ -1436,7 +1436,7 @@ mod tests {
         assert_eq!(results[2]["executed"], true, "later ops still run when not stopping");
         assert_eq!(results[2]["ok"], true);
         // setup build + first bulldoze + final build all recorded; failed bulldoze not.
-        assert_eq!(v["benchmark_progress"]["num_changes"], 3);
+        assert_eq!(v["benchmark_progress"]["changes_made"], 3);
     }
 
     #[tokio::test]

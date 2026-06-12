@@ -35,6 +35,10 @@ pub struct WindowStats {
     pub active_vehicles_mean: f64,
     pub population: u32,
     pub congested_meters: f64,
+    /// Defaults to 0 so a v2 end-state still deserializes — the schema_version
+    /// guard in `finalize` then reports the version mismatch with a clear message
+    /// instead of a cryptic "missing field" serde error.
+    #[serde(default)]
     pub congested_junctions: u32,
 }
 

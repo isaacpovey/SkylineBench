@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en" class="ds dark">
+<head>
+<script>document.documentElement.classList.add('js');</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SkylineBench: an AI agent benchmark</title>
+<meta name="description" content="A benchmark that evaluates how an agent can run and manage a city in Cities: Skylines. It has to improve the traffic without ever being told how it's being judged." />
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+<link rel="stylesheet" href="colors_and_type.css" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body class="ds dark">
+
+<!-- ============ NAV ============ -->
+<nav class="nav" id="nav">
+  <div class="wrap">
+    <a class="brand" href="#top">
+      <svg class="mark" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+        <rect x="2" y="14" width="4" height="10" rx="1" fill="currentColor" opacity="0.55"/>
+        <rect x="8" y="9" width="4" height="15" rx="1" fill="currentColor" opacity="0.8"/>
+        <rect x="14" y="4" width="4" height="20" rx="1" fill="var(--skl-blue-bright)"/>
+        <rect x="20" y="11" width="4" height="13" rx="1" fill="currentColor" opacity="0.65"/>
+        <line x1="1" y1="25.5" x2="27" y2="25.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.4"/>
+      </svg>
+      <span><b>Skyline</b><span class="slash">Bench</span></span>
+    </a>
+    <div class="nav-links">
+      <a class="nav-link hide-sm" href="#thesis">Thesis</a>
+      <a class="nav-link hide-sm" href="#how">How it works</a>
+      <a class="nav-link hide-sm" href="#scoring">Scoring</a>
+      <a class="nav-link hide-sm" href="#built">Architecture</a>
+      <a class="nav-link hide-sm" href="#results">Results</a>
+      <span class="nav-sep hide-sm"></span>
+      <a class="btn btn-outline btn-sm" href="https://github.com/isaacpovey/SkylineBench" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.27-.01-1-.02-1.96-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 2.9-.39c.98 0 1.97.13 2.9.39 2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.81 1.18 1.84 1.18 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A10.52 10.52 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</nav>
+
+<a id="top"></a>
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+  <div class="hero-grid-bg"></div>
+  <div class="hero-glow"></div>
+  <div class="wrap">
+    <div class="hero-head">
+      <p class="eyebrow reveal">A benchmark for AI agents</p>
+      <h1 class="display reveal">Fix the traffic.<br />Don't kill the city.</h1>
+      <p class="lead reveal">SkylineBench drops an AI agent into a congested <strong>Cities: Skylines</strong> city and asks it to improve the traffic, <strong>without ever telling it how it's being judged.</strong></p>
+      <div class="hero-cta reveal">
+        <a class="btn btn-primary" href="https://github.com/isaacpovey/SkylineBench" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.27-.01-1-.02-1.96-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 2.9-.39c.98 0 1.97.13 2.9.39 2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.81 1.18 1.84 1.18 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A10.52 10.52 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
+          View on GitHub
+        </a>
+        <a class="btn btn-outline" href="#thesis">Read the thesis</a>
+      </div>
+      <div class="hero-meta reveal">
+        <span>Cities: Skylines 1</span>
+        <span class="dot"></span>
+        <span>Rust MCP harness</span>
+        <span class="dot"></span>
+        <span class="mono">no right answer</span>
+      </div>
+    </div>
+
+    <!-- Timelapse video frame -->
+    <figure class="media-frame reveal" style="margin-left:0;margin-right:0;">
+      <div class="media-bar">
+        <span class="media-dot"></span><span class="media-dot"></span><span class="media-dot"></span>
+        <span class="file">skylinebench timelapse · gridlock-v1</span>
+        <span class="right"><span class="live"></span> annotated run</span>
+      </div>
+      <div class="media-stage">
+        <video id="hero-video" muted loop playsinline preload="none" poster="" data-video-src="assets/timelapse.mp4"></video>
+        <div class="media-placeholder" id="hero-placeholder">
+          <div class="play">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+          </div>
+          <div class="ph-title">Timelapse drops in here</div>
+          <div class="ph-sub">assets/timelapse.mp4 · the city changing, with a live HUD</div>
+        </div>
+      </div>
+    </figure>
+  </div>
+</header>
+
+<hr class="divider" />
+
+<!-- ============ THESIS ============ -->
+<section class="section" id="thesis">
+  <div class="wrap-narrow">
+    <div class="section-head reveal">
+      <p class="eyebrow">Why I built this</p>
+      <h2 class="section-title">Most agent benchmarks have a right answer. This one doesn't.</h2>
+    </div>
+    <div class="prose reveal" style="margin-top:32px;">
+      <p>I have a theory: <strong>agents are bad at the second-order consequences of their own actions.</strong> I keep running into the same failure in my own engineering work. The moment an agent believes it has a solution, it stops thinking. It ships the fix and never asks what else the fix touched.</p>
+      <p>A city is about the cruelest test of that I could think of, because in a city <em>everything</em> is connected.</p>
+    </div>
+
+    <div class="cascade reveal">
+      <span class="step">Widen a road</span>
+      <span class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      <span class="step">more cars</span>
+      <span class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      <span class="step">more noise</span>
+      <span class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      <span class="step">residents leave</span>
+      <span class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      <span class="step">shops close</span>
+      <span class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      <span class="step bad">no traffic, no city</span>
+    </div>
+
+    <div class="prose reveal" style="margin-top:36px;">
+      <p>The agent that widened the road got exactly what it asked for and lost the city doing it. That cascade is the whole point.</p>
+    </div>
+
+    <blockquote class="thesis-quote reveal">
+      <p>The benchmark isn't really asking whether an agent can read a congestion number and bring it down. It's asking whether the agent keeps reasoning after it thinks it's done.</p>
+    </blockquote>
+  </div>
+</section>
+
+<!-- ============ HOW IT WORKS ============ -->
+<section class="section section-soft" id="how">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow">How it works</p>
+      <h2 class="section-title">The agent plays the game through tools, the same moves a human player has.</h2>
+      <p class="lead">It looks at the map, inspects the traffic on any road, traces where cars are actually going, then bulldozes, builds, upgrades roads, and rezones. It can pause time, make a batch of changes, and step the simulation forward to watch what they do. It gets a few hours of wall-clock time, then submits and walks away.</p>
+    </div>
+
+    <!-- tool inventory -->
+    <div class="tools reveal">
+      <div class="tool-group">
+        <h4>Observe</h4>
+        <ul>
+          <li>get_city_overview</li>
+          <li>observe_area</li>
+          <li>render_map</li>
+          <li>get_metrics</li>
+        </ul>
+      </div>
+      <div class="tool-group">
+        <h4>Act</h4>
+        <ul>
+          <li>build_road</li>
+          <li>bulldoze</li>
+          <li>upgrade_road</li>
+          <li>set_zoning</li>
+        </ul>
+      </div>
+      <div class="tool-group">
+        <h4>Reference</h4>
+        <ul>
+          <li>list_road_types</li>
+          <li>list_zone_types</li>
+        </ul>
+      </div>
+      <div class="tool-group">
+        <h4>Control</h4>
+        <ul>
+          <li>control_time</li>
+          <li>reset_scenario</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="lead reveal" style="margin-top:clamp(56px,8vw,80px);max-width:640px;">A handful of deliberate choices decide what it's <em>really</em> being tested on.</p>
+
+    <div class="choices">
+      <article class="choice reveal">
+        <span class="num">01</span>
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg></div>
+        <h3>It never sees the score</h3>
+        <p>The agent is told, in plain language, to make traffic flow better while keeping the city somewhere people want to live. It is <strong>never shown the formula, the weights, or the thresholds.</strong> There's no scoreboard to play to. The only way to score well is to leave the city better than it found it.</p>
+      </article>
+
+      <article class="choice reveal">
+        <span class="num">02</span>
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><path d="M9 9v.01M9 12v.01M9 15v.01M9 18v.01"/></svg></div>
+        <h3>It can't win by bulldozing the city</h3>
+        <p>Congestion has a trivial solution: demolish everything until there's no one left to drive. So the congestion score is <strong>multiplied by a health factor tied to population.</strong> Let the city hollow out and your gains evaporate with the residents. The two pressures pull against each other on purpose.</p>
+      </article>
+
+      <article class="choice reveal">
+        <span class="num">03</span>
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+        <h3>It has to slow down</h3>
+        <p>Traffic doesn't re-route the instant you change a road. It gets worse for a while as cars find the new layout, then settles. A good change and a bad change <strong>look identical for the first few steps</strong>, so the agent has to tell a settling transient apart from real damage instead of reacting to the first number it sees. Patience is part of the test.</p>
+      </article>
+
+      <article class="choice reveal">
+        <span class="num">04</span>
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+        <h3>It can't read the answer key</h3>
+        <p>The agent runs inside a sandbox that blocks it from reading this repository, so it can't inspect the scoring code. It can only play the game through the tools. <strong>An early run did exactly this</strong>, which is why the sandbox exists.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- ============ SCORING ============ -->
+<section class="section" id="scoring">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow">Scoring</p>
+      <h2 class="section-title">A formula the operator can see, and the agent never can.</h2>
+      <p class="lead">The prompt frames the task as "optimise this city's traffic simulation" and states its objectives qualitatively. It is deliberately <strong>not</strong> told the formula, the weights, the caps, or the population thresholds, so it optimises the city, not the scoreboard.</p>
+    </div>
+
+    <div class="score-layout">
+      <div class="formula-card reveal">
+        <div class="fc-head">
+          <span class="t">score.json · composite</span>
+          <span class="hidden-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg> hidden from agent</span>
+        </div>
+        <div class="formula-body">
+          <div class="formula">
+            <span class="term">score</span> =<br />
+            (<span class="w">0.60</span>·congestion_reward<br />
+            + <span class="w">0.20</span>·(1−norm(money))<br />
+            + <span class="w">0.20</span>·(1−norm(changes)))<br />
+            · <span class="health">health</span>
+          </div>
+          <div class="formula-legend">
+            <div class="row"><span class="k">congestion_reward</span><span class="v">blend of metres-reduced and congested-junctions-reduced (0.5 / 0.5).</span></div>
+            <div class="row"><span class="k">congested</span><span class="v">road density ≥ 0.7; a junction of degree ≥ 3 with ≥ 2 congested segments.</span></div>
+            <div class="row"><span class="k health">health</span><span class="v">graded population factor: 1.0 at ≥ 95% of baseline, 0.0 at ≤ 75%, linear between.</span></div>
+            <div class="row"><span class="k">norm</span><span class="v">money against a $10M budget; changes against a 300-change cap.</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="score-notes">
+        <div class="score-note reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg></div>
+          <div>
+            <h4>Congestion is 60% of the weight</h4>
+            <p>Reward comes from cutting the total length of jammed road and the number of jammed junctions versus a measured baseline, never from an absolute number the agent could chase.</p>
+          </div>
+        </div>
+        <div class="score-note reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg></div>
+          <div>
+            <h4>Cost and restraint matter</h4>
+            <p>Money spent and number of changes each carry 20%. A surgical fix beats a sprawling rebuild that happens to land the same congestion number.</p>
+          </div>
+        </div>
+        <div class="score-note reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+          <div>
+            <h4>The population multiplier governs everything</h4>
+            <p>Health multiplies the whole score, so depopulating the city drags it down smoothly rather than off a cliff. A run is invalid <span class="mono">(score 0)</span> only when the baseline has no congestion to fix.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ARCHITECTURE ============ -->
+<section class="section section-soft" id="built">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow">How it's built</p>
+      <h2 class="section-title">Three pieces between the game and the agent.</h2>
+      <p class="lead">A C# mod exposes the live simulation. A Rust MCP server turns it into agent tools and runs the harness. The benchmark layer holds the prompt, the maps, and the run script.</p>
+    </div>
+
+    <div class="arch reveal">
+      <div class="arch-flow">
+        <div class="arch-node">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+          <span class="tag">mod/ <span class="lang">· C#</span></span>
+          <h3>The game</h3>
+          <p>A mod for Cities: Skylines 1 that runs inside the game and exposes the simulation's state and controls over a localhost HTTP API.</p>
+        </div>
+
+        <div class="arch-conn">
+          <span class="label">HTTP</span>
+          <span class="line"></span>
+          <span class="sub">:8787</span>
+        </div>
+
+        <div class="arch-node">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16"/></svg></div>
+          <span class="tag">broker/ <span class="lang">· Rust</span></span>
+          <h3>The harness</h3>
+          <p>An MCP server. It turns the game into agent tools and runs the harness: measure a baseline, run the agent, let the sim settle, score it, and write out the artifacts.</p>
+        </div>
+
+        <div class="arch-conn">
+          <span class="label">MCP</span>
+          <span class="line"></span>
+          <span class="sub">tools</span>
+        </div>
+
+        <div class="arch-node">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg></div>
+          <span class="tag">benchmark/ <span class="lang">· agent</span></span>
+          <h3>The run</h3>
+          <p>The prompt the agent sees, the run script, and the maps. The agent works inside a Seatbelt sandbox that blocks it from reading the repo.</p>
+        </div>
+      </div>
+
+      <div class="arch-loop">
+        <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v6h6M21 12A9 9 0 0 0 6 5.3L3 8"/><path d="M21 22v-6h-6M3 12a9 9 0 0 0 15 6.7l3-2.7"/></svg></span>
+        <p><strong>Observe → act → step the sim → re-measure.</strong> The agent loops through the tools for hours of wall-clock time, watching changes settle, until it submits a solution or the clock runs out. Then the broker settles, scores, and writes <span class="mono">score.json</span>, the transcript, renders, and the timelapse.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- ============ FUTURE ============ -->
+<section class="section" id="future">
+  <div class="wrap-narrow">
+    <div class="section-head reveal">
+      <p class="eyebrow">Where this is going</p>
+      <h2 class="section-title">A roadmap toward a city built from scratch.</h2>
+      <p class="lead">Right now the agent inherits a city and repairs it. Repairing someone else's mistakes is the warm-up. Each step below hands it more rope.</p>
+    </div>
+
+    <ol class="roadmap reveal">
+      <li class="rm-step">
+        <span class="n">1</span>
+        <div class="rm-body">
+          <h4>Run the benchmark on more models</h4>
+          <p>Extend the run script so it drives agents beyond the Claude line, all on the same hidden scoring.</p>
+        </div>
+      </li>
+      <li class="rm-step">
+        <span class="n">2</span>
+        <div class="rm-body">
+          <h4>Find harder maps</h4>
+          <p>Source bigger, messier, more tangled cities so a quick fix can't paper over the real problems.</p>
+        </div>
+      </li>
+      <li class="rm-step">
+        <span class="n">3</span>
+        <div class="rm-body">
+          <h4>Give the agent more traffic tools</h4>
+          <p>Add levers beyond roads, like public transport, so it can move people without only moving cars.</p>
+        </div>
+      </li>
+      <li class="rm-step">
+        <span class="n">4</span>
+        <div class="rm-body">
+          <h4>Introduce the rest of the city</h4>
+          <p>Open up rezoning, education, healthcare, and the other systems that decide whether a city actually works.</p>
+        </div>
+      </li>
+      <li class="rm-step">
+        <span class="n">5</span>
+        <div class="rm-body">
+          <h4>Add a multi-agent mode</h4>
+          <p>Split the city between agents that each own a district and have to communicate, all working toward one shared goal.</p>
+        </div>
+      </li>
+    </ol>
+
+    <div class="rm-goal reveal">
+      <span class="goal-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 22h20M3 22V11l6-4 6 4v11M9 22v-4h2v4M19 22V8l-4-2"/><path d="M7 11v.01M11 11v.01"/></svg></span>
+      <span class="badge-soon">The destination</span>
+      <h3>Hand it empty land.</h3>
+      <p>The version I actually want is harder: hand the agent empty land and have it build and run a whole city from scratch, balancing budgets, population growth, taxation, happiness, and the environment.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RESULTS ============ -->
+<section class="section section-soft" id="results">
+  <div class="wrap">
+    <div class="results-head reveal">
+      <div class="section-head" style="margin:0;">
+        <p class="eyebrow">Results</p>
+        <h2 class="section-title">How the models did.</h2>
+        <p class="lead">Each card pairs the run's annotated timelapse with its composite score on <span class="mono">gridlock-v1</span>. Scores land here as runs complete.</p>
+      </div>
+    </div>
+
+    <div class="results-grid">
+      <!-- Card 1 -->
+      <article class="result-card reveal">
+        <div class="result-thumb">
+          <video muted loop playsinline preload="none" poster="" data-video-src="assets/runs/opus-4-5.mp4"></video>
+          <div class="ph"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg><span>timelapse</span></div>
+        </div>
+        <div class="result-body">
+          <div class="result-top">
+            <div class="result-model">
+              <span class="mico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>
+              <span class="name">Claude Opus 4.5<small>gridlock-v1</small></span>
+            </div>
+            <span class="status-pill">pending</span>
+          </div>
+          <div class="result-score">
+            <span class="val">·</span>
+            <span class="of">/ 1.00</span>
+            <span class="lbl">composite score</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- Card 2 -->
+      <article class="result-card reveal">
+        <div class="result-thumb">
+          <video muted loop playsinline preload="none" poster="" data-video-src="assets/runs/sonnet-4-5.mp4"></video>
+          <div class="ph"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg><span>timelapse</span></div>
+        </div>
+        <div class="result-body">
+          <div class="result-top">
+            <div class="result-model">
+              <span class="mico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>
+              <span class="name">Claude Sonnet 4.5<small>gridlock-v1</small></span>
+            </div>
+            <span class="status-pill">pending</span>
+          </div>
+          <div class="result-score">
+            <span class="val">·</span>
+            <span class="of">/ 1.00</span>
+            <span class="lbl">composite score</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- Card 3 -->
+      <article class="result-card reveal">
+        <div class="result-thumb">
+          <video muted loop playsinline preload="none" poster="" data-video-src="assets/runs/haiku-4-5.mp4"></video>
+          <div class="ph"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg><span>timelapse</span></div>
+        </div>
+        <div class="result-body">
+          <div class="result-top">
+            <div class="result-model">
+              <span class="mico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>
+              <span class="name">Claude Haiku 4.5<small>gridlock-v1</small></span>
+            </div>
+            <span class="status-pill">pending</span>
+          </div>
+          <div class="result-score">
+            <span class="val">·</span>
+            <span class="of">/ 1.00</span>
+            <span class="lbl">composite score</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- Card 4 -->
+      <article class="result-card reveal">
+        <div class="result-thumb">
+          <video muted loop playsinline preload="none" poster="" data-video-src="assets/runs/opus-4-1.mp4"></video>
+          <div class="ph"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg><span>timelapse</span></div>
+        </div>
+        <div class="result-body">
+          <div class="result-top">
+            <div class="result-model">
+              <span class="mico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>
+              <span class="name">Claude Opus 4.1<small>gridlock-v1</small></span>
+            </div>
+            <span class="status-pill">pending</span>
+          </div>
+          <div class="result-score">
+            <span class="val">·</span>
+            <span class="of">/ 1.00</span>
+            <span class="lbl">composite score</span>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <div class="coming-soon reveal">
+      <span class="cs-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
+      <div>
+        <h4>Non-Anthropic models, coming soon</h4>
+        <p>Other frontier models will run the same gridlock-v1 scenario under identical scoring. Their results land here as the runs complete.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- ============ CTA BAND ============ -->
+<section class="section cta-band">
+  <div class="wrap-narrow">
+    <p class="eyebrow reveal" style="justify-content:center;">Run it yourself</p>
+    <h2 class="section-title reveal" style="margin-top:18px;">It's open source. Drop an agent into a city and watch what it breaks.</h2>
+    <p class="lead reveal">You'll need Cities: Skylines 1, Rust, and Mono to build the mod. The full scoring, artifacts, and mod API live in the component READMEs.</p>
+    <div class="row reveal">
+      <a class="btn btn-primary" href="https://github.com/isaacpovey/SkylineBench" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.27-.01-1-.02-1.96-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 2.9-.39c.98 0 1.97.13 2.9.39 2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.81 1.18 1.84 1.18 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A10.52 10.52 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
+        View on GitHub
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <div class="wrap">
+    <div class="f-left">
+      <a class="brand" href="#top">
+        <svg class="mark" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+          <rect x="2" y="14" width="4" height="10" rx="1" fill="currentColor" opacity="0.55"/>
+          <rect x="8" y="9" width="4" height="15" rx="1" fill="currentColor" opacity="0.8"/>
+          <rect x="14" y="4" width="4" height="20" rx="1" fill="var(--skl-blue-bright)"/>
+          <rect x="20" y="11" width="4" height="13" rx="1" fill="currentColor" opacity="0.65"/>
+          <line x1="1" y1="25.5" x2="27" y2="25.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.4"/>
+        </svg>
+        <span><b>Skyline</b><span class="slash">Bench</span></span>
+      </a>
+      <p class="f-tag">A benchmark that asks whether an agent keeps reasoning after it thinks it's done.</p>
+    </div>
+    <div class="f-links">
+      <div class="f-col">
+        <h5>Project</h5>
+        <a href="#thesis">Thesis</a>
+        <a href="#how">How it works</a>
+        <a href="#scoring">Scoring</a>
+        <a href="#built">Architecture</a>
+        <a href="#results">Results</a>
+      </div>
+      <div class="f-col">
+        <h5>Links</h5>
+        <a href="https://github.com/isaacpovey/SkylineBench" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.27-.01-1-.02-1.96-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 2.9-.39c.98 0 1.97.13 2.9.39 2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.81 1.18 1.84 1.18 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A10.52 10.52 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
+          GitHub repository
+        </a>
+        <a href="https://www.linkedin.com/in/isaacpovey/" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.34V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.45v6.29zM5.34 7.43a2.06 2.06 0 1 1 0-4.13 2.06 2.06 0 0 1 0 4.13zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.73v20.54C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.73C24 .77 23.2 0 22.22 0z"/></svg>
+          LinkedIn
+        </a>
+      </div>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="footer-base">
+      <span>Built by <a href="https://www.linkedin.com/in/isaacpovey/" target="_blank" rel="noopener" style="text-decoration:underline;text-underline-offset:3px;">Isaac Povey</a></span>
+      <span class="mono">GPLv3 · Cities: Skylines is a trademark of its respective owners</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // nav border on scroll
+  const nav = document.getElementById('nav');
+  const onScroll = () => nav.setAttribute('data-scrolled', String(window.scrollY > 8));
+  onScroll();
+  window.addEventListener('scroll', onScroll, { passive: true });
+
+  // ---- Reveal: content is always visible (no hidden-first state). ----
+  // Add a class hook for optional motion in capable browsers, but never hide.
+
+  // ---- Videos: only attach + play when the file actually exists (clean console otherwise) ----
+  async function wireVideo(video, { autoplayOnView } = {}) {
+    const src = video.dataset.videoSrc;
+    if (!src) return;
+    const ph = video.parentElement.querySelector('.media-placeholder, .ph');
+    try {
+      const res = await fetch(src, { method: 'HEAD' });
+      if (!res.ok) return;                 // keep placeholder, no <video> error
+    } catch (_) { return; }
+    const s = document.createElement('source');
+    s.src = src; s.type = 'video/mp4';
+    video.appendChild(s);
+    video.load();
+    video.addEventListener('loadeddata', () => {
+      if (video.readyState >= 2 && video.videoWidth > 0 && ph) ph.style.display = 'none';
+    });
+    if (autoplayOnView) {
+      const tryPlay = () => video.play().catch(() => {});
+      if ('IntersectionObserver' in window) {
+        new IntersectionObserver((ents) => ents.forEach((en) => en.isIntersecting ? tryPlay() : video.pause()), { threshold: 0.3 }).observe(video);
+      } else { tryPlay(); }
+    } else {
+      const wrap = video.closest('.result-thumb') || video.parentElement;
+      wrap.addEventListener('mouseenter', () => video.play().catch(() => {}));
+      wrap.addEventListener('mouseleave', () => video.pause());
+    }
+  }
+
+  const hv = document.getElementById('hero-video');
+  if (hv) wireVideo(hv, { autoplayOnView: true });
+  document.querySelectorAll('.result-thumb video').forEach((v) => wireVideo(v, { autoplayOnView: false }));
+</script>
+
+</body>
+</html>

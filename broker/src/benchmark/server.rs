@@ -1,7 +1,7 @@
 //! Instrumented benchmark MCP server (spec §7).
 //!
 //! Parallels [`crate::tools::Skyline`] but delegates to the same `service::*`
-//! functions while attaching a `benchmark_progress` telemetry block to every
+//! functions while attaching a `city_status` telemetry block to every
 //! response, counting mutating actions via [`RunState`], adding
 //! `submit_solution`, and omitting `reset_scenario`.
 
@@ -66,7 +66,7 @@ fn default_stop_on_error() -> bool {
 /// Merge the agent-facing telemetry block into a JSON object result (spec §7).
 pub fn with_progress(mut value: Value, state: &RunState) -> Value {
     if let Value::Object(ref mut map) = value {
-        map.insert("benchmark_progress".into(), state.progress());
+        map.insert("city_status".into(), state.progress());
     }
     value
 }
@@ -223,6 +223,18 @@ impl BenchmarkServer {
                 s.end_reason = Some(EndReason::UnscorableBaseline);
             }
         }
+        // Populate the live junction count in the freshly-set baseline snapshot.
+        if let Ok(net) = self.client.network().await {
+            self.state.lock().await.observe_network(&net);
+        }
+    }
+
+    /// Fetch the current network topology and cache it so `city_status` can
+    /// report live junction counts after a mutation changes the graph.
+    async fn refresh_topology(&self) {
+        if let Ok(net) = self.client.network().await {
+            self.state.lock().await.observe_network(&net);
+        }
     }
 }
 
@@ -311,7 +323,7 @@ impl BenchmarkServer {
                 };
                 let mut text = legend;
                 if let Value::Object(ref mut map) = text {
-                    map.insert("benchmark_progress".into(), progress);
+                    map.insert("city_status".into(), progress);
                 }
                 Ok(CallToolResult::success(vec![
                     Content::image(data, "image/png".to_string()),
@@ -481,6 +493,7 @@ impl BenchmarkServer {
                     let cost = s.build_cost(&road_type, length);
                     s.record_mutation("build_road", cost);
                     drop(s);
+                    self.refresh_topology().await;
                     self.shoot_action(mx, mz, "build_road", format!("build_road: {road_type}")).await;
                 }
                 self.finish(v).await
@@ -517,6 +530,7 @@ impl BenchmarkServer {
                     let cost = s.build_cost(&road_type, length);
                     s.record_mutation("upgrade_road", cost);
                     drop(s);
+                    self.refresh_topology().await;
                     if let Some((mx, mz)) = midpoint {
                         self.shoot_action(mx, mz, "upgrade_road", format!("upgrade_road: segment {segment_id} → {road_type}")).await;
                     }
@@ -558,6 +572,7 @@ impl BenchmarkServer {
             Ok(v) => {
                 if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
                     self.state.lock().await.record_mutation("bulldoze", 0);
+                    self.refresh_topology().await;
                     if let Some((x, z)) = pre_location {
                         self.shoot_action(x, z, "bulldoze", format!("bulldoze: {target_type} {id}")).await;
                     }
@@ -583,6 +598,7 @@ impl BenchmarkServer {
             Ok(v) => {
                 if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
                     self.state.lock().await.record_mutation("set_zoning", 0);
+                    self.refresh_topology().await;
                     self.shoot_action(cx, cz, "set_zoning", format!("set_zoning: {zone_type}")).await;
                 }
                 self.finish(v).await
@@ -785,6 +801,9 @@ impl BenchmarkServer {
                         "valid": true, "estimated_cost": cost, "executed": false,
                         "error": e.to_string(),
                     }));
+                    if n_all_ok > 0 {
+                        self.refresh_topology().await;
+                    }
                     return self
                         .finish(serde_json::json!({
                             "ok": false,
@@ -796,6 +815,10 @@ impl BenchmarkServer {
                         .await;
                 }
             }
+        }
+
+        if n_all_ok > 0 {
+            self.refresh_topology().await;
         }
 
         if !successful_positions.is_empty() {
@@ -853,7 +876,7 @@ impl ServerHandler for BenchmarkServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
             "SkylineBench benchmark: reduce the city's congested road-meters, then call \
-             submit_solution. Each response includes benchmark_progress (resources + goal).",
+             submit_solution. Each response includes city_status (resources + goal).",
         )
     }
 }
@@ -899,7 +922,7 @@ mod tests {
         let merged = with_progress(serde_json::json!({"ok": true}), &state);
         assert_eq!(merged["ok"], true);
         assert!(
-            merged["benchmark_progress"]["congested_road_meters"].is_null(),
+            merged["city_status"]["congested_road_meters"].is_null(),
             "no telemetry samples yet"
         );
     }
@@ -1297,7 +1320,7 @@ mod tests {
         // 50m span = 1 op; 400m span = 3 chunks → 4 expanded ops priced.
         assert_eq!(v["results"].as_array().unwrap().len(), 4);
         assert!(v["total_estimated_cost"].as_i64().unwrap() > 0);
-        assert_eq!(v["benchmark_progress"]["changes_made"], 0, "dry-run must not record changes");
+        assert_eq!(v["city_status"]["changes_made"], 0, "dry-run must not record changes");
     }
 
     #[tokio::test]
@@ -1317,7 +1340,7 @@ mod tests {
         // The mock's validate-road returns ok with zero fronting buildings; the
         // row must carry the game-check fact through.
         assert_eq!(row["zoned_buildings_fronting"], 0, "row: {row}");
-        assert_eq!(v["benchmark_progress"]["changes_made"], 0);
+        assert_eq!(v["city_status"]["changes_made"], 0);
     }
 
     #[tokio::test]
@@ -1333,7 +1356,7 @@ mod tests {
             .unwrap();
         let v: serde_json::Value = serde_json::from_str(&result_text(&res)).unwrap();
         assert_eq!(v["ok"], true);
-        assert_eq!(v["benchmark_progress"]["changes_made"], 4);
+        assert_eq!(v["city_status"]["changes_made"], 4);
         assert!(v["results"].as_array().unwrap().iter().all(|r| r["executed"] == true && r["ok"] == true));
     }
 
@@ -1353,7 +1376,7 @@ mod tests {
             .unwrap();
         let v: serde_json::Value = serde_json::from_str(&result_text(&res)).unwrap();
         assert_eq!(v["ok"], false);
-        assert_eq!(v["benchmark_progress"]["changes_made"], 0, "nothing may execute when validation fails");
+        assert_eq!(v["city_status"]["changes_made"], 0, "nothing may execute when validation fails");
         let results = v["results"].as_array().unwrap();
         assert_eq!(results[1]["valid"], false);
         assert_eq!(results[1]["reason"], "INVALID_ARGS");
@@ -1398,7 +1421,7 @@ mod tests {
         assert_eq!(results[1]["ok"], false);
         assert_eq!(results[2]["executed"], false, "ops after the failure are skipped");
         // 1 change from the setup build + 1 from the successful bulldoze.
-        assert_eq!(v["benchmark_progress"]["changes_made"], 2);
+        assert_eq!(v["city_status"]["changes_made"], 2);
     }
 
     #[tokio::test]
@@ -1436,7 +1459,7 @@ mod tests {
         assert_eq!(results[2]["executed"], true, "later ops still run when not stopping");
         assert_eq!(results[2]["ok"], true);
         // setup build + first bulldoze + final build all recorded; failed bulldoze not.
-        assert_eq!(v["benchmark_progress"]["changes_made"], 3);
+        assert_eq!(v["city_status"]["changes_made"], 3);
     }
 
     #[tokio::test]

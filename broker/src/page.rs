@@ -285,23 +285,23 @@ fn chart_card(title: &str, svg: String) -> String {
 }
 
 /// Assemble the full static run-detail HTML document.
-pub fn render_page(n: &Narrative, r: &RunRecord, s: &Score) -> String {
-    let b = &r.baseline;
-    let f = &r.final_stats;
+pub fn render_page(narrative: &Narrative, record: &RunRecord, score: &Score) -> String {
+    let b = &record.baseline;
+    let f = &record.final_stats;
     let chips = [
         chip("flow", &format!("{} → {}", fmt_num(b.flow_mean), fmt_num(f.flow_mean))),
         chip("congested metres", &pct(b.congested_meters, f.congested_meters)),
         chip("jammed junctions", &format!("{} → {}", b.congested_junctions, f.congested_junctions)),
         chip("population", &format!("{} → {}", fmt_num(b.population as f64), fmt_num(f.population as f64))),
-        chip("changes", &r.tally.num_changes.to_string()),
-        chip("spent", &fmt_money(r.tally.money_spent)),
+        chip("changes", &record.tally.num_changes.to_string()),
+        chip("spent", &fmt_money(record.tally.money_spent)),
     ]
     .join("");
     let charts = [
-        chart_card("Before → after", chart_before_after(r)),
-        chart_card("Flow settling", chart_flow_settling(r)),
-        chart_card("Cumulative spend", chart_cumulative_spend(r)),
-        chart_card("Actions by type", chart_action_breakdown(r)),
+        chart_card("Before → after", chart_before_after(record)),
+        chart_card("Flow settling", chart_flow_settling(record)),
+        chart_card("Cumulative spend", chart_cumulative_spend(record)),
+        chart_card("Actions by type", chart_action_breakdown(record)),
     ]
     .join("");
     format!(
@@ -372,14 +372,14 @@ pub fn render_page(n: &Narrative, r: &RunRecord, s: &Score) -> String {
 </body>
 </html>
 "##,
-        model = esc(&n.model_name),
-        map = esc(&n.map),
-        score = s.score,
-        verdict = esc(&n.verdict),
-        slug = esc(&n.slug),
+        model = esc(&narrative.model_name),
+        map = esc(&narrative.map),
+        score = score.score,
+        verdict = esc(&narrative.verdict),
+        slug = esc(&narrative.slug),
         chips = chips,
         charts = charts,
-        beats = beats_html(&n.beat),
+        beats = beats_html(&narrative.beat),
     )
 }
 
@@ -393,6 +393,12 @@ pub fn build(
     assets_dir: &Path,
 ) -> anyhow::Result<PathBuf> {
     let narrative: Narrative = toml::from_str(&std::fs::read_to_string(narrative_path)?)?;
+    anyhow::ensure!(
+        !narrative.slug.is_empty()
+            && narrative.slug.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'),
+        "slug must be non-empty and contain only lowercase letters, digits, and hyphens (got {:?})",
+        narrative.slug
+    );
     let run_dir = Path::new(&narrative.run_dir);
     let record: RunRecord =
         serde_json::from_str(&std::fs::read_to_string(run_dir.join("run-record.json"))?)?;
@@ -554,6 +560,22 @@ mod tests {
         assert!(svg.contains("71"));        // final flow, rounded
         assert!(svg.contains("class=\"c-final\""));
         assert!(svg.contains("class=\"c-base\""));
+    }
+
+    #[test]
+    fn build_rejects_bad_slug() {
+        let dir = std::env::temp_dir().join("skylinebench_page_test_badslug");
+        std::fs::create_dir_all(&dir).unwrap();
+        let toml_path = dir.join("bad.toml");
+        std::fs::write(
+            &toml_path,
+            "slug = \"../evil\"\nmodel_name = \"X\"\nmap = \"m\"\nrun_dir = \"/nonexistent\"\nverdict = \"v\"\n",
+        )
+        .unwrap();
+        let result = build(&toml_path, None, &dir);
+        assert!(result.is_err());
+        let msg = format!("{:#}", result.unwrap_err());
+        assert!(msg.contains("slug"), "expected slug error, got: {msg}");
     }
 
     #[test]

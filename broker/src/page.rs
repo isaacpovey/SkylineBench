@@ -112,6 +112,41 @@ fn chart_flow_settling(r: &RunRecord) -> String {
     )
 }
 
+/// Cumulative money spent over the action sequence. The x-axis is the action
+/// number, which is also the running change count, so one line conveys both.
+fn chart_cumulative_spend(r: &RunRecord) -> String {
+    let (x0, w, y0, h) = (8.0_f64, 300.0_f64, 12.0_f64, 150.0_f64);
+    let total: i64 = r.actions.iter().map(|a| a.cost).sum();
+    let n = r.actions.len().max(1) as f64;
+    let max = (total as f64).max(1.0);
+    let pts = r
+        .actions
+        .iter()
+        .scan(0_i64, |cum, a| {
+            *cum += a.cost;
+            Some(*cum)
+        })
+        .enumerate()
+        .map(|(i, cum)| {
+            let x = x0 + (i as f64 + 1.0) / n * w;
+            let y = y0 + h - cum as f64 / max * h;
+            format!("{x:.1},{y:.1}")
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let line = format!(r#"<polyline points="{x0:.1},{base:.1} {pts}" class="c-line-final"/>"#, base = y0 + h);
+    let label = format!(
+        r#"<text x="{lx:.1}" y="{ly:.1}" class="c-val c-val-final">{money} · {count} changes</text>"#,
+        lx = x0,
+        ly = y0 + h + 18.0,
+        money = fmt_money(total),
+        count = r.actions.len(),
+    );
+    format!(
+        r#"<svg viewBox="0 0 360 188" class="chart-svg" role="img" aria-label="Cumulative spend">{line}{label}</svg>"#
+    )
+}
+
 /// Paired baseline/final horizontal bars for the five snapshot metrics. Each
 /// metric is scaled to its own max so the very different magnitudes stay
 /// readable; absolute values are labelled at each bar's end.
@@ -219,6 +254,16 @@ mod tests {
                 ActionEntry { seq: 3, tool: "upgrade_road".into(), cost: 1_181_328 },
             ],
         }
+    }
+
+    #[test]
+    fn cumulative_spend_labels_totals() {
+        let svg = chart_cumulative_spend(&sample_record());
+        assert!(svg.starts_with("<svg"));
+        assert!(svg.contains("<polyline"));
+        // total cost of the sample actions = 0 + 57,790 + 1,181,328
+        assert!(svg.contains("$1.24M"));
+        assert!(svg.contains("3 changes"));
     }
 
     #[test]

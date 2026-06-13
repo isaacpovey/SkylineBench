@@ -563,15 +563,17 @@
   // ---- Reveal: content is always visible (no hidden-first state). ----
   // Add a class hook for optional motion in capable browsers, but never hide.
 
-  // ---- Videos: only attach + play when the file actually exists (clean console otherwise) ----
+  // ---- Videos: attach + play when the file exists; keep the placeholder otherwise ----
+  // Over http(s) a HEAD check keeps the console clean for absent videos. Over file://
+  // fetch throws, so we fall through and let the <video> error event decide instead.
   async function wireVideo(video, { autoplayOnView } = {}) {
     const src = video.dataset.videoSrc;
     if (!src) return;
     const ph = video.parentElement.querySelector('.media-placeholder, .ph');
     try {
       const res = await fetch(src, { method: 'HEAD' });
-      if (!res.ok) return;                 // keep placeholder, no <video> error
-    } catch (_) { return; }
+      if (!res.ok) return;                 // definitely absent (e.g. 404) — keep placeholder
+    } catch (_) { /* file:// or offline: can't pre-check, try loading anyway */ }
     const s = document.createElement('source');
     s.src = src; s.type = 'video/mp4';
     video.appendChild(s);
@@ -579,6 +581,7 @@
     video.addEventListener('loadeddata', () => {
       if (video.readyState >= 2 && video.videoWidth > 0 && ph) ph.style.display = 'none';
     });
+    video.addEventListener('error', () => { if (ph) ph.style.display = ''; });
     if (autoplayOnView) {
       const tryPlay = () => video.play().catch(() => {});
       if ('IntersectionObserver' in window) {

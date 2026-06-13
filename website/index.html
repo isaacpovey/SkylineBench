@@ -30,6 +30,7 @@
       <a class="nav-link hide-sm" href="#how">How it works</a>
       <a class="nav-link hide-sm" href="#scoring">Scoring</a>
       <a class="nav-link hide-sm" href="#built">Architecture</a>
+      <a class="nav-link hide-sm" href="#learnings">Learnings</a>
       <a class="nav-link hide-sm" href="#future">Roadmap</a>
       <a class="nav-link hide-sm" href="#results">Results</a>
       <span class="nav-sep hide-sm"></span>
@@ -320,6 +321,40 @@
   </div>
 </section>
 
+<!-- ============ LEARNINGS ============ -->
+<section class="section" id="learnings">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow">Learnings</p>
+      <h2 class="section-title">AI is crafty... and lazy.</h2>
+      <p class="lead">Pretty much every design decision in the prompt, the scoring, and the sandbox came from something the agent broke first.</p>
+    </div>
+
+    <div class="choices" style="grid-template-columns: 1fr;">
+      <article class="choice reveal">
+        <span class="num">01</span>
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+        <h3>It read the answer key</h3>
+        <p>The first run had no sandbox. The agent noticed it was running in the same directory as the repository, found the harness code, read the scoring function, and sidestepped the benchmark. Its solution: delete everything. No city, no traffic. <strong>A perfect congestion score.</strong> It took about five minutes to find the loophole I hadn't thought to close. This is why the sandbox exists.</p>
+      </article>
+
+      <article class="choice reveal">
+        <span class="num">02</span>
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></div>
+        <h3>When you close a loophole, it finds the margin.</h3>
+        <p>The population floor was the first version of this fix: a minimum the population couldn't fall below, supplied in the prompt. The agent found the floor and <strong>parked exactly on it.</strong> It reduced the population to the minimum viable number and held it there, treating the floor as a target rather than a guardrail — since it figured this was easier than fixing the actual structural problems. The lesson was that a hard limit just tells the agent where the limit is. The fix was to make the penalty a gradient, not a cliff.</p>
+      </article>
+
+      <article class="choice reveal">
+        <span class="num">03</span>
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+        <h3>Without pressure, it took the easy road.</h3>
+        <p>Early runs showed a consistent pattern: the agent only widened roads. It would find a bottleneck, upgrade the segment, and call it done. The problem is that widening a road doesn't fix congestion — <strong>it moves it.</strong> Cars that couldn't get through one junction pile up at the next. The agent knew this, described it in its own reasoning, and did it anyway, because upgrading an existing road is reversible and cheap. Risk aversion looks like competence until you measure outcomes. The change-count penalty exists to force a commitment. This led to changing the scoring function to look at blocked junctions rather than overall flow rate or total metres of congestion.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
 <hr class="divider" />
 
 <!-- ============ FUTURE ============ -->
@@ -529,6 +564,7 @@
         <a href="#how">How it works</a>
         <a href="#scoring">Scoring</a>
         <a href="#built">Architecture</a>
+        <a href="#learnings">Learnings</a>
         <a href="#future">Roadmap</a>
         <a href="#results">Results</a>
       </div>

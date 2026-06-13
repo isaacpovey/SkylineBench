@@ -249,6 +249,140 @@ fn chart_before_after(r: &RunRecord) -> String {
     )
 }
 
+fn beats_html(beats: &[Beat]) -> String {
+    beats
+        .iter()
+        .map(|b| {
+            let paras = b
+                .body
+                .split("\n\n")
+                .filter(|p| !p.trim().is_empty())
+                .map(|p| format!("<p>{}</p>", esc(p.trim())))
+                .collect::<Vec<_>>()
+                .join("");
+            format!(
+                r#"<li class="beat"><h3>{title}</h3>{paras}</li>"#,
+                title = esc(&b.title),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("")
+}
+
+fn chip(label: &str, value: &str) -> String {
+    format!(
+        r#"<div class="chip"><span class="chip-v">{value}</span><span class="chip-l">{label}</span></div>"#,
+        value = esc(value),
+        label = esc(label),
+    )
+}
+
+fn chart_card(title: &str, svg: String) -> String {
+    format!(
+        r#"<figure class="chart-card"><figcaption>{title}</figcaption>{svg}</figure>"#,
+        title = esc(title),
+    )
+}
+
+/// Assemble the full static run-detail HTML document.
+pub fn render_page(n: &Narrative, r: &RunRecord, s: &Score) -> String {
+    let b = &r.baseline;
+    let f = &r.final_stats;
+    let chips = [
+        chip("flow", &format!("{} → {}", fmt_num(b.flow_mean), fmt_num(f.flow_mean))),
+        chip("congested metres", &pct(b.congested_meters, f.congested_meters)),
+        chip("jammed junctions", &format!("{} → {}", b.congested_junctions, f.congested_junctions)),
+        chip("population", &format!("{} → {}", fmt_num(b.population as f64), fmt_num(f.population as f64))),
+        chip("changes", &r.tally.num_changes.to_string()),
+        chip("spent", &fmt_money(r.tally.money_spent)),
+    ]
+    .join("");
+    let charts = [
+        chart_card("Before → after", chart_before_after(r)),
+        chart_card("Flow settling", chart_flow_settling(r)),
+        chart_card("Cumulative spend", chart_cumulative_spend(r)),
+        chart_card("Actions by type", chart_action_breakdown(r)),
+    ]
+    .join("");
+    format!(
+        r##"<!DOCTYPE html>
+<html lang="en" class="ds dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>{model} · SkylineBench run</title>
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg" />
+<link rel="stylesheet" href="../colors_and_type.css" />
+<link rel="stylesheet" href="../styles.css" />
+<link rel="stylesheet" href="../runs.css" />
+</head>
+<body class="ds dark">
+<nav class="nav" data-scrolled="true"><div class="wrap">
+  <a class="brand" href="../index.html#top"><span><b>Skyline</b><span class="slash">Bench</span></span></a>
+  <div class="nav-links">
+    <a class="nav-link" href="../index.html#results">← Back to results</a>
+    <a class="btn btn-outline btn-sm" href="https://github.com/isaacpovey/SkylineBench" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</div></nav>
+
+<header class="run-hero"><div class="wrap-narrow">
+  <p class="eyebrow">Run detail · <span class="mono">{map}</span></p>
+  <h1 class="display">{model}</h1>
+  <div class="run-score"><span class="rs-val">{score:.2}</span><span class="rs-of">/ 1.00 composite</span></div>
+  <p class="lead">{verdict}</p>
+  <figure class="media-frame">
+    <div class="media-stage">
+      <video muted loop playsinline preload="none" data-video-src="../assets/runs/{slug}.mp4"></video>
+      <div class="media-placeholder"><div class="ph-title">timelapse</div></div>
+    </div>
+  </figure>
+</div></header>
+
+<section class="section"><div class="wrap">
+  <div class="chips">{chips}</div>
+  <div class="chart-grid">{charts}</div>
+</div></section>
+
+<section class="section section-soft"><div class="wrap-narrow">
+  <div class="section-head"><p class="eyebrow">What the agent did</p>
+  <h2 class="section-title">Step by step.</h2></div>
+  <ol class="timeline">{beats}</ol>
+</div></section>
+
+<footer class="footer"><div class="wrap"><div class="footer-base">
+  <span>Built by <a href="https://www.linkedin.com/in/isaacpovey/" target="_blank" rel="noopener">Isaac Povey</a></span>
+  <span class="mono">GPLv3 · Cities: Skylines is a trademark of its respective owners</span>
+</div></div></footer>
+
+<script>
+  (async function () {{
+    const v = document.querySelector('video[data-video-src]');
+    if (!v) return;
+    const src = v.dataset.videoSrc;
+    try {{ const res = await fetch(src, {{ method: 'HEAD' }}); if (!res.ok) return; }} catch (e) {{ return; }}
+    const s = document.createElement('source'); s.src = src; s.type = 'video/mp4';
+    v.appendChild(s); v.load();
+    const ph = v.parentElement.querySelector('.media-placeholder');
+    v.addEventListener('loadeddata', () => {{ if (v.videoWidth > 0 && ph) ph.style.display = 'none'; }});
+    if ('IntersectionObserver' in window) {{
+      new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting ? v.play().catch(() => {{}}) : v.pause()), {{ threshold: 0.3 }}).observe(v);
+    }} else {{ v.play().catch(() => {{}}); }}
+  }})();
+</script>
+</body>
+</html>
+"##,
+        model = esc(&n.model_name),
+        map = esc(&n.map),
+        score = s.score,
+        verdict = esc(&n.verdict),
+        slug = esc(&n.slug),
+        chips = chips,
+        charts = charts,
+        beats = beats_html(&n.beat),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -304,6 +438,50 @@ mod tests {
                 ActionEntry { seq: 3, tool: "upgrade_road".into(), cost: 1_181_328 },
             ],
         }
+    }
+
+    fn sample_score() -> Score {
+        use crate::benchmark::record::ScoreNorms;
+        Score {
+            norm: ScoreNorms { congestion: 0.6476, money: 0.1239, changes: 0.6567 },
+            weighted: ScoreNorms { congestion: 0.3886, money: 0.1752, changes: 0.0687 },
+            invalid: false,
+            flow_gain: 13.25,
+            meters_reduction: 0.6380,
+            junction_reduction: 0.6571,
+            health: 1.0,
+            score: 0.632437,
+        }
+    }
+
+    fn sample_narrative() -> Narrative {
+        Narrative {
+            slug: "fable-5".into(),
+            model_name: "Claude Fable 5".into(),
+            map: "gridlock-v1".into(),
+            run_dir: "benchmark/runs/20260612-121219".into(),
+            verdict: "Cut jammed road by two-thirds with surgical upgrades.".into(),
+            beat: vec![
+                Beat { title: "Survey".into(), body: "Read the city before touching it.".into() },
+                Beat { title: "Submit".into(), body: "Stepped the sim and submitted.".into() },
+            ],
+        }
+    }
+
+    #[test]
+    fn render_page_includes_score_numbers_and_beats() {
+        let html = render_page(&sample_narrative(), &sample_record(), &sample_score());
+        assert!(html.starts_with("<!DOCTYPE html>"));
+        assert!(html.contains("Claude Fable 5"));
+        assert!(html.contains("0.63"));                       // composite score
+        assert!(html.contains("Cut jammed road by two-thirds"));
+        assert!(html.contains("assets/runs/fable-5.mp4"));    // hero video src
+        assert!(html.contains("runs.css"));
+        assert!(html.contains(">Survey<"));                   // beat title
+        assert!(html.contains("Read the city before touching it."));
+        assert!(html.contains("index.html#results"));         // back link
+        // all four charts present
+        assert_eq!(html.matches("class=\"chart-svg\"").count(), 4);
     }
 
     #[test]

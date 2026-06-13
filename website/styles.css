@@ -91,6 +91,8 @@ h1, h2, h3 { font-family: var(--font-heading); font-weight: 600; letter-spacing:
 .ds a.btn-ghost { background: transparent; color: var(--muted-foreground); }
 .ds a.btn-ghost:hover { color: var(--foreground); }
 .btn-sm { height: 36px; padding: 0 13px; font-size: 14px; }
+.btn-icon { padding: 0; width: 36px; justify-content: center; }
+.btn-icon svg { width: 16px; height: 16px; }
 
 /* ============ Nav ============ */
 .nav {

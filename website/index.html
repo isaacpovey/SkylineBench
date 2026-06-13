@@ -426,20 +426,17 @@
       <div class="section-head" style="margin:0;">
         <p class="eyebrow">Results</p>
         <h2 class="section-title">How the models did.</h2>
-        <p class="lead">Each card pairs the run's annotated timelapse with its composite score on <span class="mono">gridlock-v1</span>. Scores land here as runs complete.</p>
+        <p class="lead">Every model runs the same <span class="mono">gridlock-v1</span> scenario under identical scoring, ranked by composite score. Open a run to see how it got there.</p>
       </div>
     </div>
 
     <div class="results-grid">
-      <!-- Card 1 -->
+      <!-- Rank 1 -->
       <a class="result-card reveal" href="runs/fable-5.html">
-        <div class="result-thumb">
-          <video muted loop playsinline preload="none" poster="" data-video-src="assets/runs/fable-5.mp4"></video>
-          <div class="ph"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg><span>timelapse</span></div>
-        </div>
         <div class="result-body">
           <div class="result-top">
             <div class="result-model">
+              <span class="result-rank">1</span>
               <span class="mico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>
               <span class="name">Claude Fable 5<small>gridlock-v1</small></span>
             </div>
@@ -453,15 +450,31 @@
         </div>
       </a>
 
-      <!-- Card 2 -->
-      <a class="result-card reveal" href="runs/opus-4-8.html">
-        <div class="result-thumb">
-          <video muted loop playsinline preload="none" poster="" data-video-src="assets/runs/opus-4-8.mp4"></video>
-          <div class="ph"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg><span>timelapse</span></div>
-        </div>
+      <!-- Rank 2 -->
+      <a class="result-card reveal" href="runs/sonnet-4-5.html">
         <div class="result-body">
           <div class="result-top">
             <div class="result-model">
+              <span class="result-rank">2</span>
+              <span class="mico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>
+              <span class="name">Claude Sonnet 4.5<small>gridlock-v1</small></span>
+            </div>
+            <span class="status-pill scored">view run →</span>
+          </div>
+          <div class="result-score">
+            <span class="val scored">0.31</span>
+            <span class="of">/ 1.00</span>
+            <span class="lbl">composite score</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- Rank 3 -->
+      <a class="result-card reveal" href="runs/opus-4-8.html">
+        <div class="result-body">
+          <div class="result-top">
+            <div class="result-model">
+              <span class="result-rank">3</span>
               <span class="mico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>
               <span class="name">Claude Opus 4.8<small>gridlock-v1</small></span>
             </div>
@@ -475,15 +488,12 @@
         </div>
       </a>
 
-      <!-- Card 3 -->
+      <!-- Pending -->
       <article class="result-card reveal">
-        <div class="result-thumb">
-          <video muted loop playsinline preload="none" poster="" data-video-src="assets/runs/haiku-4-5.mp4"></video>
-          <div class="ph"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg><span>timelapse</span></div>
-        </div>
         <div class="result-body">
           <div class="result-top">
             <div class="result-model">
+              <span class="result-rank pending">—</span>
               <span class="mico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>
               <span class="name">Claude Haiku 4.5<small>gridlock-v1</small></span>
             </div>
@@ -496,28 +506,6 @@
           </div>
         </div>
       </article>
-
-      <!-- Card 4 -->
-      <a class="result-card reveal" href="runs/sonnet-4-5.html">
-        <div class="result-thumb">
-          <video muted loop playsinline preload="none" poster="" data-video-src="assets/runs/sonnet-4-5.mp4"></video>
-          <div class="ph"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg><span>timelapse</span></div>
-        </div>
-        <div class="result-body">
-          <div class="result-top">
-            <div class="result-model">
-              <span class="mico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>
-              <span class="name">Claude Sonnet 4.5<small>gridlock-v1</small></span>
-            </div>
-            <span class="status-pill scored">view run →</span>
-          </div>
-          <div class="result-score">
-            <span class="val scored">0.31</span>
-            <span class="of">/ 1.00</span>
-            <span class="lbl">composite score</span>
-          </div>
-        </div>
-      </a>
     </div>
 
     <div class="coming-soon reveal">
@@ -526,6 +514,29 @@
         <h4>Non-Anthropic models, coming soon</h4>
         <p>Other frontier models will run the same gridlock-v1 scenario under identical scoring. Their results land here as the runs complete.</p>
       </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- ============ FINDINGS ============ -->
+<!-- TODO: copy to be supplied. Replace the placeholder finding cards below. -->
+<section class="section" id="findings">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow">Findings</p>
+      <h2 class="section-title">What the scores actually tell us.</h2>
+      <p class="lead">Copy coming soon.</p>
+    </div>
+
+    <div class="choices" style="grid-template-columns: 1fr;">
+      <article class="choice reveal">
+        <span class="num">01</span>
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+        <h3>Finding heading</h3>
+        <p>Placeholder — finding copy to be supplied.</p>
+      </article>
     </div>
   </div>
 </section>
@@ -651,7 +662,6 @@
 
   const hv = document.getElementById('hero-video');
   if (hv) wireVideo(hv, { autoplayOnView: true });
-  document.querySelectorAll('.result-thumb video').forEach((v) => wireVideo(v, { autoplayOnView: false }));
 </script>
 
 </body>

@@ -341,21 +341,11 @@ a.result-card { text-decoration: none; color: inherit; transition: transform 0.1
 a.result-card:hover { transform: translateY(-3px); box-shadow: 0 8px 30px color-mix(in oklab, var(--foreground) 16%, transparent); }
 .status-pill.scored { color: var(--skl-blue-bright, #5b9dff); border-color: color-mix(in oklab, var(--skl-blue-bright, #5b9dff) 40%, transparent); }
 .result-score .val.scored { color: var(--foreground); }
-.result-thumb { position: relative; aspect-ratio: 16 / 9; background: #0b0b0b; overflow: hidden; }
-.result-thumb video { width: 100%; height: 100%; object-fit: contain; display: block; }
-.result-thumb .ph {
-  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px;
-  background:
-    radial-gradient(60% 60% at 50% 40%, color-mix(in oklab, var(--skl-blue) 8%, transparent), transparent 70%),
-    repeating-linear-gradient(45deg, transparent, transparent 18px, color-mix(in oklab, var(--foreground) 2.5%, transparent) 18px, color-mix(in oklab, var(--foreground) 2.5%, transparent) 19px),
-    #0c0c0c;
-  color: var(--muted-foreground);
-}
-.result-thumb .ph svg { width: 26px; height: 26px; opacity: 0.7; }
-.result-thumb .ph span { font-family: var(--font-mono); font-size: 11.5px; }
 .result-body { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 14px; flex: 1; }
 .result-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .result-model { display: flex; align-items: center; gap: 10px; }
+.result-rank { font-family: var(--font-heading); font-weight: 600; font-size: 1.05rem; letter-spacing: -0.02em; color: var(--skl-blue-bright, #5b9dff); font-variant-numeric: tabular-nums; min-width: 16px; text-align: center; flex-shrink: 0; }
+.result-rank.pending { color: var(--muted-foreground); }
 .result-model .mico { width: 28px; height: 28px; border-radius: 7px; background: color-mix(in oklab, var(--foreground) 8%, transparent); display: grid; place-items: center; flex-shrink: 0; }
 .result-model .mico svg { width: 15px; height: 15px; color: var(--foreground); }
 .result-model .name { font-family: var(--font-heading); font-weight: 600; font-size: 1.02rem; letter-spacing: -0.01em; }

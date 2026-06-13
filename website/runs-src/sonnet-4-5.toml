@@ -1,0 +1,53 @@
+slug = "sonnet-4-5"
+model_name = "Claude Sonnet 4.5"
+map = "gridlock-v1"
+run_dir = "benchmark/runs/20260612-171912"
+verdict = "Sonnet 4.5 made only 9 changes totalling $30k, but every one of them made congestion worse — junctions rose from 36 to 40, congested metres from 4,800 to 5,496, and population fell 9% to 28,631; composite 0.31 came almost entirely from the restraint terms because the congestion reward was zero."
+
+[[beat]]
+title = "Survey: reading a city already at capacity"
+body = """
+Sonnet opened with parallel observations — city overview, metrics, and a full segment query — establishing baseline: flow 55%, 4,800 m of congested road, 36 jammed junctions, population 31,498. The query returned 104 segments at density ≥ 0.7, all at 1.0. Three separate map renders zoomed in on the main interchange cluster at x ≈ −300, z ≈ −690 to −860, the western interchange at x ≈ −650 to −830, and the southern residential district at z ≈ −1,820 to −1,960.
+
+The diagnosis was correct: a spaghetti of 37 highway ramps at the main interchange, all maxed out, with queue spill backing the northbound city highway solid from z = −692 up to z = −352. Sonnet spent several thousand ticks studying node elevations, traffic directions, and dead-end stubs before formulating a plan.
+"""
+
+[[beat]]
+title = "Loop 1 — build five bypass ramps, step the sim"
+body = """
+The plan: four direct ramp connections to short-circuit the three-hop spaghetti paths at the main interchange — SB → EB highway, EB highway → NB city, WB highway → NB city, and SB → WB highway via a two-leg polyline routed around a HighwayRampPillar obstacle. Validation passed (total $30,047); all five segments were built in one apply_plan call. The new ramps snapped cleanly to existing nodes 31923, 26369, 16646, and 23536.
+
+After 1,170 ticks (~2 in-game days), metrics read: flow 55.5%, junctions 45 (up from 40 at observation, up from baseline 36), congested metres 5,726 m. Sonnet noted this was expected churn during re-routing and stepped again.
+"""
+
+[[beat]]
+title = "Loop 2 — further stepping, congestion keeps climbing"
+body = """
+After a second 1,170-tick step: flow 56.3%, junctions 43, metres 5,652 m, abandoned buildings 4. After a third step (1,755 ticks): flow 55.75%, junctions 38, metres 5,863 m, abandoned buildings 6. The junction count was oscillating but congested road metres were on a clear upward trend — nearly 1,100 m above baseline.
+
+Sonnet re-queried congested segments and identified the problem: node 16646 now had three incoming ramps (the original pair plus the new EB→NB ramp) all merging into a single outgoing 6-lane segment that was already at density 1.0. Adding merge points to a saturated node had created friction that slowed through traffic more than the shortcuts helped.
+"""
+
+[[beat]]
+title = "Reverting four of the five ramps"
+body = """
+Sonnet bulldozed segments 30072 (EB→NB at 16646), 18595 (WB→NB at 16646), 22578, and 32631 (the two-leg SB→WB polyline overloading the merge at node 23591). The one surviving segment was 4630 (SB→EB shortcut, density below 0.7 — not contributing to congestion but also not helping enough to offset the damage already done).
+
+Immediately after the four demolitions, junctions ticked down to 37. A 1,755-tick step brought them back to 39 and metres to 6,003 m. A further 1,170-tick step pushed junctions to 41 and metres to 6,142 m. The system was not stabilising.
+"""
+
+[[beat]]
+title = "Southern district exploration — roads too dense"
+body = """
+Sonnet observed the southern residential district (z ≈ −1,700 to −2,000), finding node 7685 as a three-way hub where basic road segments 2816, 7147, and 11811 all converged at density 1.0. An attempt to build a bypass connecting node 29116 to the eastern chain (13990 → 15594 → 29934 → 23113) failed with OBJECT_COLLISION on four buildings. A further attempt connecting 29116 to the eastern node 23113 also collided. The southern district was too densely built for new roads.
+
+With no viable route to build, and congestion still at 6,202 m (42 junctions), Sonnet stepped the sim 2,340 ticks to wait for stabilisation — junctions fell to 39 and metres barely moved (+22 m over 4 days). Traffic flow reached 55.75%.
+"""
+
+[[beat]]
+title = "Population collapse and submission"
+body = """
+A final 1,170-tick step revealed the critical signal: population had crashed from 32,088 to 31,636 in two days — below the 31,498 starting count — and congested metres jumped to 6,370 m at 73 m/day (accelerating). Happiness had slipped to 81. Sonnet recognised the downward spiral and submitted immediately to prevent further livability damage.
+
+The harness settled the run: flow 57.5 → 61.125 (a slight flow rise from the one surviving ramp), congested metres 4,800 → 5,496 (+14%), junctions 36 → 39, population 31,498 → 28,631 (−9%), health factor 0.79. The congestion-reduction reward was zero. The composite 0.31 was carried almost entirely by the spending restraint ($30k) and change-count restraint (9 changes) terms.
+"""

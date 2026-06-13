@@ -28,9 +28,75 @@ pub struct Narrative {
     pub beat: Vec<Beat>,
 }
 
+fn fmt_money(n: i64) -> String {
+    let a = n.abs();
+    if a >= 1_000_000 {
+        format!("${:.2}M", n as f64 / 1_000_000.0)
+    } else if a >= 1_000 {
+        format!("${:.1}k", n as f64 / 1_000.0)
+    } else {
+        format!("${n}")
+    }
+}
+
+fn fmt_num(v: f64) -> String {
+    let n = v.round() as i64;
+    let digits = n.abs().to_string();
+    let grouped = digits
+        .as_bytes()
+        .rchunks(3)
+        .rev()
+        .map(|c| std::str::from_utf8(c).unwrap_or(""))
+        .collect::<Vec<_>>()
+        .join(",");
+    if n < 0 {
+        format!("-{grouped}")
+    } else {
+        grouped
+    }
+}
+
+/// Signed percentage change `from → to`, or an em-dash when `from` is zero.
+fn pct(from: f64, to: f64) -> String {
+    if from == 0.0 {
+        return "—".to_string();
+    }
+    format!("{:+.0}%", (to - from) / from * 100.0)
+}
+
+fn esc(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fmt_money_scales() {
+        assert_eq!(fmt_money(1_239_118), "$1.24M");
+        assert_eq!(fmt_money(57_790), "$57.8k");
+        assert_eq!(fmt_money(0), "$0");
+    }
+
+    #[test]
+    fn fmt_num_rounds_and_groups() {
+        assert_eq!(fmt_num(31_640.0), "31,640");
+        assert_eq!(fmt_num(70.625), "71");
+        assert_eq!(fmt_num(57.375), "57");
+    }
+
+    #[test]
+    fn pct_signed() {
+        assert_eq!(pct(5121.72, 1853.89), "-64%");
+        assert_eq!(pct(57.375, 70.625), "+23%");
+        assert_eq!(pct(0.0, 5.0), "—");
+    }
+
+    #[test]
+    fn esc_escapes_markup() {
+        assert_eq!(esc("a & b < c > d"), "a &amp; b &lt; c &gt; d");
+    }
 
     #[test]
     fn narrative_parses_from_toml() {

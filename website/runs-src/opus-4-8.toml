@@ -1,0 +1,53 @@
+slug = "opus-4-8"
+model_name = "Claude Opus 4.8"
+map = "gridlock-v1"
+run_dir = "benchmark/runs/20260612-161516"
+verdict = "Opus 4.8 made only 23 changes and barely dented congestion (−9% metres, −5% junctions), but a mistaken road-widening on a residential arterial demolished ~60 occupied buildings and sent population down 15% — the health factor (0.49) roughly halved the final score to 0.21."
+
+[[beat]]
+title = "Survey: mapping the gridlock"
+body = """
+The agent opened with a full city overview and a dense segment query. Baseline: population 31,562, flow 57%, congested road 5,133 m, 38 jammed junctions. Every saturated segment was at density 1.0. Zoomed maps and route traces identified the primary bottleneck: the N–S highway spine feeding the city core queued solid from a weaving merge at x ≈ −300, z ≈ −860, where southbound mainline traffic exits onto the E–W through-highway via a chain of 3-lane ramps.
+
+The diagnosis was precise — the E–W westbound mainline downstream was partially free, and a route trace through the interchange confirmed the ramp pinch (segments 25426, 4565, 14877) as the binding constraint. The agent also noted a separate eastern district hotspot (x ≈ +340) and a cluster of congested basic-road segments in the far south.
+"""
+
+[[beat]]
+title = "Loop 1 — widen the main interchange ramp chain"
+body = """
+The first batch upgraded the three saturated SB→west exit ramps (segments 25426, 4565, 14877) from 3-lane HighwayRamp to 6-lane Highway at a combined cost of $15,331. After stepping roughly 4,100 ticks (~7 in-game days), metrics moved: congested metres 5,698 → 5,429, junctions 38 → 36, flow 57% → 59.3%. Population was rising (31,562 → 32,066). The ramp chain was clearly helping, but the E–W westbound mainline between the two interchanges was now itself at density 1.0.
+"""
+
+[[beat]]
+title = "Loop 2 — widen the full interchange ramp cluster"
+body = """
+A second batch upgraded six more saturated interchange ramps around the same node (segments 25698, 6451, 16454 to Highway; 35126, 14620, 3797 to Highway Elevated), totalling $73,726. After another ~3,000-tick step, metrics were: congested metres 5,323, junctions 36, flow 59.4%. Population continued rising to 32,066. The ramp upgrades were producing real but diminishing gains — the corridor remained demand-limited by the merge weave itself rather than ramp capacity.
+"""
+
+[[beat]]
+title = "Loop 3 — elevated bypass attempt, reverted"
+body = """
+To bypass the merge-conflict at node 23591, the agent built a grade-separated elevated highway directly from the SB ramp terminus (node 22305) to the free downstream node 28057. A first segment partially built before hitting a building collision (pillar conflict from an auto-split); the stub was bulldozed and a clean single-segment version successfully built (segment 29328, $37,254). After stepping ~7,000 ticks the bypass made things worse — it created a second competing merge at node 28057 and junctions rose from 36 to 39. The segment was bulldozed. The geometry of the weave was not fixable by adding a parallel lane.
+"""
+
+[[beat]]
+title = "Loop 4 — the fatal error: Large Road on the eastern arterial"
+body = """
+Attention shifted to the eastern district hotspot: a N–S Basic Road spine (x ≈ 340, z ≈ −1600 to −1950) with five segments at density 1.0. The agent validated and applied upgrades of all five to Large Road ($37,406). What wasn't checked was the fronting-building count: each segment had 12–15 fronting high-density residential buildings, and the Large Road's wider footprint demolished them on upgrade (fronting counts fell from ~13 to ~3–6 per segment, ~60+ buildings total). After a single 2,925-tick step, population crashed 31,893 → 29,014 and happiness dropped 81 → 79.
+
+Recognising the damage immediately, the agent reverted all five segments back to Basic Road. But the demolished buildings were gone; only their plots and zoning remained.
+"""
+
+[[beat]]
+title = "Watching the cascade, waiting for recovery"
+body = """
+After the revert, the agent stepped repeatedly to monitor the damage. Population continued falling through the demolition aftermath: 29,014 → 27,370 over two steps, with happiness sliding to 75–76 and abandonment peaking at 167. Congestion metrics also worsened as the city destabilised. The agent stayed in observation mode, stepping in 4,095-tick increments, noting that the city was financially healthy ($21M funds, +$476k/week) and residential demand was positive (+43), meaning the vacated lots would redevelop.
+"""
+
+[[beat]]
+title = "Recovery confirmed — but population locked in a deficit"
+body = """
+Over roughly fifteen more sim steps (~60,000 ticks), the trends reversed: abandonment fell from 167 to 34, happiness recovered to 81 (matching the pre-mistake level), and population began rising from its nadir of ~26,487. Traffic also genuinely improved during this period — junctions oscillated in the low 30s (vs. 38 at start) and flow reached 65–66%. The agent submitted with population at 28,032 and all trends positive.
+
+The harness settled the run after submission and measured the final window: population 26,787 (−15% from baseline 31,562), flow_mean 62.75 (vs. 57.6 baseline), congested metres 4,682 (−9%), junctions 36 (−5%). The health factor of 0.49 — a direct consequence of the 15% population loss — cut the composite score to 0.21.
+"""

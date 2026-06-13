@@ -72,6 +72,17 @@ enum Command {
         #[arg(long)]
         out: std::path::PathBuf,
     },
+    /// Generate a static run-detail page (website/runs/<slug>.html) from a
+    /// curated narrative TOML plus the run's run-record.json + score.json.
+    BuildPage {
+        #[arg(long)]
+        narrative: std::path::PathBuf,
+        /// Output HTML path (default: website/runs/<slug>.html).
+        #[arg(long)]
+        out: Option<std::path::PathBuf>,
+        #[arg(long, default_value = "website/assets/runs")]
+        assets_dir: std::path::PathBuf,
+    },
 }
 
 #[tokio::main]
@@ -224,6 +235,10 @@ async fn main() -> anyhow::Result<()> {
             eprintln!("benchmark-finalize: settle + final window (this takes several minutes)…");
             finalize(&client, end, &out).await?;
             eprintln!("benchmark-finalize: wrote run-record.json + score.json to {}", out.display());
+        }
+        Command::BuildPage { narrative, out, assets_dir } => {
+            let written = skylinebench::page::build(&narrative, out, &assets_dir)?;
+            eprintln!("build-page: wrote {}", written.display());
         }
     }
     Ok(())

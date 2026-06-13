@@ -383,6 +383,37 @@ pub fn render_page(n: &Narrative, r: &RunRecord, s: &Score) -> String {
     )
 }
 
+/// Read the narrative TOML + the run's record/score, render the page, write it
+/// to `out` (default `website/runs/<slug>.html`), and copy the run's
+/// `timelapse.mp4` into `assets_dir/<slug>.mp4` when present. Returns the
+/// written HTML path.
+pub fn build(
+    narrative_path: &Path,
+    out: Option<PathBuf>,
+    assets_dir: &Path,
+) -> anyhow::Result<PathBuf> {
+    let narrative: Narrative = toml::from_str(&std::fs::read_to_string(narrative_path)?)?;
+    let run_dir = Path::new(&narrative.run_dir);
+    let record: RunRecord =
+        serde_json::from_str(&std::fs::read_to_string(run_dir.join("run-record.json"))?)?;
+    let score: Score =
+        serde_json::from_str(&std::fs::read_to_string(run_dir.join("score.json"))?)?;
+
+    let html = render_page(&narrative, &record, &score);
+    let out = out.unwrap_or_else(|| PathBuf::from(format!("website/runs/{}.html", narrative.slug)));
+    if let Some(parent) = out.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&out, html)?;
+
+    let timelapse = run_dir.join("timelapse.mp4");
+    if timelapse.exists() {
+        std::fs::create_dir_all(assets_dir)?;
+        std::fs::copy(&timelapse, assets_dir.join(format!("{}.mp4", narrative.slug)))?;
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

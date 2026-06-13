@@ -335,6 +335,10 @@ h1, h2, h3 { font-family: var(--font-heading); font-weight: 600; letter-spacing:
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
   overflow: hidden; display: flex; flex-direction: column;
 }
+a.result-card { text-decoration: none; color: inherit; transition: transform 0.15s ease, box-shadow 0.15s ease; }
+a.result-card:hover { transform: translateY(-3px); box-shadow: 0 8px 30px color-mix(in oklab, var(--foreground) 16%, transparent); }
+.status-pill.scored { color: var(--skl-blue-bright, #5b9dff); border-color: color-mix(in oklab, var(--skl-blue-bright, #5b9dff) 40%, transparent); }
+.result-score .val.scored { color: var(--foreground); }
 .result-thumb { position: relative; aspect-ratio: 16 / 9; background: #0b0b0b; overflow: hidden; }
 .result-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .result-thumb .ph {

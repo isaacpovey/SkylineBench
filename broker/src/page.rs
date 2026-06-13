@@ -112,6 +112,56 @@ fn chart_flow_settling(r: &RunRecord) -> String {
     )
 }
 
+/// Collapse the action log into `(tool, count, total_cost)` in first-seen order.
+fn group_actions(actions: &[ActionEntry]) -> Vec<(String, u32, i64)> {
+    actions.iter().fold(Vec::new(), |mut acc, a| {
+        match acc.iter_mut().find(|(tool, _, _)| *tool == a.tool) {
+            Some(entry) => {
+                entry.1 += 1;
+                entry.2 += a.cost;
+            }
+            None => acc.push((a.tool.clone(), 1, a.cost)),
+        }
+        acc
+    })
+}
+
+/// One horizontal bar per tool, sized by call count, labelled count + cost.
+fn chart_action_breakdown(r: &RunRecord) -> String {
+    let groups = group_actions(&r.actions);
+    let max = groups.iter().map(|(_, c, _)| *c).max().unwrap_or(1).max(1) as f64;
+    let (top, row_h, x0, w) = (10.0_f64, 44.0_f64, 120.0_f64, 150.0_f64);
+    let body = groups
+        .iter()
+        .enumerate()
+        .map(|(i, (tool, count, cost))| {
+            let y = top + i as f64 * row_h;
+            let bw = *count as f64 / max * w;
+            format!(
+                concat!(
+                    r#"<text x="0" y="{ly:.1}" class="c-axis">{tool}</text>"#,
+                    r#"<rect x="{x0:.1}" y="{yb:.1}" width="{bw:.1}" height="14" rx="3" class="c-final"/>"#,
+                    r#"<text x="{tx:.1}" y="{ty:.1}" class="c-val">{count} · {cost}</text>"#,
+                ),
+                ly = y + 9.0,
+                tool = esc(tool),
+                x0 = x0,
+                yb = y,
+                bw = bw,
+                tx = x0 + bw + 6.0,
+                ty = y + 11.0,
+                count = count,
+                cost = fmt_money(*cost),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("");
+    let height = top + groups.len() as f64 * row_h + 4.0;
+    format!(
+        r#"<svg viewBox="0 0 360 {height:.0}" class="chart-svg" role="img" aria-label="Actions by type">{body}</svg>"#
+    )
+}
+
 /// Cumulative money spent over the action sequence. The x-axis is the action
 /// number, which is also the running change count, so one line conveys both.
 fn chart_cumulative_spend(r: &RunRecord) -> String {
@@ -254,6 +304,17 @@ mod tests {
                 ActionEntry { seq: 3, tool: "upgrade_road".into(), cost: 1_181_328 },
             ],
         }
+    }
+
+    #[test]
+    fn action_breakdown_groups_by_tool() {
+        let svg = chart_action_breakdown(&sample_record());
+        assert!(svg.starts_with("<svg"));
+        assert!(svg.contains("bulldoze"));
+        assert!(svg.contains("build_road"));
+        assert!(svg.contains("upgrade_road"));
+        // upgrade_road: 1 call, $1.18M in the sample
+        assert!(svg.contains("$1.18M"));
     }
 
     #[test]

@@ -5,25 +5,65 @@ run_dir = "benchmark/runs/20260612-121219"
 verdict = "Fable 5 diagnosed gridlock-v1 as a queue-spillback problem and fixed it almost entirely by upgrading existing roads rather than rebuilding — cutting jammed road-metres by 64% and jammed junctions from 35 to 12 while holding population essentially flat. Composite 0.63."
 
 [[beat]]
-title = "Survey the city"
+title = "Survey: read the congestion map"
 body = """
-Before changing anything, the agent pulled the city overview, metrics, and multiple rendered map views, then queried the 90+ saturated road segments. It traced the congestion to three choke points: interchange A where the N-S highway meets the E-W highway, a southern corridor with only one route north, and undersized exit and receiving streets throughout. Baseline: 57 mean flow, 5,122 metres of congested road, 35 jammed junctions, population 31,640.
+The agent opened with a full city overview, rendered several zoomed map views, and queried all 88+ segments at density ≥ 0.8. Baseline readings: flow 55%, congested road 5,122 m, 35 jammed junctions, population 31,640. Every saturated segment was density 1.0.
+
+The key observation: almost all the red was clustered around interchange A (the N–S highway braiding through the city center) and a single diagonal spur that was the only route from the southern half to the core. A route-trace from the southeast tip to the center measured 2,933 m — threading every clogged ramp. The working hypothesis: this is a queue-spillback problem; the exits and receiving streets are undersized, not the mainlines themselves.
 """
 
 [[beat]]
-title = "Diagnose: exits, not mainlines"
+title = "Loop 1 — build the east arterial, step 6 days"
 body = """
-The agent's key finding was that most saturated mainline was queue spillback from undersized exits and receiving streets, not the mainlines themselves. Rather than rerouting the network, the plan focused on widening what was already there: upgrade the interchange ramps, double the capacity of the CBD entry streets, and add one new east arterial to give the southern half a second route north.
+The agent planned a new 4-lane road running under the elevated highway from node 6750 (402, −771) down to node 15493 (377, −1302), using two dead-end stubs the map left behind. Three houses blocked the alignment and had to be bulldozed (buildings 8480, 26816, 30276); two earlier collision-check passes refined the waypoints before the plan was submitted clean. The batch also upgraded the SE feeder chain from the southern terminus northward to Small 4 Lane Road (13 upgrade_road calls). Total: 22 ops, $89k.
+
+After stepping the sim ~3,510 ticks (roughly 6 in-game days), metrics read: flow 56.7%, congested metres 5,776, junctions 35. The new arterial was adopted — the SE→center route trace now measured 1,827 m instead of 2,933 m — but the feeders immediately north of the connection (around node 782 at z ≈ −1,542) had become the new bottleneck.
 """
 
 [[beat]]
-title = "Iterative batched upgrades"
+title = "Loop 2 — upgrade SE feeders and center corridors, step again"
 body = """
-Changes went in as validated batches — first bulldozing obstructing segments, then building new connections, then upgrading. Early batches hit building-collision failures and were retried with tighter waypoints. The agent stepped time forward (control_time step, 4,095 ticks) mid-run to let traffic re-route and check progress: at 96 changes flow had risen to 61 and congested metres had fallen to 4,253. It continued upgrading from there. Final tally: 180 upgrade_road calls, 11 build_road, 6 bulldoze — $1.18M of the $1.24M total went on upgrades.
+The agent queried saturated segments and identified the new congestion cluster: the feeder chain from node 16143 northward, the x = 0 corridor, the center east-entry streets (segments 550, 14163, 19730, 21341), and area C's elevated arterial. It also built a short bluff link (three segments: 32603, 25805, 18406) connecting a dead-end at (−136, −1540) to the network at (−175, −1305), and upgraded a 7-segment west chain. Two buildings were bulldozed (19650, 25953). Total: 42 ops, $191k (running total $280k, 64 changes).
+
+After stepping the sim ~4,095 ticks, metrics read: flow 56.6%, congested metres 5,369, junctions 30. The stat counter had briefly shown 27 junctions (likely a reset artifact from segment replacement), then settled. The interchange A ramps, the E–W mainline (x −830 to −450), and the N–S spine (z −700 to +180) were all still at density 1.0.
 """
 
 [[beat]]
-title = "Final check and submit"
+title = "Loop 3 — double the interchange ramps, add a highway off-ramp"
 body = """
-After a last sim step the agent rendered a full overview and noted "the network is overwhelmingly green — only the inherent NB spine queue and parts of the interchange braid remain warm." It submitted with congested metres at 1,854 (−64%), jammed junctions at 12, flow at 71. Population held at 31,174, keeping the health factor at 1.0. Final composite: 0.63.
+With the feeder network widened, the interchange braids were now the clear bottleneck. The agent upgraded all interchange A and B ramps — 30 segments — from single-lane HighwayRamp/HighwayRampElevated to Two Lane Highway or Four Lane Highway. It also built a new westbound off-ramp at (205, −823) connecting into a pre-built one-way loop in the east-center, giving that district its first direct highway access. Total: 32 ops (1 build_road + 31 upgrade_road), $253k (running total $532k, 96 changes).
+
+After three successive sim steps (2,340 + 2,340 + 4,095 ticks), metrics moved: flow 57.2% → 58.3% → 58.9% → 60.1%, congested metres 5,156 → 4,978 → 4,794 → 4,537, junctions oscillating around 22–25. The congestion pattern had clearly shifted — the interchange braid was clearing — but a natural population death wave began, dropping the count from ~32,000 toward ~29,000 and causing abandonment to climb.
+"""
+
+[[beat]]
+title = "Loop 4 — widen the one-way loop and far-south highway"
+body = """
+After confirming the new off-ramp connected correctly (a route trace from the east-center pocket to the city core now measured 1,245 m), the agent queried saturated segments again. Focus shifted to: the east-center one-way loop (segments 14520, 24967 etc., upgraded to Small 4 Lane 1 Way Road), the far-south Two Lane Highway chain (18675, 24627, 35956 upgraded to Four Lane Highway Elevated), and 12 segments of the dormant west-spur to the SW district that were connected but still 2-lane. Total: 30 ops, $133k (running total $665k, 126 changes).
+
+After stepping ~9,360 ticks, metrics settled at: flow 65%, congested metres 3,500, junctions ~26–36 (time-of-day oscillation). Abandonment peaked at 167 during the death wave — the agent watched it, confirmed happiness held at 81, and continued rather than reverting.
+"""
+
+[[beat]]
+title = "Loop 5 — double every remaining interchange ramp"
+body = """
+A dense segment query at density ≥ 0.93 showed the interchange A and B ramps were still at 1.0 despite the earlier upgrades — the first batch had widened some ramps but not all. The agent issued a 38-op batch upgrading every remaining ramp to Two Lane Highway Elevated, plus doubling the three CBD receiving-street corridors (segments 3797, 14620, 35126, 2314, 27298 and others), and widening the far-east one-way boulevard feeders. Total: 38 ops, $367k (running total $1,032k, 164 changes).
+
+After stepping ~12,285 ticks (three 4,095-tick steps), the abandonment wave started reversing: 167 → 150 → 132 → 122. Flow reached 66.25%, congested metres 3,544, junctions 29. The agent confirmed recovery and continued.
+"""
+
+[[beat]]
+title = "Loop 6 — upgrade the interchange medium road and N–S spine"
+body = """
+Requerying at density ≥ 0.93, the agent found a medium-road segment at interchange A (segment 15853, a 9-lane Medium Road) still fully saturated, along with two feeder streets in the SW district (22915, 25164) and several N–S highway mainline segments just north of the interchange. It upgraded those 12 segments — the medium roads to Large Road, the feeders to Small 4 Lane Road, and the N–S mainline pieces to Four Lane Highway. Total: 12 ops, $87k (running total $1,119k, 176 changes).
+
+After two sim steps (~8,190 ticks), flow reached 66.75%, congested metres 3,496, junctions 28. Abandonment continued falling (122 → 113 → 98).
+"""
+
+[[beat]]
+title = "Loop 7 — widen the far-east boulevard, final settlement"
+body = """
+A map render revealed the far-east residential district still feeding everything through one 4-lane boulevard. The agent upgraded the main street and its feeders to Large Road Decoration Grass (6 segments) plus three Small 4 Lane Road feeders, and widened two one-way decorative connectors. Total: 11 ops, $68k (running total $1,187k, 187 changes).
+
+After two sim steps (~8,190 ticks), congested metres fell to 3,278 and junctions to 15 — the best reading yet. The agent then issued a final 10-op batch (segments 9546, 4803, 30722 and others) upgrading the last saturated CBD streets to Large Road, and ran the sim forward through eight further 4,095-tick steps, watching the city recover: flow climbed 68.4% → 69.9% → 71.6% → 72.5% → 73.5% → 74.0% → 74.5%, congested metres fell to 1,927, and junctions reached 10 before settling around 12–14. Abandonment cleared to 12. The agent rendered a final overview — "the network is overwhelmingly green" — and submitted.
 """

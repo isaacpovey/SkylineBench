@@ -6,6 +6,11 @@
 .run-score .rs-val { font-family: var(--font-heading); font-size: clamp(2.6rem, 7vw, 4rem); font-weight: 600; letter-spacing: -0.03em; color: var(--skl-blue-bright, #5b9dff); font-variant-numeric: tabular-nums; }
 .run-score .rs-of { font-family: var(--font-mono); font-size: 14px; color: var(--muted-foreground); }
 
+/* Detail-page hero timelapse: show the whole frame (including the burned-in
+   HUD strip) instead of cropping it to 16:9. */
+.run-hero .media-stage { aspect-ratio: auto; min-height: 220px; }
+.run-hero .media-stage video { height: auto; object-fit: contain; }
+
 .chips { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 40px; }
 @media (max-width: 900px) { .chips { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 540px) { .chips { grid-template-columns: repeat(2, 1fr); } }

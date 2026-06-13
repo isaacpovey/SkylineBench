@@ -325,18 +325,22 @@ pub fn render_page(narrative: &Narrative, record: &RunRecord, score: &Score) -> 
   </div>
 </div></nav>
 
-<header class="run-hero"><div class="wrap-narrow">
-  <p class="eyebrow">Run detail · <span class="mono">{map}</span></p>
-  <h1 class="display">{model}</h1>
-  <div class="run-score"><span class="rs-val">{score:.2}</span><span class="rs-of">/ 1.00 composite</span></div>
-  <p class="lead">{verdict}</p>
-  <figure class="media-frame">
-    <div class="media-stage">
-      <video muted loop playsinline preload="none" data-video-src="../assets/runs/{slug}.mp4"></video>
-      <div class="media-placeholder"><div class="ph-title">timelapse</div></div>
-    </div>
-  </figure>
-</div></header>
+<header class="run-hero">
+  <div class="wrap-narrow">
+    <p class="eyebrow">Run detail · <span class="mono">{map}</span></p>
+    <h1 class="display">{model}</h1>
+    <div class="run-score"><span class="rs-val">{score:.2}</span><span class="rs-of">/ 1.00 composite</span></div>
+    <p class="lead">{verdict}</p>
+  </div>
+  <div class="wrap">
+    <figure class="media-frame run-media">
+      <div class="media-stage">
+        <video muted loop playsinline preload="none" data-video-src="../assets/runs/{slug}.mp4"></video>
+        <div class="media-placeholder"><div class="ph-title">timelapse</div></div>
+      </div>
+    </figure>
+  </div>
+</header>
 
 <section class="section"><div class="wrap">
   <div class="chips">{chips}</div>

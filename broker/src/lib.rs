@@ -10,4 +10,5 @@ pub mod route;
 pub mod service;
 pub mod tools;
 pub mod timelapse;
+pub mod page;
 pub mod validate;

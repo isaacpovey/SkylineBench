@@ -355,15 +355,14 @@ pub fn render_page(narrative: &Narrative, record: &RunRecord, score: &Score) -> 
 </div></div></footer>
 
 <script>
-  (async function () {{
+  (function () {{
     const v = document.querySelector('video[data-video-src]');
     if (!v) return;
-    const src = v.dataset.videoSrc;
-    try {{ const res = await fetch(src, {{ method: 'HEAD' }}); if (!res.ok) return; }} catch (e) {{ return; }}
-    const s = document.createElement('source'); s.src = src; s.type = 'video/mp4';
-    v.appendChild(s); v.load();
     const ph = v.parentElement.querySelector('.media-placeholder');
-    v.addEventListener('loadeddata', () => {{ if (v.videoWidth > 0 && ph) ph.style.display = 'none'; }});
+    const s = document.createElement('source'); s.src = v.dataset.videoSrc; s.type = 'video/mp4';
+    v.appendChild(s); v.load();
+    v.addEventListener('loadeddata', () => {{ if (ph) ph.style.display = 'none'; }});
+    v.addEventListener('error', () => {{ if (ph) ph.style.display = ''; }});
     if ('IntersectionObserver' in window) {{
       new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting ? v.play().catch(() => {{}}) : v.pause()), {{ threshold: 0.3 }}).observe(v);
     }} else {{ v.play().catch(() => {{}}); }}

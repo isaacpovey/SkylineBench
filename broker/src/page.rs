@@ -68,6 +68,50 @@ fn esc(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
+fn polyline(samples: &[f64], lo: f64, hi: f64, class: &str) -> String {
+    let n = samples.len().max(2) as f64;
+    let (x0, w, y0, h) = (40.0_f64, 304.0_f64, 12.0_f64, 150.0_f64);
+    let span = (hi - lo).max(1.0);
+    let pts = samples
+        .iter()
+        .enumerate()
+        .map(|(i, v)| {
+            let x = x0 + i as f64 / (n - 1.0) * w;
+            let y = y0 + h - (v - lo) / span * h;
+            format!("{x:.1},{y:.1}")
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!(r#"<polyline points="{pts}" class="{class}"/>"#)
+}
+
+/// Overlaid baseline vs final flow over the 8-sample settle windows.
+fn chart_flow_settling(r: &RunRecord) -> String {
+    let bs = &r.flow_samples.baseline;
+    let fs = &r.flow_samples.final_samples;
+    let all = bs.iter().chain(fs.iter()).copied();
+    let hi = all.clone().fold(f64::MIN, f64::max).max(1.0);
+    let lo = all.fold(f64::MAX, f64::min).min(hi);
+    let base = polyline(bs, lo, hi, "c-line-base");
+    let fin = polyline(fs, lo, hi, "c-line-final");
+    let y_top = 12.0_f64;
+    let y_bot = y_top + 150.0;
+    format!(
+        concat!(
+            r#"<svg viewBox="0 0 360 184" class="chart-svg" role="img" aria-label="Flow settling curves">"#,
+            r#"<text x="0" y="{ty:.1}" class="c-axis">{hi}</text>"#,
+            r#"<text x="0" y="{by:.1}" class="c-axis">{lo}</text>"#,
+            r#"{base}{fin}</svg>"#,
+        ),
+        ty = y_top + 4.0,
+        hi = fmt_num(hi),
+        by = y_bot,
+        lo = fmt_num(lo),
+        base = base,
+        fin = fin,
+    )
+}
+
 /// Paired baseline/final horizontal bars for the five snapshot metrics. Each
 /// metric is scaled to its own max so the very different magnitudes stay
 /// readable; absolute values are labelled at each bar's end.
@@ -175,6 +219,15 @@ mod tests {
                 ActionEntry { seq: 3, tool: "upgrade_road".into(), cost: 1_181_328 },
             ],
         }
+    }
+
+    #[test]
+    fn flow_settling_has_two_lines() {
+        let svg = chart_flow_settling(&sample_record());
+        assert!(svg.starts_with("<svg"));
+        assert_eq!(svg.matches("<polyline").count(), 2);
+        assert!(svg.contains("class=\"c-line-base\""));
+        assert!(svg.contains("class=\"c-line-final\""));
     }
 
     #[test]

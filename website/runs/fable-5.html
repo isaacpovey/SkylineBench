@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en" class="ds dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Claude Fable 5 · SkylineBench run</title>
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg" />
+<link rel="stylesheet" href="../colors_and_type.css" />
+<link rel="stylesheet" href="../styles.css" />
+<link rel="stylesheet" href="../runs.css" />
+</head>
+<body class="ds dark">
+<nav class="nav" data-scrolled="true"><div class="wrap">
+  <a class="brand" href="../index.html#top"><span><b>Skyline</b><span class="slash">Bench</span></span></a>
+  <div class="nav-links">
+    <a class="nav-link" href="../index.html#results">← Back to results</a>
+    <a class="btn btn-outline btn-sm" href="https://github.com/isaacpovey/SkylineBench" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</div></nav>
+
+<header class="run-hero"><div class="wrap-narrow">
+  <p class="eyebrow">Run detail · <span class="mono">gridlock-v1</span></p>
+  <h1 class="display">Claude Fable 5</h1>
+  <div class="run-score"><span class="rs-val">0.63</span><span class="rs-of">/ 1.00 composite</span></div>
+  <p class="lead">Fable 5 diagnosed gridlock-v1 as a queue-spillback problem and fixed it almost entirely by upgrading existing roads rather than rebuilding — cutting jammed road-metres by 64% and jammed junctions from 35 to 12 while holding population essentially flat. Composite 0.63.</p>
+  <figure class="media-frame">
+    <div class="media-stage">
+      <video muted loop playsinline preload="none" data-video-src="../assets/runs/fable-5.mp4"></video>
+      <div class="media-placeholder"><div class="ph-title">timelapse</div></div>
+    </div>
+  </figure>
+</div></header>
+
+<section class="section"><div class="wrap">
+  <div class="chips"><div class="chip"><span class="chip-v">57 → 71</span><span class="chip-l">flow</span></div><div class="chip"><span class="chip-v">-64%</span><span class="chip-l">congested metres</span></div><div class="chip"><span class="chip-v">35 → 12</span><span class="chip-l">jammed junctions</span></div><div class="chip"><span class="chip-v">31,640 → 31,174</span><span class="chip-l">population</span></div><div class="chip"><span class="chip-v">197</span><span class="chip-l">changes</span></div><div class="chip"><span class="chip-v">$1.24M</span><span class="chip-l">spent</span></div></div>
+  <div class="chart-grid"><figure class="chart-card"><figcaption>Before → after</figcaption><svg viewBox="0 0 360 208" class="chart-svg" role="img" aria-label="Before and after metrics"><text x="0" y="21.0" class="c-axis">Flow</text><rect x="112.0" y="12.0" width="162.5" height="8" rx="2" class="c-base"/><text x="279.5" y="19.0" class="c-val">57</text><rect x="112.0" y="24.0" width="200.0" height="8" rx="2" class="c-final"/><text x="317.0" y="31.0" class="c-val c-val-final">71</text><text x="0" y="61.0" class="c-axis">Congested m</text><rect x="112.0" y="52.0" width="200.0" height="8" rx="2" class="c-base"/><text x="317.0" y="59.0" class="c-val">5,122</text><rect x="112.0" y="64.0" width="72.4" height="8" rx="2" class="c-final"/><text x="189.4" y="71.0" class="c-val c-val-final">1,854</text><text x="0" y="101.0" class="c-axis">Jammed junctions</text><rect x="112.0" y="92.0" width="200.0" height="8" rx="2" class="c-base"/><text x="317.0" y="99.0" class="c-val">35</text><rect x="112.0" y="104.0" width="68.6" height="8" rx="2" class="c-final"/><text x="185.6" y="111.0" class="c-val c-val-final">12</text><text x="0" y="141.0" class="c-axis">Active vehicles</text><rect x="112.0" y="132.0" width="200.0" height="8" rx="2" class="c-base"/><text x="317.0" y="139.0" class="c-val">2,112</text><rect x="112.0" y="144.0" width="161.8" height="8" rx="2" class="c-final"/><text x="278.8" y="151.0" class="c-val c-val-final">1,709</text><text x="0" y="181.0" class="c-axis">Population</text><rect x="112.0" y="172.0" width="200.0" height="8" rx="2" class="c-base"/><text x="317.0" y="179.0" class="c-val">31,640</text><rect x="112.0" y="184.0" width="197.1" height="8" rx="2" class="c-final"/><text x="314.1" y="191.0" class="c-val c-val-final">31,174</text></svg></figure><figure class="chart-card"><figcaption>Flow settling</figcaption><svg viewBox="0 0 360 184" class="chart-svg" role="img" aria-label="Flow settling curves"><text x="0" y="16.0" class="c-axis">75</text><text x="0" y="162.0" class="c-axis">53</text><polyline points="40.0,66.5 83.4,100.6 126.9,134.7 170.3,134.7 213.7,155.2 257.1,155.2 300.6,162.0 344.0,148.4" class="c-line-base"/><polyline points="40.0,66.5 83.4,66.5 126.9,46.1 170.3,46.1 213.7,39.3 257.1,32.5 300.6,25.6 344.0,12.0" class="c-line-final"/></svg></figure><figure class="chart-card"><figcaption>Cumulative spend</figcaption><svg viewBox="0 0 360 188" class="chart-svg" role="img" aria-label="Cumulative spend"><polyline points="8.0,162.0 9.5,162.0 11.0,162.0 12.6,162.0 14.1,161.5 15.6,161.0 17.1,159.9 18.7,159.2 20.2,158.5 21.7,157.9 23.2,157.2 24.8,156.5 26.3,155.8 27.8,155.4 29.3,154.9 30.8,154.4 32.4,153.9 33.9,153.4 35.4,153.1 36.9,152.6 38.5,152.1 40.0,151.7 41.5,151.3 43.0,150.9 44.5,150.3 46.1,149.8 47.6,149.4 49.1,149.0 50.6,148.4 52.2,148.0 53.7,147.5 55.2,147.0 56.7,146.8 58.3,146.5 59.8,146.2 61.3,145.5 62.8,144.9 64.3,143.9 65.9,142.6 67.4,141.3 68.9,140.4 70.4,138.7 72.0,138.3 73.5,137.9 75.0,137.4 76.5,137.1 78.1,136.7 79.6,136.2 81.1,135.7 82.6,135.0 84.1,134.2 85.7,133.3 87.2,132.6 88.7,132.6 90.2,132.6 91.8,131.7 93.3,131.0 94.8,130.8 96.3,130.2 97.8,129.6 99.4,129.2 100.9,128.9 102.4,128.7 103.9,128.4 105.5,128.2 107.0,128.2 108.5,127.4 110.0,127.1 111.6,126.8 113.1,126.4 114.6,125.8 116.1,125.4 117.6,125.0 119.2,124.5 120.7,123.9 122.2,123.4 123.7,122.2 125.3,121.1 126.8,120.1 128.3,118.6 129.8,117.1 131.4,115.9 132.9,114.9 134.4,114.0 135.9,112.3 137.4,110.8 139.0,109.3 140.5,108.1 142.0,106.6 143.5,104.7 145.1,102.7 146.6,101.5 148.1,100.6 149.6,100.2 151.1,99.3 152.7,98.3 154.2,97.6 155.7,97.5 157.2,97.0 158.8,96.9 160.3,96.5 161.8,96.0 163.3,95.4 164.9,94.8 166.4,94.2 167.9,93.5 169.4,93.0 170.9,92.5 172.5,92.0 174.0,91.5 175.5,91.1 177.0,91.0 178.6,90.6 180.1,90.0 181.6,89.6 183.1,88.7 184.6,87.6 186.2,86.1 187.7,85.7 189.2,85.2 190.7,84.8 192.3,84.4 193.8,83.7 195.3,83.3 196.8,82.9 198.4,82.0 199.9,81.5 201.4,81.0 202.9,80.4 204.4,78.3 206.0,75.5 207.5,74.1 209.0,72.5 210.5,70.8 212.1,69.1 213.6,68.8 215.1,68.2 216.6,67.7 218.2,67.2 219.7,66.7 221.2,66.4 222.7,64.7 224.2,62.7 225.8,60.3 227.3,58.6 228.8,57.3 230.3,55.8 231.9,54.4 233.4,52.1 234.9,50.9 236.4,49.6 237.9,48.3 239.5,47.0 241.0,45.7 242.5,45.4 244.0,44.3 245.6,42.7 247.1,42.2 248.6,41.4 250.1,40.4 251.7,40.2 253.2,39.2 254.7,37.4 256.2,37.2 257.7,37.1 259.3,36.3 260.8,35.6 262.3,35.2 263.8,34.8 265.4,34.0 266.9,32.9 268.4,32.4 269.9,31.2 271.5,30.1 273.0,28.8 274.5,27.7 276.0,26.6 277.5,25.7 279.1,24.6 280.6,23.4 282.1,22.0 283.6,21.3 285.2,20.2 286.7,19.8 288.2,19.2 289.7,18.7 291.2,18.5 292.8,18.3 294.3,18.0 295.8,18.0 297.3,17.3 298.9,16.5 300.4,15.8 301.9,15.0 303.4,14.5 305.0,13.8 306.5,13.0 308.0,12.0" class="c-line-final"/><text x="8.0" y="180.0" class="c-val c-val-final">$1.24M · 197 changes</text></svg></figure><figure class="chart-card"><figcaption>Actions by type</figcaption><svg viewBox="0 0 360 146" class="chart-svg" role="img" aria-label="Actions by type"><text x="0" y="19.0" class="c-axis">bulldoze</text><rect x="120.0" y="10.0" width="5.0" height="14" rx="3" class="c-final"/><text x="131.0" y="21.0" class="c-val">6 · $0</text><text x="0" y="63.0" class="c-axis">build_road</text><rect x="120.0" y="54.0" width="9.2" height="14" rx="3" class="c-final"/><text x="135.2" y="65.0" class="c-val">11 · $57.8k</text><text x="0" y="107.0" class="c-axis">upgrade_road</text><rect x="120.0" y="98.0" width="150.0" height="14" rx="3" class="c-final"/><text x="276.0" y="109.0" class="c-val">180 · $1.18M</text></svg></figure></div>
+</div></section>
+
+<section class="section section-soft"><div class="wrap-narrow">
+  <div class="section-head"><p class="eyebrow">What the agent did</p>
+  <h2 class="section-title">Step by step.</h2></div>
+  <ol class="timeline"><li class="beat"><h3>Survey the city</h3><p>Before changing anything, the agent pulled the city overview, metrics, and multiple rendered map views, then queried the 90+ saturated road segments. It traced the congestion to three choke points: interchange A where the N-S highway meets the E-W highway, a southern corridor with only one route north, and undersized exit and receiving streets throughout. Baseline: 57 mean flow, 5,122 metres of congested road, 35 jammed junctions, population 31,640.</p></li><li class="beat"><h3>Diagnose: exits, not mainlines</h3><p>The agent's key finding was that most saturated mainline was queue spillback from undersized exits and receiving streets, not the mainlines themselves. Rather than rerouting the network, the plan focused on widening what was already there: upgrade the interchange ramps, double the capacity of the CBD entry streets, and add one new east arterial to give the southern half a second route north.</p></li><li class="beat"><h3>Iterative batched upgrades</h3><p>Changes went in as validated batches — first bulldozing obstructing segments, then building new connections, then upgrading. Early batches hit building-collision failures and were retried with tighter waypoints. The agent stepped time forward (control_time step, 4,095 ticks) mid-run to let traffic re-route and check progress: at 96 changes flow had risen to 61 and congested metres had fallen to 4,253. It continued upgrading from there. Final tally: 180 upgrade_road calls, 11 build_road, 6 bulldoze — $1.18M of the $1.24M total went on upgrades.</p></li><li class="beat"><h3>Final check and submit</h3><p>After a last sim step the agent rendered a full overview and noted "the network is overwhelmingly green — only the inherent NB spine queue and parts of the interchange braid remain warm." It submitted with congested metres at 1,854 (−64%), jammed junctions at 12, flow at 71. Population held at 31,174, keeping the health factor at 1.0. Final composite: 0.63.</p></li></ol>
+</div></section>
+
+<footer class="footer"><div class="wrap"><div class="footer-base">
+  <span>Built by <a href="https://www.linkedin.com/in/isaacpovey/" target="_blank" rel="noopener">Isaac Povey</a></span>
+  <span class="mono">GPLv3 · Cities: Skylines is a trademark of its respective owners</span>
+</div></div></footer>
+
+<script>
+  (async function () {
+    const v = document.querySelector('video[data-video-src]');
+    if (!v) return;
+    const src = v.dataset.videoSrc;
+    try { const res = await fetch(src, { method: 'HEAD' }); if (!res.ok) return; } catch (e) { return; }
+    const s = document.createElement('source'); s.src = src; s.type = 'video/mp4';
+    v.appendChild(s); v.load();
+    const ph = v.parentElement.querySelector('.media-placeholder');
+    v.addEventListener('loadeddata', () => { if (v.videoWidth > 0 && ph) ph.style.display = 'none'; });
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting ? v.play().catch(() => {}) : v.pause()), { threshold: 0.3 }).observe(v);
+    } else { v.play().catch(() => {}); }
+  })();
+</script>
+</body>
+</html>

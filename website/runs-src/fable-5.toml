@@ -1,0 +1,29 @@
+slug = "fable-5"
+model_name = "Claude Fable 5"
+map = "gridlock-v1"
+run_dir = "benchmark/runs/20260612-121219"
+verdict = "Fable 5 diagnosed gridlock-v1 as a queue-spillback problem and fixed it almost entirely by upgrading existing roads rather than rebuilding — cutting jammed road-metres by 64% and jammed junctions from 35 to 12 while holding population essentially flat. Composite 0.63."
+
+[[beat]]
+title = "Survey the city"
+body = """
+Before changing anything, the agent pulled the city overview, metrics, and multiple rendered map views, then queried the 90+ saturated road segments. It traced the congestion to three choke points: interchange A where the N-S highway meets the E-W highway, a southern corridor with only one route north, and undersized exit and receiving streets throughout. Baseline: 57 mean flow, 5,122 metres of congested road, 35 jammed junctions, population 31,640.
+"""
+
+[[beat]]
+title = "Diagnose: exits, not mainlines"
+body = """
+The agent's key finding was that most saturated mainline was queue spillback from undersized exits and receiving streets, not the mainlines themselves. Rather than rerouting the network, the plan focused on widening what was already there: upgrade the interchange ramps, double the capacity of the CBD entry streets, and add one new east arterial to give the southern half a second route north.
+"""
+
+[[beat]]
+title = "Iterative batched upgrades"
+body = """
+Changes went in as validated batches — first bulldozing obstructing segments, then building new connections, then upgrading. Early batches hit building-collision failures and were retried with tighter waypoints. The agent stepped time forward (control_time step, 4,095 ticks) mid-run to let traffic re-route and check progress: at 96 changes flow had risen to 61 and congested metres had fallen to 4,253. It continued upgrading from there. Final tally: 180 upgrade_road calls, 11 build_road, 6 bulldoze — $1.18M of the $1.24M total went on upgrades.
+"""
+
+[[beat]]
+title = "Final check and submit"
+body = """
+After a last sim step the agent rendered a full overview and noted "the network is overwhelmingly green — only the inherent NB spine queue and parts of the interchange braid remain warm." It submitted with congested metres at 1,854 (−64%), jammed junctions at 12, flow at 71. Population held at 31,174, keeping the health factor at 1.0. Final composite: 0.63.
+"""

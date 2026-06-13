@@ -348,14 +348,14 @@
         <span class="num">02</span>
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></div>
         <h3>When you close a loophole, it finds the margin.</h3>
-        <p>The population floor was the first version of this fix: a minimum the population couldn't fall below, supplied in the prompt. The agent found the floor and <strong>parked exactly on it.</strong> It reduced the population to the minimum viable number and held it there, treating the floor as a target rather than a guardrail — since it figured this was easier than fixing the actual structural problems. The lesson was that a hard limit just tells the agent where the limit is. The fix was to make the penalty a gradient, not a cliff.</p>
+        <p>The population floor was the first version of this fix: a minimum the population couldn't fall below, supplied in the prompt. The agent found the floor and <strong>parked exactly on it.</strong> It reduced the population to the minimum viable number and held it there, treating the floor as a target rather than a guardrail, since it figured this was easier than fixing the actual structural problems. The lesson was that a hard limit just tells the agent where the limit is. The fix was to make the penalty a gradient, not a cliff.</p>
       </article>
 
       <article class="choice reveal">
         <span class="num">03</span>
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
         <h3>Without pressure, it took the easy road.</h3>
-        <p>Early runs showed a consistent pattern: the agent only widened roads. It would find a bottleneck, upgrade the segment, and call it done. The problem is that widening a road doesn't fix congestion — <strong>it moves it.</strong> Cars that couldn't get through one junction pile up at the next. The agent knew this, described it in its own reasoning, and did it anyway, because upgrading an existing road is reversible and cheap. Risk aversion looks like competence until you measure outcomes. The change-count penalty exists to force a commitment. This led to changing the scoring function to look at blocked junctions rather than overall flow rate or total metres of congestion.</p>
+        <p>Early runs showed a consistent pattern: the agent only widened roads. It would find a bottleneck, upgrade the segment, and call it done. The problem is that widening a road doesn't fix congestion. <strong>It moves it.</strong> Cars that couldn't get through one junction pile up at the next. The agent knew this, described it in its own reasoning, and did it anyway, because upgrading an existing road is reversible and cheap. Risk aversion looks like competence until you measure outcomes. The change-count penalty exists to force a commitment. This led to changing the scoring function to look at blocked junctions rather than overall flow rate or total metres of congestion.</p>
       </article>
     </div>
   </div>
@@ -526,36 +526,36 @@
     <div class="section-head reveal">
       <p class="eyebrow">Findings</p>
       <h2 class="section-title">What the scores actually tell us.</h2>
-      <p class="lead">Four models, one city, the same hidden scoring. The board didn't sort the way I expected — and every surprise points back to the same blind spot.</p>
+      <p class="lead">Four models ran the same city under the same hidden scoring. The results didn't line up the way I expected, and the surprises all come back to the same thing.</p>
     </div>
 
     <div class="choices" style="grid-template-columns: 1fr;">
       <article class="choice reveal">
         <span class="num">01</span>
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg></div>
-        <h3>The leaderboard didn't follow model size</h3>
-        <p>I assumed the biggest models would cluster at the top. They didn't. The smallest, Haiku, did finish last — but Opus 4.8, a flagship, landed <strong>below mid-tier Sonnet</strong>. What separated the models wasn't reasoning horsepower. It was whether they noticed the damage they were doing while they chased the traffic.</p>
+        <h3>Model size didn't decide it</h3>
+        <p>I expected the biggest models to come out on top. They didn't. Haiku, the smallest, did finish last. But Opus 4.8 is a flagship and it landed below Sonnet, which sits a tier under it. The thing that decided the order wasn't how clever the model was. It was <strong>whether it noticed the damage it was doing</strong> while it worked on the traffic.</p>
       </article>
 
       <article class="choice reveal">
         <span class="num">02</span>
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
         <h3>Nobody lost on traffic. They lost on the city</h3>
-        <p>Every model could push cars around. What they couldn't do was push them without emptying the place. The population-health multiplier did almost all of the sorting: Fable kept the city intact and scored <strong>0.63</strong>, while the other three bled residents — <strong>9%, 15%, and a catastrophic 57%</strong> — and once the people left, their congestion work barely counted.</p>
+        <p>Every model could move cars around. None of them could do it <strong>without emptying the place out</strong>. The population side of the score did almost all of the work. Fable left the city intact and scored 0.63. The other three lost residents, 9% and 15% and then a brutal 57%, and once the people were gone it stopped mattering what they had done to the traffic.</p>
       </article>
 
       <article class="choice reveal">
         <span class="num">03</span>
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg></div>
         <h3>The fix was what broke the city</h3>
-        <p>This is the exact trap the benchmark was built to spring. Opus widened a road to a Large Road and its bigger footprint <strong>quietly demolished ~60 homes</strong>. Haiku bulldozed five highway ramps to reroute traffic, couldn't rebuild three of them, and severed an interchange — <strong>1,238 buildings abandoned in a single step</strong>. Both were optimising the thing in front of them and never asked what else the change touched.</p>
+        <p>This is the exact failure the benchmark was built to catch. Opus widened a road to a Large Road without checking that the wider road has a bigger footprint, and it flattened about 60 homes. Haiku bulldozed five highway ramps to push traffic somewhere else, then couldn't rebuild three of them, and cut an interchange in half. 1,238 buildings emptied out in a single step. Both of them were staring at the traffic and <strong>never asked what else the change was touching</strong>.</p>
       </article>
 
       <article class="choice reveal">
         <span class="num">04</span>
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-        <h3>Restraint beat ambition — but it wasn't the ceiling</h3>
-        <p>Sonnet barely touched the city, made nine changes, and still outscored two models that acted boldly and wrecked it: doing less was safer than doing harm. But restraint wasn't the winning move either. Fable made <strong>the most changes of anyone — 197</strong> — and won, because it watched each batch settle before it trusted it. The lesson isn't "do nothing." It's "know what you did."</p>
+        <h3>Doing less was safer than doing harm</h3>
+        <p>Sonnet barely touched the city. It made nine changes and still beat two models that went in hard and broke things. But doing less isn't the answer either. Fable made more changes than anyone, 197 of them, and it won. The difference was that it <strong>stepped the simulation forward and watched each batch settle</strong> before it moved on. The point was never to do nothing. It was to know what you had actually done.</p>
       </article>
     </div>
   </div>
@@ -658,7 +658,7 @@
     const ph = video.parentElement.querySelector('.media-placeholder, .ph');
     try {
       const res = await fetch(src, { method: 'HEAD' });
-      if (!res.ok) return;                 // definitely absent (e.g. 404) — keep placeholder
+      if (!res.ok) return;                 // definitely absent (e.g. 404), keep placeholder
     } catch (_) { /* file:// or offline: can't pre-check, try loading anyway */ }
     const s = document.createElement('source');
     s.src = src; s.type = 'video/mp4';

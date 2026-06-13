@@ -160,6 +160,13 @@ h1, h2, h3 { font-family: var(--font-heading); font-weight: 600; letter-spacing:
 .media-bar .live { width: 7px; height: 7px; border-radius: 50%; background: var(--skl-blue); box-shadow: 0 0 0 3px var(--skl-blue-dim); }
 .media-stage { position: relative; aspect-ratio: 16 / 9; background: #0a0a0a; }
 .media-stage video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.media-foot { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 11px 16px; border-top: 1px solid var(--border); background: color-mix(in oklab, var(--card) 60%, var(--background)); }
+.media-foot .mf-label { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted-foreground); text-decoration: none; }
+.media-foot .mf-label:hover { color: var(--foreground); }
+.media-foot .mf-stats { margin-left: auto; display: flex; gap: 16px; flex-wrap: wrap; font-family: var(--font-mono); font-size: 12.5px; color: var(--muted-foreground); }
+.media-foot .mf-stats b { font-family: var(--font-heading); font-weight: 600; color: var(--foreground); font-variant-numeric: tabular-nums; }
+.media-foot .mf-stats b.good { color: var(--ok); }
+.media-foot .mf-stats b.bad { color: var(--bad); }
 .media-placeholder {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
@@ -355,6 +362,12 @@ a.result-card:hover { transform: translateY(-3px); box-shadow: 0 8px 30px color-
 .result-score .val { font-family: var(--font-heading); font-size: 2rem; font-weight: 600; letter-spacing: -0.03em; color: color-mix(in oklab, var(--foreground) 35%, transparent); font-variant-numeric: tabular-nums; }
 .result-score .of { font-family: var(--font-mono); font-size: 13px; color: var(--muted-foreground); }
 .result-score .lbl { margin-left: auto; font-size: 12px; color: var(--muted-foreground); }
+.result-metrics { margin-left: auto; align-self: center; display: flex; gap: 18px; }
+.result-metrics .metric { display: flex; flex-direction: column; gap: 1px; text-align: right; }
+.result-metrics .m-val { font-family: var(--font-heading); font-weight: 600; font-size: 0.95rem; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--foreground); }
+.result-metrics .m-val.good { color: var(--ok); }
+.result-metrics .m-val.bad { color: var(--bad); }
+.result-metrics .m-lbl { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted-foreground); }
 
 .coming-soon {
   margin-top: 18px;

@@ -40,13 +40,16 @@ namespace SkylineBench.Tests
         static void Screenshot()
         {
             var r = RequestParse.Screenshot(JsonReader.Parse(
-                "{\"x\":-120.5,\"z\":340,\"size\":500,\"top_down\":true}"));
+                "{\"x\":-120.5,\"z\":340,\"size\":500,\"yaw\":90,\"pitch\":32,\"info_view\":\"traffic\"}"));
             Assert.Equal(-120.5, r.X); Assert.Equal(340.0, r.Z); Assert.Equal(500.0, r.Size);
-            Assert.True(r.TopDown, "top_down");
+            Assert.Equal(90.0, r.Yaw); Assert.Equal(32.0, r.Pitch);
+            Assert.Equal("traffic", r.InfoView);
 
             var d = RequestParse.Screenshot(JsonReader.Parse("{\"x\":0,\"z\":0}"));
             Assert.Equal(1000.0, d.Size);
-            Assert.True(!d.TopDown, "top_down defaults false");
+            Assert.Equal(90.0, d.Pitch);
+            Assert.Equal(0.0, d.Yaw);
+            Assert.Equal("none", d.InfoView);
         }
     }
 }

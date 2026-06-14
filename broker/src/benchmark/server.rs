@@ -924,6 +924,9 @@ impl BenchmarkServer {
         Args: x, z (world metres), optional size (default 350; larger zooms out), top_down (default false).")]
     async fn view_3d(&self, Parameters(args): Parameters<crate::service::ViewArgs>) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
+        // Read-only observation: unlike render_map it is not persisted to the
+        // render timelapse (renders_dir) — it's an agent-requested look, not a
+        // city-state frame — and it doesn't mutate state, so no persist write.
         match crate::service::view_3d(&self.client, args).await {
             Ok(png) => {
                 let data = base64::engine::general_purpose::STANDARD.encode(png);

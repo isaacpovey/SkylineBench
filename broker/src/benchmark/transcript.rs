@@ -1,139 +1,197 @@
 use serde_json::Value;
 
-/// Render Claude Code `stream-json` (one JSON object per line) into a readable
-/// markdown transcript (spec §11). Unknown/malformed lines are skipped.
-pub fn render_transcript(jsonl: &str) -> String {
+use crate::benchmark::harness::Harness;
+
+/// One renderable block inside a turn.
+pub enum Block {
+    Thinking(String),
+    Text(String),
+    ToolUse { name: String, input: Value },
+    /// A tool result's inner text parts (one harness "tool_result" block).
+    ToolResult { parts: Vec<String> },
+}
+
+/// A normalized transcript event, harness-independent.
+pub enum Event {
+    SessionStart,
+    /// Assistant turn: Thinking / Text / ToolUse blocks.
+    Assistant(Vec<Block>),
+    /// Tool-result turn: ToolResult blocks.
+    Results(Vec<Block>),
+    /// Final result text (live "done" line only).
+    Done(String),
+}
+
+/// Parse one JSONL line (already deserialized) into 0+ normalized events.
+pub fn parse_line(harness: Harness, v: &Value) -> Vec<Event> {
+    match harness {
+        Harness::Claude => parse_claude(v),
+        Harness::Codex => parse_codex(v),
+        Harness::Gemini => parse_gemini(v),
+        Harness::Opencode => parse_opencode(v),
+    }
+}
+
+fn parse_claude(v: &Value) -> Vec<Event> {
+    let kind = match v.get("type").and_then(|t| t.as_str()) {
+        Some(k) => k,
+        None => return vec![],
+    };
+    match kind {
+        "system" if v.get("subtype").and_then(|s| s.as_str()) == Some("init") => {
+            vec![Event::SessionStart]
+        }
+        "assistant" => {
+            let blocks = claude_blocks(v, false);
+            if blocks.is_empty() { vec![] } else { vec![Event::Assistant(blocks)] }
+        }
+        "user" => {
+            let blocks = claude_blocks(v, true);
+            if blocks.is_empty() { vec![] } else { vec![Event::Results(blocks)] }
+        }
+        "result" => v
+            .get("result")
+            .and_then(|r| r.as_str())
+            .map(|r| vec![Event::Done(r.to_string())])
+            .unwrap_or_default(),
+        _ => vec![],
+    }
+}
+
+/// Collect blocks from a claude message. `results` selects tool_result blocks
+/// (user turn) vs thinking/text/tool_use blocks (assistant turn).
+fn claude_blocks(v: &Value, results: bool) -> Vec<Block> {
+    let content = match v.get("message").and_then(|m| m.get("content")).and_then(|c| c.as_array()) {
+        Some(c) => c,
+        None => return vec![],
+    };
+    content
+        .iter()
+        .filter_map(|b| {
+            let t = b.get("type")?.as_str()?;
+            match (results, t) {
+                (false, "thinking") => Some(Block::Thinking(b.get("thinking")?.as_str()?.to_string())),
+                (false, "text") => Some(Block::Text(b.get("text")?.as_str()?.to_string())),
+                (false, "tool_use") => Some(Block::ToolUse {
+                    name: b.get("name")?.as_str()?.to_string(),
+                    input: b.get("input").cloned().unwrap_or(Value::Null),
+                }),
+                (true, "tool_result") => {
+                    let parts = b
+                        .get("content")?
+                        .as_array()?
+                        .iter()
+                        .filter_map(|c| c.get("text").and_then(|t| t.as_str()).map(String::from))
+                        .collect();
+                    Some(Block::ToolResult { parts })
+                }
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+// Stubs for later phases — return no events so other harnesses are inert until
+// implemented (Tasks 11, 13, 15).
+fn parse_codex(_v: &Value) -> Vec<Event> { vec![] }
+fn parse_gemini(_v: &Value) -> Vec<Event> { vec![] }
+fn parse_opencode(_v: &Value) -> Vec<Event> { vec![] }
+
+/// Render a captured JSONL transcript into readable markdown.
+pub fn render_transcript(harness: Harness, jsonl: &str) -> String {
     jsonl
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-        .filter_map(render_event)
+        .flat_map(|v| parse_line(harness, &v))
+        .filter_map(|e| render_md_event(&e))
         .collect::<Vec<_>>()
         .join("\n\n")
 }
 
-fn render_event(event: Value) -> Option<String> {
-    let kind = event.get("type")?.as_str()?;
-    let content = event.get("message")?.get("content")?.as_array()?;
-    let role = match kind {
-        "assistant" => "Assistant",
-        "user" => "Tool result",
-        _ => return None,
-    };
-    let blocks: Vec<String> = content.iter().filter_map(render_block).collect();
-    if blocks.is_empty() {
-        return None;
+fn render_md_event(event: &Event) -> Option<String> {
+    match event {
+        Event::Assistant(blocks) => {
+            let rendered: Vec<String> = blocks.iter().filter_map(render_md_block).collect();
+            (!rendered.is_empty()).then(|| format!("### Assistant\n\n{}", rendered.join("\n\n")))
+        }
+        Event::Results(blocks) => {
+            let rendered: Vec<String> = blocks.iter().filter_map(render_md_block).collect();
+            (!rendered.is_empty()).then(|| format!("### Tool result\n\n{}", rendered.join("\n\n")))
+        }
+        Event::SessionStart | Event::Done(_) => None,
     }
-    Some(format!("### {role}\n\n{}", blocks.join("\n\n")))
 }
 
-fn render_block(block: &Value) -> Option<String> {
-    match block.get("type")?.as_str()? {
-        "thinking" => {
-            let t = block.get("thinking")?.as_str()?;
+fn render_md_block(block: &Block) -> Option<String> {
+    match block {
+        Block::Thinking(t) => {
             Some(format!("<details><summary>Thinking</summary>\n\n{t}\n\n</details>"))
         }
-        "text" => Some(block.get("text")?.as_str()?.to_string()),
-        "tool_use" => {
-            let name = block.get("name")?.as_str()?;
-            let input = block.get("input").cloned().unwrap_or(Value::Null);
-            let pretty = serde_json::to_string_pretty(&input).unwrap_or_else(|_| input.to_string());
+        Block::Text(t) => Some(t.clone()),
+        Block::ToolUse { name, input } => {
+            let pretty = serde_json::to_string_pretty(input).unwrap_or_else(|_| input.to_string());
             Some(format!("**→ {name}**\n```json\n{pretty}\n```"))
         }
-        "tool_result" => {
-            let inner = block.get("content")?.as_array()?;
-            let text: String = inner
-                .iter()
-                .filter_map(|c| c.get("text").and_then(|t| t.as_str()))
-                .collect::<Vec<_>>()
-                .join("\n");
-            Some(format!("```\n{text}\n```"))
-        }
-        _ => None,
+        Block::ToolResult { parts } => Some(format!("```\n{}\n```", parts.join("\n"))),
     }
 }
 
-/// Format a single stream-json event into a compact, human-readable line for
-/// live console display during a run (spec §11 runner). Returns None for
-/// events with nothing useful to show. Distinct from `render_transcript`, which
-/// produces the full markdown record after the run.
-pub fn format_event_live(event: &Value) -> Option<String> {
-    match event.get("type")?.as_str()? {
-        "system" if event.get("subtype").and_then(|s| s.as_str()) == Some("init") => {
-            Some("● session started".to_string())
+/// Format one JSONL line (already deserialized) into a compact live console
+/// string. Returns None when there is nothing useful to show.
+pub fn format_event_live(harness: Harness, v: &Value) -> Option<String> {
+    let lines: Vec<String> = parse_line(harness, v).iter().filter_map(render_live_event).collect();
+    (!lines.is_empty()).then(|| lines.join("\n"))
+}
+
+fn render_live_event(event: &Event) -> Option<String> {
+    match event {
+        Event::SessionStart => Some("● session started".to_string()),
+        Event::Done(r) => Some(format!("● done: {r}")),
+        Event::Assistant(blocks) => {
+            let lines: Vec<String> = blocks.iter().filter_map(render_live_block).collect();
+            (!lines.is_empty()).then(|| lines.join("\n"))
         }
-        "assistant" => {
-            let blocks: Vec<String> = event
-                .get("message")?
-                .get("content")?
-                .as_array()?
+        Event::Results(blocks) => {
+            let lines: Vec<String> = blocks
                 .iter()
-                .filter_map(format_block_live)
+                .filter_map(|b| match b {
+                    Block::ToolResult { parts } => render_live_result(parts),
+                    _ => None,
+                })
                 .collect();
-            (!blocks.is_empty()).then(|| blocks.join("\n"))
+            (!lines.is_empty()).then(|| lines.join("\n"))
         }
-        "user" => {
-            let blocks: Vec<String> = event
-                .get("message")?
-                .get("content")?
-                .as_array()?
-                .iter()
-                .filter_map(format_result_live)
-                .collect();
-            (!blocks.is_empty()).then(|| blocks.join("\n"))
-        }
-        "result" => event
-            .get("result")
-            .and_then(|r| r.as_str())
-            .map(|r| format!("● done: {r}")),
-        _ => None,
     }
 }
 
 fn truncate(s: &str, max: usize) -> String {
     let out: String = s.chars().take(max).collect();
-    if s.chars().count() > max {
-        format!("{out}…")
-    } else {
-        out
-    }
+    if s.chars().count() > max { format!("{out}…") } else { out }
 }
 
-fn format_block_live(block: &Value) -> Option<String> {
-    match block.get("type")?.as_str()? {
-        "thinking" => {
-            let t = block.get("thinking")?.as_str()?.trim();
+fn render_live_block(block: &Block) -> Option<String> {
+    match block {
+        Block::Thinking(t) => {
+            let t = t.trim();
             (!t.is_empty()).then(|| {
                 let indented = t.lines().map(|l| format!("  {l}")).collect::<Vec<_>>().join("\n");
                 format!("  [thinking]\n{indented}")
             })
         }
-        "text" => {
-            let t = block.get("text")?.as_str()?.trim();
+        Block::Text(t) => {
+            let t = t.trim();
             (!t.is_empty()).then(|| format!("  {t}"))
         }
-        "tool_use" => {
-            let name = block
-                .get("name")?
-                .as_str()?
-                .trim_start_matches("mcp__skylinebench__");
-            let input = block.get("input").cloned().unwrap_or(Value::Null);
+        Block::ToolUse { name, input } => {
+            let name = name.trim_start_matches("mcp__skylinebench__");
             Some(format!("  → {name} {}", truncate(&input.to_string(), 120)))
         }
-        _ => None,
+        Block::ToolResult { .. } => None,
     }
 }
 
-fn format_result_live(block: &Value) -> Option<String> {
-    if block.get("type")?.as_str()? != "tool_result" {
-        return None;
-    }
-    let text: String = block
-        .get("content")?
-        .as_array()?
-        .iter()
-        .filter_map(|c| c.get("text").and_then(|t| t.as_str()))
-        .collect::<Vec<_>>()
-        .join(" ");
+fn render_live_result(parts: &[String]) -> Option<String> {
+    let text = parts.join(" ");
     if let Ok(v) = serde_json::from_str::<Value>(&text) {
         if let Some(p) = v.get("city_status").or_else(|| v.get("benchmark_progress")) {
             let optf = |new: &str, old: &str, prec: usize| {
@@ -168,6 +226,7 @@ fn format_result_live(block: &Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::benchmark::harness::Harness;
 
     #[test]
     fn renders_assistant_text_and_tool_calls() {
@@ -177,7 +236,7 @@ mod tests {
             r#"{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"{\"ok\":true}"}]}]}}"#,
             "\n",
         );
-        let md = render_transcript(jsonl);
+        let md = render_transcript(Harness::Claude, jsonl);
         assert!(md.contains("Building a bypass."), "assistant text: {md}");
         assert!(md.contains("build_road"), "tool name: {md}");
         assert!(md.contains("Highway"), "tool input: {md}");
@@ -186,7 +245,7 @@ mod tests {
 
     #[test]
     fn skips_malformed_lines() {
-        let md = render_transcript("not json\n{}\n");
+        let md = render_transcript(Harness::Claude, "not json\n{}\n");
         assert!(md.is_empty(), "malformed-only input should render nothing, got: {md}");
     }
 
@@ -196,7 +255,7 @@ mod tests {
             r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Adding a bypass."},{"type":"tool_use","name":"mcp__skylinebench__build_road","input":{"road_type":"Highway"}}]}}"#,
         )
         .unwrap();
-        let line = format_event_live(&event).unwrap();
+        let line = format_event_live(Harness::Claude, &event).unwrap();
         assert!(line.contains("Adding a bypass."), "text: {line}");
         assert!(line.contains("→ build_road"), "stripped tool name: {line}");
         assert!(line.contains("Highway"), "input: {line}");
@@ -208,7 +267,7 @@ mod tests {
             r#"{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"{\"ok\":true,\"benchmark_progress\":{\"money_spent\":12000,\"num_changes\":3,\"congested_meters_current\":840.0,\"congested_meters_target\":50.0,\"flow_current\":12.3,\"seconds_remaining\":580}}"}]}]}}"#,
         )
         .unwrap();
-        let line = format_event_live(&event).unwrap();
+        let line = format_event_live(Harness::Claude, &event).unwrap();
         assert!(line.contains("congested 840m"), "congestion meters: {line}");
         assert!(line.contains("flow 12.3"), "flow diagnostic: {line}");
         assert!(line.contains("changes 3"), "changes: {line}");
@@ -221,7 +280,7 @@ mod tests {
             r#"{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"{\"ok\":true,\"city_status\":{\"money_spent\":12000,\"changes_made\":3,\"congested_road_meters\":840.0,\"congested_junctions\":7,\"traffic_flow\":12.3,\"time_remaining\":580}}"}]}]}}"#,
         )
         .unwrap();
-        let line = format_event_live(&event).unwrap();
+        let line = format_event_live(Harness::Claude, &event).unwrap();
         assert!(line.contains("840m"), "congestion meters: {line}");
         assert!(line.contains("7 junctions"), "junction count: {line}");
         assert!(line.contains("580s left"), "time: {line}");
@@ -233,7 +292,7 @@ mod tests {
             r#"{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"{\"ok\":true,\"benchmark_progress\":{\"money_spent\":0,\"num_changes\":0,\"congested_meters_current\":null,\"congested_meters_target\":50.0,\"flow_current\":null,\"seconds_remaining\":10800}}"}]}]}}"#,
         )
         .unwrap();
-        let line = format_event_live(&event).unwrap();
+        let line = format_event_live(Harness::Claude, &event).unwrap();
         assert!(line.contains("congested ?m"), "null current renders ?: {line}");
         assert!(line.contains("flow ?"), "null flow renders ?: {line}");
     }
@@ -241,6 +300,6 @@ mod tests {
     #[test]
     fn live_skips_unknown_events() {
         let event: Value = serde_json::from_str(r#"{"type":"rate_limit_event"}"#).unwrap();
-        assert!(format_event_live(&event).is_none());
+        assert!(format_event_live(Harness::Claude, &event).is_none());
     }
 }

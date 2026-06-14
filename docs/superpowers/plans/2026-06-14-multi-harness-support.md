@@ -1225,14 +1225,10 @@ pub fn spec(inputs: &LaunchInputs) -> LaunchSpec {
         toml_string(&inputs.mcp_shell),
     );
 
-    let mut argv = vec!["codex".to_string(), "exec".to_string(), inputs.prompt.clone()];
-    if let Some(model) = &inputs.model {
-        argv.push("-m".to_string());
-        argv.push(model.clone());
-    }
-    argv.extend(
-        ["-a", "never", "-s", "workspace-write", "--json"].map(String::from),
-    );
+    let model_args = inputs.model.iter().flat_map(|m| ["-m".to_string(), m.clone()]);
+    let head = ["codex", "exec", inputs.prompt.as_str()].map(String::from);
+    let tail = ["-a", "never", "-s", "workspace-write", "--json"].map(String::from);
+    let argv: Vec<String> = head.into_iter().chain(model_args).chain(tail).collect();
 
     LaunchSpec {
         argv,
@@ -1451,14 +1447,10 @@ pub fn spec(inputs: &LaunchInputs) -> LaunchSpec {
         }
     });
 
-    let mut argv = vec!["gemini".to_string(), "-p".to_string(), inputs.prompt.clone()];
-    if let Some(model) = &inputs.model {
-        argv.push("-m".to_string());
-        argv.push(model.clone());
-    }
-    argv.extend(
-        ["--approval-mode", "yolo", "--output-format", "stream-json"].map(String::from),
-    );
+    let model_args = inputs.model.iter().flat_map(|m| ["-m".to_string(), m.clone()]);
+    let head = ["gemini", "-p", inputs.prompt.as_str()].map(String::from);
+    let tail = ["--approval-mode", "yolo", "--output-format", "stream-json"].map(String::from);
+    let argv: Vec<String> = head.into_iter().chain(model_args).chain(tail).collect();
 
     LaunchSpec {
         argv,
@@ -1468,7 +1460,8 @@ pub fn spec(inputs: &LaunchInputs) -> LaunchSpec {
         ],
         config_files: vec![ConfigFile {
             path: settings_path,
-            contents: serde_json::to_string_pretty(&contents).unwrap(),
+            contents: serde_json::to_string_pretty(&contents)
+                .expect("serde_json::Value is always serializable"),
         }],
         required_env: vec!["GEMINI_API_KEY".to_string()],
     }
@@ -1642,19 +1635,18 @@ pub fn spec(inputs: &LaunchInputs) -> LaunchSpec {
         }
     });
 
-    let mut argv = vec!["opencode".to_string(), "run".to_string(), inputs.prompt.clone()];
-    if let Some(model) = &inputs.model {
-        argv.push("-m".to_string());
-        argv.push(model.clone());
-    }
-    argv.extend(["--format", "json", "--dangerously-skip-permissions"].map(String::from));
+    let model_args = inputs.model.iter().flat_map(|m| ["-m".to_string(), m.clone()]);
+    let head = ["opencode", "run", inputs.prompt.as_str()].map(String::from);
+    let tail = ["--format", "json", "--dangerously-skip-permissions"].map(String::from);
+    let argv: Vec<String> = head.into_iter().chain(model_args).chain(tail).collect();
 
     LaunchSpec {
         argv,
         env: vec![("OPENCODE_CONFIG".to_string(), config_path.display().to_string())],
         config_files: vec![ConfigFile {
             path: config_path,
-            contents: serde_json::to_string_pretty(&contents).unwrap(),
+            contents: serde_json::to_string_pretty(&contents)
+                .expect("serde_json::Value is always serializable"),
         }],
         required_env: vec!["OPENROUTER_API_KEY".to_string()],
     }

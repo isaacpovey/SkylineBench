@@ -390,20 +390,46 @@ struct LoadSaveBody {
     save_name: String,
 }
 
+fn mock_saves() -> Vec<crate::contract::SaveInfo> {
+    vec![crate::contract::SaveInfo {
+        name: "gridlock-v1".to_string(),
+        city_name: Some("Gridlock City".to_string()),
+        full_name: "skylinebench.gridlock-v1".to_string(),
+    }]
+}
+
 async fn load_save(
     State(s): State<MockState>,
-    Json(_body): Json<LoadSaveBody>,
+    Json(body): Json<LoadSaveBody>,
 ) -> Json<LoadResult> {
-    let mut c = s.city.lock().unwrap();
-    c.nodes.clear();
-    c.segments.clear();
-    c.zones.clear();
-    c.tick = 0;
-    c.next_id = 1;
-    Json(LoadResult {
-        ok: true,
-        city_loaded: true,
-    })
+    let saves = mock_saves();
+    let resolved = saves.iter().find(|s| s.name == body.save_name).cloned();
+    match resolved {
+        None => Json(LoadResult {
+            ok: false,
+            city_loaded: false,
+            resolved: None,
+            available: saves,
+        }),
+        Some(resolved) => {
+            let mut c = s.city.lock().unwrap();
+            c.nodes.clear();
+            c.segments.clear();
+            c.zones.clear();
+            c.tick = 0;
+            c.next_id = 1;
+            Json(LoadResult {
+                ok: true,
+                city_loaded: true,
+                resolved: Some(resolved),
+                available: Vec::new(),
+            })
+        }
+    }
+}
+
+async fn saves() -> Json<crate::contract::Saves> {
+    Json(crate::contract::Saves { saves: mock_saves() })
 }
 
 #[derive(Deserialize)]
@@ -474,6 +500,7 @@ pub fn router() -> Router {
         .route("/action/upgrade-road", post(upgrade_road))
         .route("/action/set-zone", post(set_zone))
         .route("/load-save", post(load_save))
+        .route("/saves", get(saves))
         .route("/clock", post(clock))
         .route("/screenshot", post(screenshot))
         .with_state(MockState::new())
@@ -493,6 +520,55 @@ pub async fn bind(addr: SocketAddr) -> (SocketAddr, impl std::future::Future<Out
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn saves_endpoint_lists_known_save() {
+        let (addr, server) = bind("127.0.0.1:0".parse().unwrap()).await;
+        tokio::spawn(server);
+        let body: crate::contract::Saves = reqwest::Client::new()
+            .get(format!("http://{addr}/saves"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert!(body.saves.iter().any(|s| s.name == "gridlock-v1"));
+    }
+
+    #[tokio::test]
+    async fn load_save_unknown_name_misses_with_available() {
+        let (addr, server) = bind("127.0.0.1:0".parse().unwrap()).await;
+        tokio::spawn(server);
+        let resp: crate::contract::LoadResult = reqwest::Client::new()
+            .post(format!("http://{addr}/load-save"))
+            .json(&serde_json::json!({ "save_name": "nope" }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert!(!resp.ok);
+        assert!(resp.available.iter().any(|s| s.name == "gridlock-v1"));
+    }
+
+    #[tokio::test]
+    async fn load_save_known_name_resolves_identity() {
+        let (addr, server) = bind("127.0.0.1:0".parse().unwrap()).await;
+        tokio::spawn(server);
+        let resp: crate::contract::LoadResult = reqwest::Client::new()
+            .post(format!("http://{addr}/load-save"))
+            .json(&serde_json::json!({ "save_name": "gridlock-v1" }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert!(resp.ok);
+        assert_eq!(resp.resolved.unwrap().name, "gridlock-v1");
+    }
 
     #[tokio::test]
     async fn road_types_endpoint_includes_costs() {

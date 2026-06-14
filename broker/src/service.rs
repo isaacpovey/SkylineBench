@@ -803,7 +803,7 @@ mod tests {
         reset_scenario(
             &c,
             ResetScenarioArgs {
-                save: "anything".into(),
+                save: "gridlock-v1".into(),
             },
         )
         .await

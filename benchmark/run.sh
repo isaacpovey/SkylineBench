@@ -5,7 +5,7 @@ MAP=""
 MOD_URL="http://127.0.0.1:8787"
 MAP_SOURCE="test"
 MODEL=""
-WATCH=0
+HARNESS="claude"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_ID="$(date +%Y%m%d-%H%M%S)"
 OUT_DIR="$ROOT/benchmark/runs/$RUN_ID"
@@ -17,17 +17,19 @@ while [ $# -gt 0 ]; do
     --mod-url) MOD_URL="$2"; shift 2 ;;
     --out) OUT_DIR="$2"; shift 2 ;;
     --model) MODEL="$2"; shift 2 ;;
-    --watch|--interactive) WATCH=1; shift ;;
+    --harness) HARNESS="$2"; shift 2 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
 
-[ -n "$MAP" ] || { echo "usage: run.sh --map <id> [--watch] [--model NAME] [--mod-url URL] [--map-source SRC] [--out DIR]" >&2; exit 2; }
+[ -n "$MAP" ] || { echo "usage: run.sh --map <id> [--harness claude|codex|gemini|opencode] [--model NAME] [--mod-url URL] [--map-source SRC] [--out DIR]" >&2; exit 2; }
 case "$MAP" in
   *[!A-Za-z0-9_-]*) echo "map id must be alphanumeric, dash, or underscore" >&2; exit 2 ;;
 esac
 
 mkdir -p "$OUT_DIR"
+printf '%s\n' "$HARNESS" > "$OUT_DIR/harness.txt"
+if [ -n "$MODEL" ]; then printf '%s\n' "$MODEL" > "$OUT_DIR/model.txt"; fi
 
 # Only one run may drive the single game instance at a time. A second run.sh
 # started mid-run (this happened on 2026-06-09: 21:01 + 21:04 against one game)
@@ -53,14 +55,6 @@ SESSION_DIR="$(mktemp -d "$SESSION_BASE/$RUN_ID.XXXXXX")"
 WORKSPACE="$SESSION_DIR/workspace"
 mkdir -p "$WORKSPACE"
 
-SANDBOX_PROFILE="$SESSION_DIR/deny-repo.sb"
-cat > "$SANDBOX_PROFILE" <<SB
-(version 1)
-(allow default)
-(deny file-read* (subpath "$ROOT"))
-SB
-command -v sandbox-exec >/dev/null || { echo "sandbox-exec not found (macOS only)" >&2; exit 1; }
-
 # Always build a fresh release binary so the MCP server can never be a stale
 # build that lacks the `benchmark` subcommand (skipped under DRY_RUN). The
 # binary is copied into SESSION_DIR because the repo copy is unreadable
@@ -85,73 +79,73 @@ export MCP_TOOL_TIMEOUT="${MCP_TOOL_TIMEOUT:-600000}"
 # polluting the agent's context). The dir is persistent — credentials don't
 # transfer from the operator's config (macOS keeps them keyed to it), so the
 # operator logs into this dir ONCE and every run reuses it.
-CLAUDE_CONFIG_DIR="${BENCH_CLAUDE_CONFIG:-$HOME/Library/Application Support/skylinebench/claude-config}"
-mkdir -p "$CLAUDE_CONFIG_DIR"
-[ -f "$CLAUDE_CONFIG_DIR/.claude.json" ] || printf '{"hasCompletedOnboarding": true}\n' > "$CLAUDE_CONFIG_DIR/.claude.json"
-# Skip the OAuth gate when not actually launching the agent (DRY_RUN) or when
-# an API key is supplied (API-key workflows don't need an OAuth login).
-if [ "${DRY_RUN:-0}" != "1" ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-  if ! grep -q oauthAccount "$CLAUDE_CONFIG_DIR/.claude.json" 2>/dev/null; then
-    echo "benchmark Claude config is not logged in. One-time setup:" >&2
-    echo "  CLAUDE_CONFIG_DIR=\"$CLAUDE_CONFIG_DIR\" claude  # then /login, then /exit" >&2
-    exit 1
+if [ "$HARNESS" = "claude" ]; then
+  CLAUDE_CONFIG_DIR="${BENCH_CLAUDE_CONFIG:-$HOME/Library/Application Support/skylinebench/claude-config}"
+  mkdir -p "$CLAUDE_CONFIG_DIR"
+  [ -f "$CLAUDE_CONFIG_DIR/.claude.json" ] || printf '{"hasCompletedOnboarding": true}\n' > "$CLAUDE_CONFIG_DIR/.claude.json"
+  if [ "${DRY_RUN:-0}" != "1" ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+    if ! grep -q oauthAccount "$CLAUDE_CONFIG_DIR/.claude.json" 2>/dev/null; then
+      echo "benchmark Claude config is not logged in. One-time setup:" >&2
+      echo "  CLAUDE_CONFIG_DIR=\"$CLAUDE_CONFIG_DIR\" claude  # then /login, then /exit" >&2
+      exit 1
+    fi
   fi
+  export CLAUDE_CONFIG_DIR
 fi
-export CLAUDE_CONFIG_DIR
 
-# Generate the MCP config: Claude Code spawns `broker benchmark` over stdio.
-MCP_CONFIG="$SESSION_DIR/mcp.json"
-cat > "$MCP_CONFIG" <<JSON
-{
-  "mcpServers": {
-    "skylinebench": {
-      "command": "sh",
-      "args": ["-c", "$BROKER_BIN benchmark --map $MAP --map-source $MAP_SOURCE --mod-url $MOD_URL --out $OUT_DIR --renders-dir $SESSION_DIR/renders --screenshots-dir $SESSION_DIR/screenshots"]
-    }
-  }
-}
-JSON
-cp "$MCP_CONFIG" "$OUT_DIR/mcp.json"
+# The MCP broker command the harness will spawn over stdio.
+MCP_SHELL="$BROKER_BIN benchmark --map $MAP --map-source $MAP_SOURCE --mod-url $MOD_URL --out $OUT_DIR --renders-dir $SESSION_DIR/renders --screenshots-dir $SESSION_DIR/screenshots"
 
-PROMPT="$(cat "$ROOT/benchmark/prompt.md")"
-ALLOWED="mcp__skylinebench__build_road,mcp__skylinebench__bulldoze,mcp__skylinebench__upgrade_road,mcp__skylinebench__set_zoning,mcp__skylinebench__control_time,mcp__skylinebench__get_city_overview,mcp__skylinebench__observe_area,mcp__skylinebench__get_metrics,mcp__skylinebench__list_road_types,mcp__skylinebench__list_zone_types,mcp__skylinebench__render_map,mcp__skylinebench__submit_solution,mcp__skylinebench__query_segments,mcp__skylinebench__apply_plan,mcp__skylinebench__trace_route"
-DISALLOWED="WebFetch,WebSearch"
+# Resolve the harness launch plan (config files + argv + env + required env).
+"$REPO_BIN" harness-prepare \
+  --harness "$HARNESS" \
+  ${MODEL:+--model "$MODEL"} \
+  --prompt-file "$ROOT/benchmark/prompt.md" \
+  --mcp-shell "$MCP_SHELL" \
+  --session-dir "$SESSION_DIR"
 
-SANDBOX=(sandbox-exec -f "$SANDBOX_PROFILE")
-# caffeinate -dims: block display/idle/disk/system sleep for the lifetime of
-# the agent session. Machine sleep killed run 20260609-210135 ~2.8h in.
-KEEPAWAKE=()
-if command -v caffeinate >/dev/null; then KEEPAWAKE=(caffeinate -dims); fi
-MODEL_ARGS=()
-if [ -n "$MODEL" ]; then
-  MODEL_ARGS=(--model "$MODEL")
-  printf '%s\n' "$MODEL" > "$OUT_DIR/model.txt"
+# NUL-delimited read loop (portable to bash 3.2 on stock macOS; `mapfile -d`
+# needs bash 4.4+ which macOS does not ship).
+ARGV=()
+while IFS= read -r -d '' a; do ARGV+=("$a"); done < "$SESSION_DIR/launch.argv"
+while IFS= read -r -d '' kv; do export "$kv"; done < "$SESSION_DIR/launch.env"
+
+# Preflight: harness binary on PATH + required secrets present.
+command -v "${ARGV[0]}" >/dev/null || { echo "harness '$HARNESS' binary '${ARGV[0]}' not found on PATH" >&2; exit 1; }
+if [ -s "$SESSION_DIR/launch.required-env" ]; then
+  while IFS= read -r var; do
+    [ -z "$var" ] && continue
+    if [ -z "${!var:-}" ]; then echo "harness '$HARNESS' requires \$$var to be set" >&2; exit 1; fi
+  done < "$SESSION_DIR/launch.required-env"
 fi
-if [ "$WATCH" -eq 1 ]; then
-  CMD=(${KEEPAWAKE[@]:+"${KEEPAWAKE[@]}"} "${SANDBOX[@]}" claude ${MODEL_ARGS[@]:+"${MODEL_ARGS[@]}"} --mcp-config "$MCP_CONFIG" --strict-mcp-config --allowedTools "$ALLOWED" --disallowedTools "$DISALLOWED" --permission-mode bypassPermissions "$PROMPT")
-else
-  CMD=(${KEEPAWAKE[@]:+"${KEEPAWAKE[@]}"} "${SANDBOX[@]}" claude -p "$PROMPT" ${MODEL_ARGS[@]:+"${MODEL_ARGS[@]}"} --mcp-config "$MCP_CONFIG" --strict-mcp-config --allowedTools "$ALLOWED" --disallowedTools "$DISALLOWED" --permission-mode bypassPermissions --output-format stream-json --verbose)
-fi
+
+# Copy harness config(s) into the run dir for reproducibility.
+[ -f "$SESSION_DIR/mcp.json" ] && cp "$SESSION_DIR/mcp.json" "$OUT_DIR/"
+[ -f "$SESSION_DIR/opencode.json" ] && cp "$SESSION_DIR/opencode.json" "$OUT_DIR/"
+[ -f "$SESSION_DIR/codex/config.toml" ] && cp "$SESSION_DIR/codex/config.toml" "$OUT_DIR/codex-config.toml"
+[ -f "$SESSION_DIR/gemini/.gemini/settings.json" ] && cp "$SESSION_DIR/gemini/.gemini/settings.json" "$OUT_DIR/gemini-settings.json"
+
+# Select the cross-OS sandbox wrapper (deny-repo-read anti-cheat).
+SANDBOX_BACKEND="$("$REPO_BIN" sandbox-prepare --root "$ROOT" --session-dir "$SESSION_DIR")"
+SANDBOX_ARGV=()
+while IFS= read -r -d '' a; do SANDBOX_ARGV+=("$a"); done < "$SESSION_DIR/sandbox.argv"
+printf '%s\n' "$SANDBOX_BACKEND" > "$OUT_DIR/sandbox.txt"
+
+CMD=(${SANDBOX_ARGV[@]:+"${SANDBOX_ARGV[@]}"} "${ARGV[@]}")
 
 if [ "${DRY_RUN:-0}" = "1" ]; then
   printf '%q ' "${CMD[@]}"; echo
-  echo "--- mcp.json ---" >&2
-  cat "$MCP_CONFIG" >&2
+  echo "--- harness: $HARNESS / sandbox: $SANDBOX_BACKEND ---" >&2
+  echo "--- launch.env ---" >&2; tr '\0' '\n' < "$SESSION_DIR/launch.env" >&2
+  for f in "$SESSION_DIR"/mcp.json "$SESSION_DIR"/codex/config.toml "$SESSION_DIR"/gemini/.gemini/settings.json "$SESSION_DIR"/opencode.json; do
+    [ -f "$f" ] && { echo "--- $f ---" >&2; cat "$f" >&2; }
+  done
   exit 0
 fi
 
-if [ "$WATCH" -eq 1 ]; then
-  # `|| true`: the broker closing the MCP connection at the wall-clock cap causes
-  # claude to exit non-zero — that's expected, not a failure (same rationale as
-  # the headless branch below).
-  (cd "$WORKSPACE" && "${CMD[@]}") || true
-else
-  # Capture the raw stream-json to transcript.jsonl unchanged, render a
-  # human-readable line per event to the console, and also save that to run.log.
-  # `|| true`: if the broker hits the wall-clock cap it exits and closes the MCP
-  # connection, so `claude` exits non-zero — that's expected, not a failure.
-  (cd "$WORKSPACE" && "${CMD[@]}") | tee "$OUT_DIR/transcript.jsonl" | "$REPO_BIN" format-stream | tee "$OUT_DIR/run.log" || true
-fi
+# `|| true`: when the broker hits the wall-clock cap it closes the MCP
+# connection, so the harness exits non-zero — expected, not a failure.
+(cd "$WORKSPACE" && "${CMD[@]}") | tee "$OUT_DIR/transcript.jsonl" | "$REPO_BIN" format-stream --harness "$HARNESS" | tee "$OUT_DIR/run.log" || true
 
 if [ -d "$SESSION_DIR/renders" ]; then
   mv "$SESSION_DIR/renders" "$OUT_DIR/renders"
@@ -161,9 +155,7 @@ if [ -d "$SESSION_DIR/screenshots" ]; then
   mv "$SESSION_DIR/screenshots" "$OUT_DIR/screenshots"
 fi
 
-if [ "$WATCH" -ne 1 ]; then
-  "$REPO_BIN" render-transcript --input "$OUT_DIR/transcript.jsonl" --out "$OUT_DIR/transcript.md" || true
-fi
+"$REPO_BIN" render-transcript --input "$OUT_DIR/transcript.jsonl" --out "$OUT_DIR/transcript.md" --harness "$HARNESS" || true
 
 # The slow settle + final measurement runs here, outside the agent session, so
 # no MCP client timeout can kill it (the old in-server finalize made

@@ -59,15 +59,33 @@ namespace SkylineBench.Bridge
                 return ActionResultDto.Fail(RoadErrors.Reason((ulong)err));
 
             var result = new ActionResultDto { Ok = true };
-            if (!test)
+            if (!test && segment != 0)
             {
-                if (segment != 0) result.CreatedSegments.Add(segment);
-                if (node != 0) result.CreatedNodes.Add(node);
-                if (startCp.m_node != 0) result.SnappedNodes.Add(startCp.m_node);
-                if (endCp.m_node != 0) result.SnappedNodes.Add(endCp.m_node);
+                result.CreatedSegments.Add(segment);
+                // CreateNode returns only one `out node`, so classify the
+                // segment's actual endpoints: a node we snapped a control point
+                // to is reported snapped, the rest are newly created.
+                var seg = nm.m_segments.m_buffer[segment];
+                ClassifyNode(result, seg.m_startNode, startCp.m_node, endCp.m_node);
+                ClassifyNode(result, seg.m_endNode, startCp.m_node, endCp.m_node);
             }
             result.ZonedBuildingsFronting = (int)Frontage.CountZonedBuildingsNear(startPos, endPos, prefab.m_halfWidth);
             return result;
+        }
+
+        /// <summary>Record a segment endpoint as snapped (it matches a control
+        /// point we snapped onto an existing node) or as newly created.</summary>
+        private static void ClassifyNode(ActionResultDto result, ushort nodeId, ushort snapA, ushort snapB)
+        {
+            if (nodeId == 0) return;
+            if (nodeId == snapA || nodeId == snapB)
+            {
+                if (!result.SnappedNodes.Contains(nodeId)) result.SnappedNodes.Add(nodeId);
+            }
+            else if (!result.CreatedNodes.Contains(nodeId))
+            {
+                result.CreatedNodes.Add(nodeId);
+            }
         }
 
         /// <summary>Snap to the nearest existing node within tolerance whose

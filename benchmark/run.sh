@@ -110,13 +110,16 @@ ARGV=()
 while IFS= read -r -d '' a; do ARGV+=("$a"); done < "$SESSION_DIR/launch.argv"
 while IFS= read -r -d '' kv; do export "$kv"; done < "$SESSION_DIR/launch.env"
 
-# Preflight: harness binary on PATH + required secrets present.
-command -v "${ARGV[0]}" >/dev/null || { echo "harness '$HARNESS' binary '${ARGV[0]}' not found on PATH" >&2; exit 1; }
-if [ -s "$SESSION_DIR/launch.required-env" ]; then
-  while IFS= read -r var; do
-    [ -z "$var" ] && continue
-    if [ -z "${!var:-}" ]; then echo "harness '$HARNESS' requires \$$var to be set" >&2; exit 1; fi
-  done < "$SESSION_DIR/launch.required-env"
+# Preflight (skipped under DRY_RUN, which only inspects the resolved command):
+# harness binary on PATH + required secrets present.
+if [ "${DRY_RUN:-0}" != "1" ]; then
+  command -v "${ARGV[0]}" >/dev/null || { echo "harness '$HARNESS' binary '${ARGV[0]}' not found on PATH" >&2; exit 1; }
+  if [ -s "$SESSION_DIR/launch.required-env" ]; then
+    while IFS= read -r var; do
+      [ -z "$var" ] && continue
+      if [ -z "${!var:-}" ]; then echo "harness '$HARNESS' requires \$$var to be set" >&2; exit 1; fi
+    done < "$SESSION_DIR/launch.required-env"
+  fi
 fi
 
 # Copy harness config(s) into the run dir for reproducibility.

@@ -155,17 +155,100 @@ pub fn assemble(run_dir: &Path, fps: u32, out: &Path) -> Result<(), anyhow::Erro
     })?;
     eprintln!("timelapse: {total} frames staged; running ffmpeg…");
 
+    let core = run_dir.join("timelapse-core.mp4");
     let status = std::process::Command::new("ffmpeg")
         .args(["-y", "-framerate", &fps.to_string(), "-i"])
         .arg(staging.join("%06d.png"))
+        .args(["-pix_fmt", "yuv420p"])
+        .arg(&core)
+        .status()
+        .map_err(|e| anyhow::anyhow!("could not run ffmpeg ({e}) — install it with `brew install ffmpeg`"))?;
+    anyhow::ensure!(status.success(), "ffmpeg exited with {status}");
+    std::fs::remove_dir_all(&staging).ok();
+
+    let start = assemble_flyby(run_dir, "start")?;
+    let end = assemble_flyby(run_dir, "end")?;
+    let parts: Vec<PathBuf> = start.into_iter().chain([core.clone()]).chain(end).collect();
+    if parts.len() == 1 {
+        std::fs::rename(&core, out)?;
+    } else {
+        concat_mp4(&parts, out)?;
+        std::fs::remove_file(&core).ok();
+    }
+    eprintln!("timelapse: wrote {}", out.display());
+    Ok(())
+}
+
+/// The flyby pass subdirs for `label` ("start"/"end") that exist and contain a
+/// frame, in playback order (N/S then W/E).
+pub fn flyby_pass_dirs(run_dir: &Path, label: &str) -> Vec<PathBuf> {
+    let base = run_dir.join("screenshots").join("flyby");
+    ["ns", "we"]
+        .iter()
+        .map(|s| base.join(format!("{label}_{s}")))
+        .filter(|d| d.join("00001.png").exists())
+        .collect()
+}
+
+/// Encode a directory of NNNNN.png frames into `out` at `fps`.
+fn encode_png_dir(dir: &Path, fps: u32, out: &Path) -> Result<(), anyhow::Error> {
+    let status = std::process::Command::new("ffmpeg")
+        .args(["-y", "-framerate", &fps.to_string(), "-i"])
+        .arg(dir.join("%05d.png"))
         .args(["-pix_fmt", "yuv420p"])
         .arg(out)
         .status()
         .map_err(|e| anyhow::anyhow!("could not run ffmpeg ({e}) — install it with `brew install ffmpeg`"))?;
     anyhow::ensure!(status.success(), "ffmpeg exited with {status}");
-    std::fs::remove_dir_all(&staging).ok();
-    eprintln!("timelapse: wrote {}", out.display());
     Ok(())
+}
+
+/// Concatenate mp4 `parts` into `out` via the ffmpeg concat demuxer.
+fn concat_mp4(parts: &[PathBuf], out: &Path) -> Result<(), anyhow::Error> {
+    let staging = out.with_extension("concat.txt");
+    let list = parts
+        .iter()
+        .map(|p| format!("file '{}'", p.display()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write(&staging, list)?;
+    let status = std::process::Command::new("ffmpeg")
+        .args(["-y", "-f", "concat", "-safe", "0", "-i"])
+        .arg(&staging)
+        .args(["-c", "copy"])
+        .arg(out)
+        .status()
+        .map_err(|e| anyhow::anyhow!("could not run ffmpeg ({e})"))?;
+    std::fs::remove_file(&staging).ok();
+    anyhow::ensure!(status.success(), "ffmpeg concat exited with {status}");
+    Ok(())
+}
+
+/// Build flyby_<label>.mp4 from its passes (24fps playback). Returns the path if
+/// any pass existed, else None.
+fn assemble_flyby(run_dir: &Path, label: &str) -> Result<Option<PathBuf>, anyhow::Error> {
+    let dirs = flyby_pass_dirs(run_dir, label);
+    if dirs.is_empty() {
+        return Ok(None);
+    }
+    let pass_mp4s: Vec<PathBuf> = dirs
+        .iter()
+        .enumerate()
+        .map(|(i, d)| {
+            let p = run_dir.join(format!("flyby-{label}-{i}.mp4"));
+            encode_png_dir(d, 24, &p).map(|()| p)
+        })
+        .collect::<Result<_, _>>()?;
+    let out = run_dir.join(format!("flyby_{label}.mp4"));
+    if pass_mp4s.len() == 1 {
+        std::fs::copy(&pass_mp4s[0], &out)?;
+    } else {
+        concat_mp4(&pass_mp4s, &out)?;
+    }
+    for p in &pass_mp4s {
+        std::fs::remove_file(p).ok();
+    }
+    Ok(Some(out))
 }
 
 #[cfg(test)]
@@ -252,6 +335,23 @@ mod tests {
         assert_eq!(frames.len(), 1, "should use screenshots when they have frames");
         assert_eq!(frames[0].tick, 5, "should be the screenshot frame, not the render");
         std::fs::remove_dir_all(&run_dir).ok();
+    }
+
+    #[test]
+    fn flyby_pass_dirs_collects_passes_in_order() {
+        let run = std::env::temp_dir().join(format!("sb-fly-{}", std::process::id()));
+        let base = run.join("screenshots/flyby");
+        for sub in ["start_ns", "start_we", "end_ns", "end_we"] {
+            std::fs::create_dir_all(base.join(sub)).unwrap();
+            std::fs::write(base.join(sub).join("00001.png"), b"x").unwrap();
+        }
+        let start = flyby_pass_dirs(&run, "start");
+        let end = flyby_pass_dirs(&run, "end");
+        assert_eq!(start, vec![base.join("start_ns"), base.join("start_we")]);
+        assert_eq!(end, vec![base.join("end_ns"), base.join("end_we")]);
+        std::fs::remove_dir_all(base.join("start_we")).unwrap();
+        assert_eq!(flyby_pass_dirs(&run, "start"), vec![base.join("start_ns")]);
+        std::fs::remove_dir_all(&run).ok();
     }
 
     #[test]

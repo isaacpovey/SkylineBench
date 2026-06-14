@@ -49,6 +49,10 @@ impl ScreenshotSink {
         self.disabled.load(Ordering::Relaxed)
     }
 
+    pub fn dir(&self) -> &std::path::Path {
+        &self.dir
+    }
+
     /// Capture a frame without persisting it. Used for "before" shots that are
     /// only written once the action they precede succeeds.
     pub async fn grab(&self, client: &BridgeClient, shot: CameraShot) -> Option<Vec<u8>> {

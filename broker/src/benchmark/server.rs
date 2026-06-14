@@ -126,6 +126,29 @@ impl BenchmarkServer {
         .await;
     }
 
+    /// Record a begin/end highway flyby into `<screenshots>/flyby/<label>_{ns,we}`.
+    /// Best-effort: a failure logs and never affects the run.
+    async fn run_flyby(&self, label: &str) {
+        let Some(sink) = &self.screenshots else { return };
+        if sink.disabled() {
+            return;
+        }
+        let Ok(net) = self.client.network().await else { return };
+        let path = crate::service::highway_flyby_path(&net);
+        let base = sink.dir().join("flyby");
+        for (suffix, kfs) in [("ns", &path.ns), ("we", &path.we)] {
+            if kfs.is_empty() {
+                continue;
+            }
+            let dir = base.join(format!("{label}_{suffix}"));
+            let dir_str = dir.to_string_lossy().to_string();
+            if let Err(e) = self.client.flyby(kfs, 6.0, 12, &dir_str).await {
+                eprintln!("benchmark: flyby '{label}_{suffix}' failed ({e}); skipping");
+                return;
+            }
+        }
+    }
+
     /// Capture (without persisting) the state of an edit location before the
     /// edit runs. Persisted by shoot_action_pair only if the edit succeeds, so
     /// failed actions still leave no frames behind.
@@ -243,6 +266,7 @@ impl BenchmarkServer {
         if let Ok(net) = self.client.network().await {
             self.state.lock().await.observe_network(&net);
         }
+        self.run_flyby("start").await;
     }
 
     /// Fetch the current network topology and cache it so `city_status` can

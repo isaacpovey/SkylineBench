@@ -1,0 +1,27 @@
+# Worktrunk project configuration (https://worktrunk.dev/config/)
+# Shared, repo-specific settings for `wt`. Checked into version control.
+#
+# SkylineBench is a monorepo:
+#   broker/     Rust crate `skylinebench`  — `cargo build` / `cargo test`
+#   mod/        C# Cities: Skylines mod    — `./build.sh`
+#   website/    static HTML/CSS            — no build step
+#   benchmark/  bash run scripts           — `benchmark/run.sh`
+#
+# There are no node deps or `.env` files to provision, so new worktrees need
+# no setup hooks. Uncomment a hook below if that changes.
+#
+# pre-start  = "..."   # runs before a worktree is initialised
+# post-start = "..."   # runs after creation (background) — e.g. start a dev server
+# pre-merge  = "cargo test --manifest-path broker/Cargo.toml"  # gate before merge back
+
+# Name the forge explicitly: the remote is an SSH alias (git@github.com),
+# so it can't always be inferred from the URL.
+[forge]
+platform = "github"
+
+# Repo convention: conventional commits. Appended to `wt`'s LLM commit prompt.
+[commit.generation]
+template-append = """
+- Use conventional commits with a scope, e.g. feat(website):, fix(broker):, docs(mod):
+- Do not use em-dashes in commit messages
+"""

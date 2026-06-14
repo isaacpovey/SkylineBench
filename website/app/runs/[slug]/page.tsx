@@ -8,7 +8,7 @@ import { BeforeAfterChart } from "@/components/charts/before-after-chart";
 import { SettlingChart } from "@/components/charts/settling-chart";
 import { SpendChart } from "@/components/charts/spend-chart";
 import { ActionsChart } from "@/components/charts/actions-chart";
-import { formatMillions } from "@/lib/format";
+import { formatMillions, formatDelta } from "@/lib/format";
 
 export const generateStaticParams = () => runs.map((r) => ({ slug: r.slug }));
 
@@ -28,14 +28,6 @@ const RunPage = async ({ params }: { params: Promise<{ slug: string }> }) => {
   if (!run) notFound();
 
   const { metrics } = run;
-
-  const congestedPct =
-    metrics.congestedMetres.from === 0
-      ? 0
-      : Math.round(
-          ((metrics.congestedMetres.to - metrics.congestedMetres.from) / metrics.congestedMetres.from) * 100,
-        );
-  const congestedSign = congestedPct > 0 ? "+" : "";
 
   return (
     <>
@@ -72,7 +64,7 @@ const RunPage = async ({ params }: { params: Promise<{ slug: string }> }) => {
               <span className="chip-l">flow</span>
             </div>
             <div className="chip">
-              <span className="chip-v">{congestedSign}{congestedPct}%</span>
+              <span className="chip-v">{formatDelta(metrics.congestedMetres)}</span>
               <span className="chip-l">congested metres</span>
             </div>
             <div className="chip">

@@ -19,6 +19,8 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Pure source under test (no game deps). -->
+    <Compile Include="..\src\bridge\ErrorCode.cs"><Link>src\ErrorCode.cs</Link></Compile>
+    <Compile Include="..\src\bridge\RoadErrors.cs"><Link>src\RoadErrors.cs</Link></Compile>
     <Compile Include="..\src\json\JsonWriter.cs"><Link>src\JsonWriter.cs</Link></Compile>
     <Compile Include="..\src\json\JsonValue.cs"><Link>src\JsonValue.cs</Link></Compile>
     <Compile Include="..\src\http\HttpQuery.cs"><Link>src\HttpQuery.cs</Link></Compile>
@@ -35,6 +37,7 @@
     <Compile Include="DirectionTests.cs" />
     <Compile Include="..\src\bridge\FlybyMath.cs"><Link>src\FlybyMath.cs</Link></Compile>
     <Compile Include="FlybyMathTests.cs" />
+    <Compile Include="RoadErrorsTests.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

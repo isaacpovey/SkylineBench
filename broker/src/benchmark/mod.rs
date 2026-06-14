@@ -11,6 +11,7 @@ pub mod screenshots;
 pub mod server;
 pub mod state;
 pub mod transcript;
+pub mod harness;
 
 pub use config::BenchConfig;
 pub use measure::{finalize, measure_window};

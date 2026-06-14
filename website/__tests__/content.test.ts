@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { runSchema } from "@/lib/run";
+import { runs } from "@/content/runs";
 
 const valid = {
   slug: "demo", modelName: "Demo", map: "gridlock-v1", runDir: "benchmark/runs/x",
@@ -21,5 +22,13 @@ describe("runSchema", () => {
   });
   it("rejects a score above 1", () => {
     expect(() => runSchema.parse({ ...valid, score: 1.5 })).toThrow();
+  });
+});
+
+describe("runs content", () => {
+  it("all authored runs are valid and ranked by score", () => {
+    expect(runs.length).toBe(4);
+    expect(runs[0].slug).toBe("fable-5");
+    runs.forEach((r) => expect(() => runSchema.parse(r)).not.toThrow());
   });
 });

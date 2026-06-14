@@ -1,0 +1,9 @@
+import type { Run } from "@/lib/run";
+import { fable5 } from "./fable-5";
+import { sonnet45 } from "./sonnet-4-5";
+import { opus48 } from "./opus-4-8";
+import { haiku45 } from "./haiku-4-5";
+
+export const runs: Run[] = [fable5, sonnet45, opus48, haiku45].sort((a, b) => b.score - a.score);
+
+export const getRun = (slug: string): Run | undefined => runs.find((r) => r.slug === slug);

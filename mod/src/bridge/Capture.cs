@@ -214,7 +214,13 @@ namespace SkylineBench.Bridge
                 if (t != null) { t.simulationPaused = false; t.simulationSpeed = 1; }
                 try { System.IO.Directory.CreateDirectory(req.OutDir); } catch { }
             }
-            catch (Exception e) { req.Error = e; req.Done.Set(); yield break; }
+            catch (Exception e)
+            {
+                if (cc != null) cc.m_freeCamera = prevFree;
+                req.Error = e;
+                req.Done.Set();
+                yield break;
+            }
 
             int frame = 0;
             for (int i = 0; i < total; i++)

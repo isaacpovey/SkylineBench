@@ -2,6 +2,7 @@ import { BrandMark } from "@/components/icons/brand-mark";
 import { GitHub } from "@/components/icons/github";
 import { LinkedIn } from "@/components/icons/linkedin";
 import { Mail } from "@/components/icons/mail";
+import { navSections } from "@/lib/nav-sections";
 
 type FooterProps = {
   links?: boolean;
@@ -26,13 +27,11 @@ export const Footer = ({ links = true }: FooterProps) => (
         <div className="f-links">
           <div className="f-col">
             <h5>Project</h5>
-            <a href="#thesis">Thesis</a>
-            <a href="#how">How it works</a>
-            <a href="#scoring">Scoring</a>
-            <a href="#built">Architecture</a>
-            <a href="#learnings">Learnings</a>
-            <a href="#future">Roadmap</a>
-            <a href="#results">Results</a>
+            {navSections.map((section) => (
+              <a key={section.href} href={section.href}>
+                {section.label}
+              </a>
+            ))}
           </div>
           <div className="f-col">
             <h5>Links</h5>

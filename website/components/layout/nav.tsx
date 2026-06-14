@@ -6,6 +6,7 @@ import { BrandMark } from "@/components/icons/brand-mark";
 import { GitHub } from "@/components/icons/github";
 import { LinkedIn } from "@/components/icons/linkedin";
 import { Mail } from "@/components/icons/mail";
+import { navSections } from "@/lib/nav-sections";
 
 type NavProps = {
   variant?: "landing" | "run";
@@ -36,13 +37,11 @@ export const Nav = ({ variant = "landing" }: NavProps) => {
         <div className="nav-links">
           {variant === "landing" ? (
             <>
-              <a className="nav-link hide-sm" href="#thesis">Thesis</a>
-              <a className="nav-link hide-sm" href="#how">How it works</a>
-              <a className="nav-link hide-sm" href="#scoring">Scoring</a>
-              <a className="nav-link hide-sm" href="#built">Architecture</a>
-              <a className="nav-link hide-sm" href="#learnings">Learnings</a>
-              <a className="nav-link hide-sm" href="#future">Roadmap</a>
-              <a className="nav-link hide-sm" href="#results">Results</a>
+              {navSections.map((section) => (
+                <a key={section.href} className="nav-link hide-sm" href={section.href}>
+                  {section.label}
+                </a>
+              ))}
               <span className="nav-sep hide-sm" />
               <Button asChild variant="outline" size="icon">
                 <a

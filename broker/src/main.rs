@@ -25,16 +25,21 @@ enum Command {
         #[arg(long, default_value = "127.0.0.1:8787")]
         addr: String,
     },
-    /// Render a captured stream-json transcript to readable markdown.
+    /// Render a captured JSONL transcript to readable markdown.
     RenderTranscript {
         #[arg(long)]
         input: std::path::PathBuf,
         #[arg(long)]
         out: std::path::PathBuf,
+        #[arg(long, default_value = "claude")]
+        harness: String,
     },
-    /// Read stream-json on stdin and print a human-readable line per event
+    /// Read JSONL on stdin and print a human-readable line per event
     /// (for live console display during a run).
-    FormatStream,
+    FormatStream {
+        #[arg(long, default_value = "claude")]
+        harness: String,
+    },
     /// Run a benchmark session: serve MCP (instrumented) against the mod and
     /// score the run when the agent finishes.
     Benchmark {
@@ -101,18 +106,22 @@ async fn main() -> anyhow::Result<()> {
                 .await?;
             server.waiting().await?;
         }
-        Command::RenderTranscript { input, out } => {
+        Command::RenderTranscript { input, out, harness } => {
+            let harness = skylinebench::benchmark::Harness::parse(&harness)
+                .ok_or_else(|| anyhow::anyhow!("unknown harness: {harness}"))?;
             let jsonl = std::fs::read_to_string(&input)?;
-            std::fs::write(&out, skylinebench::benchmark::render_transcript(&jsonl))?;
+            std::fs::write(&out, skylinebench::benchmark::render_transcript(harness, &jsonl))?;
         }
-        Command::FormatStream => {
+        Command::FormatStream { harness } => {
             use std::io::{BufRead, Write};
+            let harness = skylinebench::benchmark::Harness::parse(&harness)
+                .ok_or_else(|| anyhow::anyhow!("unknown harness: {harness}"))?;
             let stdin = std::io::stdin();
             let mut out = std::io::stdout();
             for line in stdin.lock().lines() {
                 let line = line?;
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
-                    if let Some(text) = skylinebench::benchmark::format_event_live(&v) {
+                    if let Some(text) = skylinebench::benchmark::format_event_live(harness, &v) {
                         writeln!(out, "{text}")?;
                         out.flush()?;
                     }

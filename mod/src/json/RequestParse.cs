@@ -9,6 +9,8 @@ namespace SkylineBench.Json
     public struct ScreenshotReq { public float X, Z, Size, Yaw, Pitch; public string InfoView; }
     public struct KeyframeReq { public float X, Z, Yaw, Pitch, Size; }
     public struct FlybyReq { public KeyframeReq[] Keyframes; public float DurationS; public int CaptureFps; public string OutDir; }
+    public struct PreviewOp { public float StartX, StartZ, EndX, EndZ, FromElevation, ToElevation; public string Prefab; }
+    public struct PreviewReq { public System.Collections.Generic.List<PreviewOp> Ops; }
 
     /// <summary>Pure: JsonValue (parsed request body) → typed action arg structs.
     /// Field names match the broker's bridge_client JSON bodies.</summary>
@@ -98,6 +100,25 @@ namespace SkylineBench.Json
                 CaptureFps = (int)v["capture_fps"].AsDouble(),
                 OutDir = v["out_dir"].AsString(),
             };
+        }
+
+        public static PreviewReq Preview(JsonValue v)
+        {
+            var ops = new System.Collections.Generic.List<PreviewOp>();
+            var arr = v["ops"];
+            for (int i = 0; i < arr.Count; i++)
+            {
+                var o = arr[i]; var s = o["start"]; var e = o["end"];
+                ops.Add(new PreviewOp
+                {
+                    StartX = (float)s["x"].AsDouble(), StartZ = (float)s["z"].AsDouble(),
+                    EndX = (float)e["x"].AsDouble(), EndZ = (float)e["z"].AsDouble(),
+                    FromElevation = o["from_elevation"].IsNull ? 0f : (float)o["from_elevation"].AsDouble(),
+                    ToElevation = o["to_elevation"].IsNull ? 0f : (float)o["to_elevation"].AsDouble(),
+                    Prefab = o["prefab"].AsString(),
+                });
+            }
+            return new PreviewReq { Ops = ops };
         }
     }
 }

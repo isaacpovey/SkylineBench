@@ -57,6 +57,41 @@ namespace SkylineBench.Http
         public static HttpReply LoadSave(string body) { return HttpReply.Json(200, Serialize.Load(SaveLoader.Load(RequestParse.LoadSave(JsonReader.Parse(body)).SaveName))); }
         public static HttpReply Saves() { return HttpReply.Json(200, Serialize.Saves(SaveLoader.ListSaves())); }
 
+        // THROWAWAY feasibility spike — delete with RoadToolSpike.cs.
+        public static HttpReply RoadSpike(string body)
+        {
+            return HttpReply.Json(200, RoadToolSpike.Run(RoadToolSpike.Parse(JsonReader.Parse(body))));
+        }
+
+        public static HttpReply Preview(string body)
+        {
+            var req = RequestParse.Preview(JsonReader.Parse(body));
+            CaptureBehaviour.RunOnMain(delegate
+            {
+                var ghosts = new System.Collections.Generic.List<PreviewRenderer.Ghost>();
+                foreach (var op in req.Ops)
+                {
+                    var prefab = Prefabs.FindRoad(op.Prefab);
+                    if (prefab == null) continue;
+                    ghosts.Add(PreviewRenderer.MakeGhost(prefab, op.StartX, op.StartZ, op.EndX, op.EndZ, op.FromElevation, op.ToElevation));
+                }
+                PreviewRenderer.SetGhosts(ghosts);
+                PreviewRenderer.Ensure();
+                PreviewRenderer.Active = true;
+            }, 8000);
+            var w = new JsonWriter();
+            w.BeginObject().Name("ok").Value(true).Name("active").Value(true).EndObject();
+            return HttpReply.Json(200, w.ToString());
+        }
+
+        public static HttpReply PreviewClear(string body)
+        {
+            CaptureBehaviour.RunOnMain(delegate { PreviewRenderer.Active = false; }, 8000);
+            var w = new JsonWriter();
+            w.BeginObject().Name("ok").Value(true).Name("active").Value(false).EndObject();
+            return HttpReply.Json(200, w.ToString());
+        }
+
         public static HttpReply Screenshot(string body)
         {
             var req = RequestParse.Screenshot(JsonReader.Parse(body));

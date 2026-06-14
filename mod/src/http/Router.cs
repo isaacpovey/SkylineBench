@@ -34,8 +34,7 @@ namespace SkylineBench.Http
                 case "/flyby": return method == "POST" ? Handlers.Flyby(body) : MethodNotAllowed();
                 case "/preview": return method == "POST" ? Handlers.Preview(body) : MethodNotAllowed();
                 case "/preview-clear": return method == "POST" ? Handlers.PreviewClear(body) : MethodNotAllowed();
-                case "/spike/road": return method == "POST" ? Handlers.RoadSpike(body) : MethodNotAllowed(); // THROWAWAY spike
-                default: return HttpReply.Json(404, "{\"error\":\"unknown_route\",\"path\":\"" + path + "\"}");
+default: return HttpReply.Json(404, "{\"error\":\"unknown_route\",\"path\":\"" + path + "\"}");
             }
         }
 

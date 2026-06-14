@@ -57,12 +57,6 @@ namespace SkylineBench.Http
         public static HttpReply LoadSave(string body) { return HttpReply.Json(200, Serialize.Load(SaveLoader.Load(RequestParse.LoadSave(JsonReader.Parse(body)).SaveName))); }
         public static HttpReply Saves() { return HttpReply.Json(200, Serialize.Saves(SaveLoader.ListSaves())); }
 
-        // THROWAWAY feasibility spike — delete with RoadToolSpike.cs.
-        public static HttpReply RoadSpike(string body)
-        {
-            return HttpReply.Json(200, RoadToolSpike.Run(RoadToolSpike.Parse(JsonReader.Parse(body))));
-        }
-
         public static HttpReply Preview(string body)
         {
             var req = RequestParse.Preview(JsonReader.Parse(body));

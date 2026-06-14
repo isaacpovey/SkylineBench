@@ -88,6 +88,15 @@ enum Command {
         #[arg(long, default_value = "website/assets/runs")]
         assets_dir: std::path::PathBuf,
     },
+    /// Detect this host's sandbox backend, write its profile + sandbox.argv
+    /// (NUL-delimited wrapper prefix) into --session-dir, print the backend
+    /// name to stdout, and warn on stderr if unsandboxed.
+    SandboxPrepare {
+        #[arg(long)]
+        root: std::path::PathBuf,
+        #[arg(long)]
+        session_dir: std::path::PathBuf,
+    },
     /// Resolve a harness launch plan: write its config files and emit
     /// launch.argv (NUL-delimited), launch.env (NUL-delimited KEY=VALUE), and
     /// launch.required-env (newline-delimited) into --session-dir.
@@ -263,6 +272,50 @@ async fn main() -> anyhow::Result<()> {
         Command::BuildPage { narrative, out, assets_dir } => {
             let written = skylinebench::page::build(&narrative, out, &assets_dir)?;
             eprintln!("build-page: wrote {}", written.display());
+        }
+        Command::SandboxPrepare { root, session_dir } => {
+            use skylinebench::benchmark::{select_sandbox, Os, SandboxInputs};
+
+            fn on_path(bin: &str) -> bool {
+                std::env::var_os("PATH")
+                    .map(|paths| {
+                        std::env::split_paths(&paths).any(|dir| dir.join(bin).is_file())
+                    })
+                    .unwrap_or(false)
+            }
+
+            let os = if cfg!(target_os = "macos") {
+                Os::Mac
+            } else if cfg!(target_os = "linux") {
+                Os::Linux
+            } else {
+                Os::Other
+            };
+
+            let inputs = SandboxInputs {
+                os,
+                sandbox_exec_available: on_path("sandbox-exec"),
+                bwrap_available: on_path("bwrap"),
+                firejail_available: on_path("firejail"),
+                repo_root: root,
+                session_dir: session_dir.clone(),
+            };
+            let plan = select_sandbox(&inputs);
+
+            if let Some(cf) = &plan.profile_file {
+                std::fs::write(&cf.path, &cf.contents)?;
+            }
+            let blob: Vec<u8> = plan
+                .wrapper_argv
+                .iter()
+                .flat_map(|a| a.as_bytes().iter().copied().chain(std::iter::once(0u8)))
+                .collect();
+            std::fs::write(session_dir.join("sandbox.argv"), blob)?;
+
+            if let Some(w) = &plan.warning {
+                eprintln!("WARNING: {w}");
+            }
+            println!("{}", plan.backend.as_str());
         }
         Command::HarnessPrepare { harness, model, prompt_file, mcp_shell, session_dir } => {
             let harness = skylinebench::benchmark::Harness::parse(&harness)

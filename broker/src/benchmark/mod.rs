@@ -22,3 +22,4 @@ pub use server::BenchmarkServer;
 pub use state::RunState;
 pub use transcript::{format_event_live, render_transcript};
 pub use harness::{build as build_launch, ConfigFile, Harness, LaunchInputs, LaunchSpec};
+pub use sandbox::{select as select_sandbox, Backend, Os, SandboxInputs};

@@ -160,12 +160,20 @@ fn result_parts(result: &Value) -> Vec<String> {
 fn parse_gemini(v: &Value) -> Vec<Event> {
     match v.get("type").and_then(|t| t.as_str()).unwrap_or("") {
         "init" => vec![Event::SessionStart],
-        "message" if v.get("role").and_then(|r| r.as_str()) == Some("assistant") => v
-            .get("content")
-            .and_then(|c| c.as_str())
-            .filter(|t| !t.is_empty())
-            .map(|t| vec![Event::Assistant(vec![Block::Text(t.to_string())])])
-            .unwrap_or_default(),
+        // The CLI emits role "assistant"; tolerate the API's "model" too.
+        "message"
+            if matches!(
+                v.get("role").and_then(|r| r.as_str()),
+                Some("assistant") | Some("model")
+            ) =>
+        {
+            let text = gemini_message_text(v.get("content"));
+            if text.is_empty() {
+                vec![]
+            } else {
+                vec![Event::Assistant(vec![Block::Text(text)])]
+            }
+        }
         "tool_use" => {
             let name = v.get("tool_name").and_then(|n| n.as_str()).unwrap_or("tool").to_string();
             let input = v.get("parameters").cloned().unwrap_or(Value::Null);
@@ -174,13 +182,35 @@ fn parse_gemini(v: &Value) -> Vec<Event> {
         "tool_result" => {
             let part = v
                 .get("output")
-                .and_then(|o| o.as_str())
-                .map(String::from)
-                .or_else(|| v.get("error").map(|e| e.to_string()))
+                .map(value_to_text)
+                .or_else(|| v.get("error").map(value_to_text))
                 .unwrap_or_default();
             vec![Event::Results(vec![Block::ToolResult { parts: vec![part] }])]
         }
         _ => vec![],
+    }
+}
+
+/// Gemini message `content` is normally a string, but tolerate the API's
+/// array-of-parts shape too.
+fn gemini_message_text(content: Option<&Value>) -> String {
+    match content {
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Array(parts)) => parts
+            .iter()
+            .filter_map(|p| p.get("text").and_then(|t| t.as_str()))
+            .collect::<Vec<_>>()
+            .join(""),
+        _ => String::new(),
+    }
+}
+
+/// Render a JSON value as transcript text: a bare string as-is, anything else
+/// as pretty JSON (so structured tool output/errors aren't silently dropped).
+fn value_to_text(v: &Value) -> String {
+    match v.as_str() {
+        Some(s) => s.to_string(),
+        None => serde_json::to_string_pretty(v).unwrap_or_else(|_| v.to_string()),
     }
 }
 
@@ -445,5 +475,36 @@ mod tests {
     fn gemini_init_is_session_start_live() {
         let line: Value = serde_json::from_str(r#"{"type":"init","session_id":"s1"}"#).unwrap();
         assert_eq!(format_event_live(Harness::Gemini, &line).as_deref(), Some("● session started"));
+    }
+
+    #[test]
+    fn gemini_tool_result_error_string_has_no_json_quotes() {
+        let line: Value = serde_json::from_str(
+            r#"{"type":"tool_result","tool_id":"t1","status":"error","error":"timeout"}"#,
+        )
+        .unwrap();
+        let md = render_transcript(Harness::Gemini, &line.to_string());
+        assert!(md.contains("timeout"), "error text present: {md}");
+        assert!(!md.contains("\"timeout\""), "no literal JSON quotes around error: {md}");
+    }
+
+    #[test]
+    fn gemini_tool_result_object_output_is_serialized_not_dropped() {
+        let line: Value = serde_json::from_str(
+            r#"{"type":"tool_result","tool_id":"t1","status":"success","output":{"ok":true,"flow":12.3}}"#,
+        )
+        .unwrap();
+        let md = render_transcript(Harness::Gemini, &line.to_string());
+        assert!(md.contains("flow"), "object output serialized, not dropped: {md}");
+    }
+
+    #[test]
+    fn gemini_accepts_model_role() {
+        let line: Value = serde_json::from_str(
+            r#"{"type":"message","role":"model","content":"Done planning."}"#,
+        )
+        .unwrap();
+        let md = render_transcript(Harness::Gemini, &line.to_string());
+        assert!(md.contains("Done planning."), "model role treated as assistant: {md}");
     }
 }

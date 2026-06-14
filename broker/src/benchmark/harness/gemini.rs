@@ -1,7 +1,8 @@
 use super::{ConfigFile, LaunchInputs, LaunchSpec};
 
 pub fn spec(inputs: &LaunchInputs) -> LaunchSpec {
-    let settings_path = inputs.session_dir.join("gemini").join(".gemini").join("settings.json");
+    let gemini_dir = inputs.session_dir.join("gemini");
+    let settings_path = gemini_dir.join(".gemini").join("settings.json");
     let contents = serde_json::json!({
         "mcpServers": {
             "skylinebench": {
@@ -20,7 +21,7 @@ pub fn spec(inputs: &LaunchInputs) -> LaunchSpec {
     LaunchSpec {
         argv,
         env: vec![
-            ("GEMINI_CLI_HOME".to_string(), inputs.session_dir.join("gemini").display().to_string()),
+            ("GEMINI_CLI_HOME".to_string(), gemini_dir.display().to_string()),
             ("GEMINI_CLI_TRUST_WORKSPACE".to_string(), "true".to_string()),
         ],
         config_files: vec![ConfigFile {

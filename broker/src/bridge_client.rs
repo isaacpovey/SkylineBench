@@ -340,7 +340,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "needs mock elevation echo (Task 5.1)"]
     async fn build_road_sends_elevation_fields() {
         // The mock echoes elevation back via node y (Task 5 wires the mock).
         let client = BridgeClient::new(start_mock().await);

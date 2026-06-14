@@ -140,13 +140,19 @@ struct BuildRoadBody {
     end: Position,
     prefab: String,
     snap_to_existing_nodes: bool,
+    #[serde(default)]
+    from_elevation: f32,
+    #[serde(default)]
+    to_elevation: f32,
 }
 
 /// Resolves a position to an existing node id (when snapping) or allocates a
 /// new node, returning `(node_id, was_snapped)`. Splitting this out of
 /// `build_road` avoids a closure that would need to capture both `created_nodes`
 /// and `&mut City` simultaneously, which the borrow checker rejects.
-fn resolve_node(p: Position, snap: bool, city: &mut City) -> (u32, bool) {
+/// The `elevation` is stored as the created node's `y` so that the
+/// elevation-threading test can assert the mock echoes it back correctly.
+fn resolve_node(p: Position, elevation: f32, snap: bool, city: &mut City) -> (u32, bool) {
     if snap {
         if let Some(id) = nearest_node_within_tolerance(p, &city.nodes) {
             return (id, true);
@@ -154,12 +160,7 @@ fn resolve_node(p: Position, snap: bool, city: &mut City) -> (u32, bool) {
     }
     let id = city.next_id;
     city.next_id += 1;
-    city.nodes.push(NetNode {
-        id,
-        x: p.x,
-        y: p.y,
-        z: p.z,
-    });
+    city.nodes.push(NetNode { id, x: p.x, y: elevation, z: p.z });
     (id, false)
 }
 
@@ -182,8 +183,8 @@ async fn build_road(
     }
 
     let snap = body.snap_to_existing_nodes;
-    let (start_id, start_snapped) = resolve_node(body.start, snap, &mut c);
-    let (end_id, end_snapped) = resolve_node(body.end, snap, &mut c);
+    let (start_id, start_snapped) = resolve_node(body.start, body.from_elevation, snap, &mut c);
+    let (end_id, end_snapped) = resolve_node(body.end, body.to_elevation, snap, &mut c);
 
     let mut created_nodes = vec![];
     let mut snapped_nodes = vec![];
@@ -506,6 +507,14 @@ async fn flyby(Json(body): Json<serde_json::Value>) -> impl axum::response::Into
     axum::http::StatusCode::OK
 }
 
+async fn preview(State(_s): State<MockState>, Json(_body): Json<serde_json::Value>) -> Json<serde_json::Value> {
+    Json(serde_json::json!({ "ok": true, "active": true }))
+}
+
+async fn preview_clear(State(_s): State<MockState>, Json(_body): Json<serde_json::Value>) -> Json<serde_json::Value> {
+    Json(serde_json::json!({ "ok": true, "active": false }))
+}
+
 pub fn router() -> Router {
     Router::new()
         .route("/health", get(health))
@@ -525,6 +534,8 @@ pub fn router() -> Router {
         .route("/clock", post(clock))
         .route("/screenshot", post(screenshot))
         .route("/flyby", post(flyby))
+        .route("/preview", post(preview))
+        .route("/preview-clear", post(preview_clear))
         .with_state(MockState::new())
 }
 
@@ -590,6 +601,19 @@ mod tests {
             .unwrap();
         assert!(resp.ok);
         assert_eq!(resp.resolved.unwrap().name, "gridlock-v1");
+    }
+
+    #[tokio::test]
+    async fn preview_endpoints_respond_ok() {
+        let (addr, server) = bind("127.0.0.1:0".parse().unwrap()).await;
+        tokio::spawn(server);
+        let client = reqwest::Client::new();
+        let set: serde_json::Value = client.post(format!("http://{addr}/preview"))
+            .json(&serde_json::json!({"ops": []})).send().await.unwrap().json().await.unwrap();
+        assert_eq!(set["ok"], true);
+        let clear: serde_json::Value = client.post(format!("http://{addr}/preview-clear"))
+            .json(&serde_json::json!({})).send().await.unwrap().json().await.unwrap();
+        assert_eq!(clear["active"], false);
     }
 
     #[tokio::test]

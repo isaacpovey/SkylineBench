@@ -780,16 +780,33 @@ impl BenchmarkServer {
                 if !builds.is_empty() {
                     let positions: Vec<(f32, f32)> = builds.iter()
                         .map(|(f, t, ..)| ((f.x + t.x) / 2.0, (f.z + t.z) / 2.0)).collect();
-                    let _ = self.client.preview(&builds).await;
+                    if let Err(e) = self.client.preview(&builds).await {
+                        eprintln!("benchmark: preview set error: {e}");
+                    }
                     let shot = crate::service::region_shot(&positions);
                     let png = match shot {
                         Some(shot) => crate::service::capture_screenshot(&self.client, shot).await.ok(),
                         None => None,
                     };
-                    let _ = self.client.preview_clear().await;
+                    // Always clear the ghost, even if the screenshot failed, so it
+                    // can't linger into later frames.
+                    if let Err(e) = self.client.preview_clear().await {
+                        eprintln!("benchmark: preview clear error: {e}");
+                    }
                     if let Some(png) = png {
                         let data = base64::engine::general_purpose::STANDARD.encode(png);
-                        let merged = { let s = self.state.lock().await; with_progress(payload, &s) };
+                        // Mirror finish()/render_map: surface timeouts and flush
+                        // end-state on this early-return path too.
+                        let merged = {
+                            let mut s = self.state.lock().await;
+                            s.check_timeout();
+                            if let Some(p) = &self.persist {
+                                if let Err(e) = p.write(&s) {
+                                    eprintln!("benchmark: end-state persist error: {e}");
+                                }
+                            }
+                            with_progress(payload, &s)
+                        };
                         return Ok(CallToolResult::success(vec![
                             Content::image(data, "image/png".to_string()),
                             Content::text(merged.to_string()),

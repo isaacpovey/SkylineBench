@@ -57,6 +57,10 @@ pub struct ApplyPlanArgs {
     /// true (default): a runtime failure stops the remaining ops.
     #[serde(default = "default_stop_on_error")]
     pub stop_on_error: bool,
+    /// When true together with validate_only, render a non-mutating ghost
+    /// screenshot of the plan's build ops (angled 3-D) alongside the JSON.
+    #[serde(default)]
+    pub preview: bool,
 }
 
 fn default_stop_on_error() -> bool {
@@ -661,7 +665,8 @@ impl BenchmarkServer {
         `zoned_buildings_fronting`. \
         Each executed op counts as one change, identical to the single-op tools. The game can still \
         reject an op at execution time (e.g. COLLISION); stop_on_error (default true) then skips the rest; \
-        with stop_on_error=false execution continues and `first_failed_at` reports the earliest failing op.")]
+        with stop_on_error=false execution continues and `first_failed_at` reports the earliest failing op. \
+        Set `preview:true` with `validate_only` to also get a non-mutating angled 3-D screenshot of the proposed roads (builds nothing).")]
     async fn apply_plan(&self, Parameters(args): Parameters<ApplyPlanArgs>) -> Result<CallToolResult, ErrorData> {
         use crate::benchmark::plan::{expand, tool_name, validate, ExecCtx, ExecOp, MAX_EXPANDED_OPS, MAX_OPS};
 
@@ -759,15 +764,40 @@ impl BenchmarkServer {
                 results.push(row);
             }
             let first_failed_at = results.iter().position(|r| r["valid"] != true);
-            return self
-                .finish(serde_json::json!({
-                    "ok": first_failed_at.is_none(),
-                    "validate_only": args.validate_only,
-                    "results": results,
-                    "total_estimated_cost": total_estimated_cost,
-                    "first_failed_at": first_failed_at,
-                }))
-                .await;
+            let payload = serde_json::json!({
+                "ok": first_failed_at.is_none(),
+                "validate_only": args.validate_only,
+                "results": results,
+                "total_estimated_cost": total_estimated_cost,
+                "first_failed_at": first_failed_at,
+            });
+            if args.validate_only && args.preview {
+                let builds: Vec<(crate::contract::Position, crate::contract::Position, String, f32, f32)> = exec.iter().filter_map(|(_, op)| match op {
+                    ExecOp::Build { from, to, road_type, from_elevation, to_elevation, .. } =>
+                        Some((*from, *to, road_type.clone(), *from_elevation, *to_elevation)),
+                    _ => None,
+                }).collect();
+                if !builds.is_empty() {
+                    let positions: Vec<(f32, f32)> = builds.iter()
+                        .map(|(f, t, ..)| ((f.x + t.x) / 2.0, (f.z + t.z) / 2.0)).collect();
+                    let _ = self.client.preview(&builds).await;
+                    let shot = crate::service::region_shot(&positions);
+                    let png = match shot {
+                        Some(shot) => crate::service::capture_screenshot(&self.client, shot).await.ok(),
+                        None => None,
+                    };
+                    let _ = self.client.preview_clear().await;
+                    if let Some(png) = png {
+                        let data = base64::engine::general_purpose::STANDARD.encode(png);
+                        let merged = { let s = self.state.lock().await; with_progress(payload, &s) };
+                        return Ok(CallToolResult::success(vec![
+                            Content::image(data, "image/png".to_string()),
+                            Content::text(merged.to_string()),
+                        ]));
+                    }
+                }
+            }
+            return self.finish(payload).await;
         }
 
         let seg_midpoint = |segment_id: u32| -> Option<(f32, f32)> {
@@ -1368,6 +1398,7 @@ mod tests {
                 ops: vec![plan_build(0.0, 50.0), plan_build(1000.0, 1050.0)],
                 validate_only: false,
                 stop_on_error: true,
+                preview: false,
             }))
             .await
             .unwrap();
@@ -1443,6 +1474,7 @@ mod tests {
                 ops: vec![plan_build(0.0, 50.0), plan_build(1000.0, 1400.0)],
                 validate_only: true,
                 stop_on_error: true,
+                preview: false,
             }))
             .await
             .unwrap();
@@ -1464,6 +1496,7 @@ mod tests {
                 ops: vec![plan_build(0.0, 50.0)],
                 validate_only: true,
                 stop_on_error: true,
+                preview: false,
             }))
             .await
             .unwrap();
@@ -1484,6 +1517,7 @@ mod tests {
                 ops: vec![plan_build(0.0, 50.0), plan_build(1000.0, 1400.0)],
                 validate_only: false,
                 stop_on_error: true,
+                preview: false,
             }))
             .await
             .unwrap();
@@ -1504,6 +1538,7 @@ mod tests {
                 ],
                 validate_only: false,
                 stop_on_error: true,
+                preview: false,
             }))
             .await
             .unwrap();
@@ -1545,6 +1580,7 @@ mod tests {
                 ],
                 validate_only: false,
                 stop_on_error: true,
+                preview: false,
             }))
             .await
             .unwrap();
@@ -1585,6 +1621,7 @@ mod tests {
                 ],
                 validate_only: false,
                 stop_on_error: false,
+                preview: false,
             }))
             .await
             .unwrap();
@@ -1627,5 +1664,22 @@ mod tests {
         // run_ended path returns ok:false, run_ended:true and records NO change.
         assert_eq!(state.lock().await.num_changes, 0);
         let _ = res; // result content is a CallToolResult; the key assertion is no mutation recorded
+    }
+
+    #[tokio::test]
+    async fn validate_only_with_preview_returns_image() {
+        use crate::benchmark::plan::PlanOp;
+
+        let bench = bench_with_mock().await;
+        let res = bench.apply_plan(Parameters(ApplyPlanArgs {
+            ops: vec![PlanOp::BuildRoad {
+                from: crate::contract::Position { x: 0.0, y: 0.0, z: 0.0 },
+                to: crate::contract::Position { x: 50.0, y: 0.0, z: 0.0 },
+                road_type: "road".into(), snap: true, from_elevation: 12.0, to_elevation: 12.0,
+            }],
+            validate_only: true, stop_on_error: true, preview: true,
+        })).await.unwrap();
+        // One image content block (the ghost) plus the JSON text block.
+        assert!(res.content.iter().any(|c| c.as_image().is_some()), "expected a preview image");
     }
 }

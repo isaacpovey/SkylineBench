@@ -771,7 +771,9 @@ impl BenchmarkServer {
                 "total_estimated_cost": total_estimated_cost,
                 "first_failed_at": first_failed_at,
             });
-            if args.validate_only && args.preview {
+            // Only preview a plan that fully passes structural validation — a
+            // ghost of roads that can't build would mislead the agent.
+            if args.validate_only && args.preview && all_valid {
                 let builds: Vec<(crate::contract::Position, crate::contract::Position, String, f32, f32)> = exec.iter().filter_map(|(_, op)| match op {
                     ExecOp::Build { from, to, road_type, from_elevation, to_elevation, .. } =>
                         Some((*from, *to, road_type.clone(), *from_elevation, *to_elevation)),

@@ -203,6 +203,27 @@ impl BridgeClient {
         self.get_json("/saves").await
     }
 
+    /// Set the non-mutating ghost preview to these build ops
+    /// (from, to, prefab, from_elevation, to_elevation). Builds nothing.
+    pub async fn preview(
+        &self, ops: &[(Position, Position, String, f32, f32)],
+    ) -> Result<(), BridgeError> {
+        let ops_json: Vec<serde_json::Value> = ops.iter().map(|(from, to, prefab, fe, te)| {
+            serde_json::json!({ "start": from, "end": to, "prefab": prefab, "from_elevation": fe, "to_elevation": te })
+        }).collect();
+        self.http.post(format!("{}/preview", self.base))
+            .json(&serde_json::json!({ "ops": ops_json }))
+            .send().await?.error_for_status()?;
+        Ok(())
+    }
+
+    pub async fn preview_clear(&self) -> Result<(), BridgeError> {
+        self.http.post(format!("{}/preview-clear", self.base))
+            .json(&serde_json::json!({}))
+            .send().await?.error_for_status()?;
+        Ok(())
+    }
+
     pub async fn screenshot(
         &self,
         x: f32,
@@ -355,6 +376,13 @@ mod tests {
         let net = client.network().await.unwrap();
         // Mock sets node.y to the requested elevation (see Task 5 mock change).
         assert!(net.nodes.iter().all(|n| (n.y - 12.0).abs() < 0.001));
+    }
+
+    #[tokio::test]
+    async fn preview_set_and_clear() {
+        let client = BridgeClient::new(start_mock().await);
+        client.preview(&[(Position { x: 0.0, y: 0.0, z: 0.0 }, Position { x: 50.0, y: 0.0, z: 0.0 }, "road".to_string(), 12.0, 12.0)]).await.unwrap();
+        client.preview_clear().await.unwrap();
     }
 
     #[tokio::test]

@@ -265,6 +265,13 @@ mod tests {
     }
 
     #[test]
+    fn save_info_handles_null_city_name() {
+        // The mod always emits city_name, writing JSON null for corrupt saves.
+        let s: SaveInfo = serde_json::from_str(r#"{"name":"x","city_name":null,"full_name":"y"}"#).unwrap();
+        assert!(s.city_name.is_none());
+    }
+
+    #[test]
     fn net_segment_defaults_direction_fields() {
         // Wire payload from an older mod without the new fields must default.
         let parsed: NetSegment = serde_json::from_str(

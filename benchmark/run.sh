@@ -79,6 +79,11 @@ load_and_wait() {
     curl -fsS "$MOD_URL/health" >/dev/null 2>&1 || break
     sleep 1
   done
+  # If the bridge never dropped, the reload may not have started — leave a
+  # breadcrumb, since phase 2 could then pass against the stale city.
+  if curl -fsS "$MOD_URL/health" >/dev/null 2>&1; then
+    echo "note: bridge did not go down during the reload window; proceeding to phase-2 check" >&2
+  fi
   # Phase 2: bridge back up with a city loaded (reload finished). Up to 180s.
   deadline=$(( $(date +%s) + 180 ))
   until [ "$(date +%s)" -ge "$deadline" ]; do

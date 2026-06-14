@@ -266,6 +266,28 @@ async fn main() -> anyhow::Result<()> {
             anyhow::ensure!(health.city_loaded, "no city loaded — cannot run the settle/final measurement");
 
             eprintln!("benchmark-finalize: settle + final window (this takes several minutes)…");
+
+            // Record the end flyby into <out>/screenshots/flyby/end_* while the
+            // game is still live (screenshots were moved here after the session).
+            {
+                use skylinebench::service::highway_flyby_path;
+                let base = out.join("screenshots").join("flyby");
+                if let Ok(net) = client.network().await {
+                    let path = highway_flyby_path(&net);
+                    for (suffix, kfs) in [("ns", &path.ns), ("we", &path.we)] {
+                        if kfs.is_empty() {
+                            continue;
+                        }
+                        let dir = base.join(format!("end_{suffix}"));
+                        let dir_str = dir.to_string_lossy().to_string();
+                        if let Err(e) = client.flyby(kfs, 6.0, 12, &dir_str).await {
+                            eprintln!("benchmark-finalize: end flyby '{suffix}' failed ({e}); skipping");
+                            break;
+                        }
+                    }
+                }
+            }
+
             finalize(&client, end, &out).await?;
             eprintln!("benchmark-finalize: wrote run-record.json + score.json to {}", out.display());
         }

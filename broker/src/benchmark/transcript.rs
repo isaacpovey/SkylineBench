@@ -155,9 +155,37 @@ fn result_parts(result: &Value) -> Vec<String> {
     vec![serde_json::to_string_pretty(result).unwrap_or_else(|_| result.to_string())]
 }
 
-// Stubs for later phases — return no events so other harnesses are inert until
-// implemented (Tasks 13, 15).
-fn parse_gemini(_v: &Value) -> Vec<Event> { vec![] }
+/// Gemini `--output-format stream-json` events. No reasoning stream exists, so
+/// there are no Thinking blocks (a harness limitation, by design).
+fn parse_gemini(v: &Value) -> Vec<Event> {
+    match v.get("type").and_then(|t| t.as_str()).unwrap_or("") {
+        "init" => vec![Event::SessionStart],
+        "message" if v.get("role").and_then(|r| r.as_str()) == Some("assistant") => v
+            .get("content")
+            .and_then(|c| c.as_str())
+            .filter(|t| !t.is_empty())
+            .map(|t| vec![Event::Assistant(vec![Block::Text(t.to_string())])])
+            .unwrap_or_default(),
+        "tool_use" => {
+            let name = v.get("tool_name").and_then(|n| n.as_str()).unwrap_or("tool").to_string();
+            let input = v.get("parameters").cloned().unwrap_or(Value::Null);
+            vec![Event::Assistant(vec![Block::ToolUse { name, input }])]
+        }
+        "tool_result" => {
+            let part = v
+                .get("output")
+                .and_then(|o| o.as_str())
+                .map(String::from)
+                .or_else(|| v.get("error").map(|e| e.to_string()))
+                .unwrap_or_default();
+            vec![Event::Results(vec![Block::ToolResult { parts: vec![part] }])]
+        }
+        _ => vec![],
+    }
+}
+
+// Stub for later phase — returns no events so other harnesses are inert until
+// implemented (Task 15).
 fn parse_opencode(_v: &Value) -> Vec<Event> { vec![] }
 
 /// Render a captured JSONL transcript into readable markdown.
@@ -391,5 +419,31 @@ mod tests {
         )
         .unwrap();
         assert!(format_event_live(Harness::Codex, &line).is_none());
+    }
+
+    #[test]
+    fn gemini_renders_message_and_tool_call_no_thinking() {
+        let jsonl = concat!(
+            r#"{"type":"init","session_id":"s1"}"#,
+            "\n",
+            r#"{"type":"message","role":"assistant","content":"Adding a bypass."}"#,
+            "\n",
+            r#"{"type":"tool_use","tool_name":"build_road","tool_id":"t1","parameters":{"road_type":"Highway"}}"#,
+            "\n",
+            r#"{"type":"tool_result","tool_id":"t1","status":"success","output":"{\"ok\":true}"}"#,
+            "\n",
+        );
+        let md = render_transcript(Harness::Gemini, jsonl);
+        assert!(md.contains("Adding a bypass."), "message: {md}");
+        assert!(md.contains("build_road"), "tool: {md}");
+        assert!(md.contains("Highway"), "args: {md}");
+        assert!(md.contains("ok"), "result: {md}");
+        assert!(!md.contains("Thinking"), "gemini has no reasoning: {md}");
+    }
+
+    #[test]
+    fn gemini_init_is_session_start_live() {
+        let line: Value = serde_json::from_str(r#"{"type":"init","session_id":"s1"}"#).unwrap();
+        assert_eq!(format_event_live(Harness::Gemini, &line).as_deref(), Some("● session started"));
     }
 }

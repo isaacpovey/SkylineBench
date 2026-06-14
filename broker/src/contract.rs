@@ -222,14 +222,47 @@ pub struct ClockState {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SaveInfo {
+    pub name: String,
+    #[serde(default)]
+    pub city_name: Option<String>,
+    pub full_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LoadResult {
     pub ok: bool,
     pub city_loaded: bool,
+    #[serde(default)]
+    pub resolved: Option<SaveInfo>,
+    #[serde(default)]
+    pub available: Vec<SaveInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Saves {
+    pub saves: Vec<SaveInfo>,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn load_result_defaults_resolved_and_available() {
+        let r: LoadResult = serde_json::from_str(r#"{"ok":true,"city_loaded":true}"#).unwrap();
+        assert!(r.resolved.is_none());
+        assert!(r.available.is_empty());
+    }
+
+    #[test]
+    fn load_result_parses_resolved_identity() {
+        let r: LoadResult = serde_json::from_str(
+            r#"{"ok":true,"city_loaded":true,"resolved":{"name":"g","city_name":"G","full_name":"pkg.g"}}"#,
+        )
+        .unwrap();
+        assert_eq!(r.resolved.unwrap().name, "g");
+    }
 
     #[test]
     fn net_segment_defaults_direction_fields() {

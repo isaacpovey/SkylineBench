@@ -36,6 +36,8 @@ async fn full_observe_build_step_observe_loop() {
             },
             road_type: "road".into(),
             snap: true,
+            from_elevation: 0.0,
+            to_elevation: 0.0,
         },
     )
     .await

@@ -7,7 +7,9 @@ import { Scoring } from "@/components/sections/scoring";
 import { Architecture } from "@/components/sections/architecture";
 import { Learnings } from "@/components/sections/learnings";
 import { Roadmap } from "@/components/sections/roadmap";
+import { Results } from "@/components/sections/results";
 import { Findings } from "@/components/sections/findings";
+import { CtaBand } from "@/components/sections/cta-band";
 
 const Home = () => (
   <>
@@ -22,8 +24,11 @@ const Home = () => (
     <Learnings />
     <hr className="divider" />
     <Roadmap />
+    <Results />
     <hr className="divider" />
     <Findings />
+    <hr className="divider" />
+    <CtaBand />
     <Footer />
   </>
 );

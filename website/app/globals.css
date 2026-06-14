@@ -189,7 +189,7 @@
 .ds a { color: var(--foreground); text-decoration: none; }
 .ds a:hover { text-decoration: underline; text-underline-offset: 4px; }
 
-/* SkylineBench landing: depends on colors_and_type.css for shadcn tokens */
+/* SkylineBench landing styles. shadcn design tokens are defined above. */
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
@@ -600,7 +600,7 @@ a.result-card:hover { transform: translateY(-3px); box-shadow: 0 8px 30px color-
   .hero-cta .btn { justify-content: center; }
 }
 
-/* Run-detail page styles. Variables come from colors_and_type.css. */
+/* Run-detail page styles. Variables come from the tokens defined above. */
 
 .run-hero { padding: clamp(90px, 14vw, 150px) 0 40px; }
 .run-hero .display { margin: 10px 0 14px; }

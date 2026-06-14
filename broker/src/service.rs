@@ -466,10 +466,10 @@ pub fn overview_shot(net: &crate::contract::Network) -> CameraShot {
             let size_for = |vertical: f32, horizontal: f32| {
                 (vertical.max(horizontal / OVERVIEW_ASPECT) * OVERVIEW_MARGIN / 2.0).max(OVERVIEW_MIN_SIZE_M)
             };
-            // yaw 0 (north-up): x spans horizontally, z spans vertically.
-            let north = size_for(dx, dz);
-            // yaw 90: axes swap — z spans horizontally, x spans vertically.
-            let rotated = size_for(dz, dx);
+            // yaw 0 (north-up): z spans vertically, x spans horizontally.
+            let north = size_for(dz, dx);
+            // yaw 90: axes swap — x spans vertically, z spans horizontally.
+            let rotated = size_for(dx, dz);
             let (yaw, size) = if rotated < north { (90.0, rotated) } else { (0.0, north) };
             CameraShot {
                 x: (min_x + max_x) / 2.0,
@@ -1164,11 +1164,13 @@ mod tests {
         assert_eq!(shot.x, 0.0);
         assert_eq!(shot.z, 0.0);
         assert_eq!(shot.pitch, 90.0);
-        // dx=2000, dz=1000. City is wider in x → rotates so x runs across the wide frame.
-        // rotated = size_for(dz=1000, dx=2000) = max(1000, 1125) * 1.08/2 = 607.5.
-        // north  = size_for(dx=2000, dz=1000) = max(2000, 562.5) * 1.08/2 = 1080.
-        // rotated(607.5) < north(1080) → yaw=90, size=607.5.
-        assert_eq!(shot.yaw, 90.0, "wider network rotates so x spans the frame horizontally");
+        // dx=2000, dz=1000. City is wider in x — x already maps to the wide horizontal axis at yaw 0.
+        // north   = size_for(dz=1000, dx=2000) = max(1000, 2000/1.777…) * 1.08/2
+        //         = max(1000, 1125) * 0.54 = 1125 * 0.54 = 607.5.
+        // rotated = size_for(dx=2000, dz=1000) = max(2000, 1000/1.777…) * 0.54
+        //         = max(2000, 562.5) * 0.54 = 2000 * 0.54 = 1080.
+        // north(607.5) < rotated(1080) → yaw=0, size=607.5.
+        assert_eq!(shot.yaw, 0.0, "wider network stays north-up; x already fills the wide frame");
         assert_eq!(shot.size, 607.5);
         assert!(matches!(shot.info_view, InfoView::Traffic));
     }
@@ -1210,7 +1212,11 @@ mod tests {
     }
 
     #[test]
-    fn overview_rotates_long_axis_into_the_wide_frame_with_traffic() {
+    fn overview_keeps_wide_city_north_up_with_traffic() {
+        // dx=2000, dz=200. Wide city — x already maps to the wide horizontal screen axis at yaw 0.
+        // north   = size_for(dz=200, dx=2000) = max(200, 1125) * 0.54 = 607.5.
+        // rotated = size_for(dx=2000, dz=200) = max(2000, 112.5) * 0.54 = 1080.
+        // north(607.5) < rotated(1080) → yaw=0.
         use crate::contract::{NetNode, Network};
         let net = Network {
             nodes: vec![
@@ -1220,13 +1226,17 @@ mod tests {
             segments: vec![],
         };
         let ov = overview_shot(&net);
-        assert_eq!(ov.yaw, 90.0, "wider-than-tall city rotates so x runs across the frame");
+        assert_eq!(ov.yaw, 0.0, "wide city stays north-up; its long axis already fills the wide frame");
         assert_eq!(ov.pitch, 90.0, "overview stays top-down");
         assert!(matches!(ov.info_view, InfoView::Traffic), "overview carries the traffic layer");
     }
 
     #[test]
-    fn overview_keeps_north_up_when_taller_than_wide() {
+    fn overview_rotates_tall_city_into_the_wide_frame() {
+        // dx=200, dz=2000. Tall city — rotating 90° lays the long z-axis along the wide frame.
+        // north   = size_for(dz=2000, dx=200) = max(2000, 112.5) * 0.54 = 1080.
+        // rotated = size_for(dx=200, dz=2000) = max(200, 1125) * 0.54 = 607.5.
+        // rotated(607.5) < north(1080) → yaw=90.
         use crate::contract::{NetNode, Network};
         let net = Network {
             nodes: vec![
@@ -1235,7 +1245,7 @@ mod tests {
             ],
             segments: vec![],
         };
-        assert_eq!(overview_shot(&net).yaw, 0.0);
+        assert_eq!(overview_shot(&net).yaw, 90.0, "tall city rotates so its long z-axis fills the wide frame");
     }
 
     #[test]

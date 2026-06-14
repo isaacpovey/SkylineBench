@@ -30,6 +30,7 @@
     <Compile Include="src\http\Router.cs" />
     <Compile Include="src\http\Handlers.cs" />
     <Compile Include="src\bridge\Direction.cs" />
+    <Compile Include="src\bridge\FlybyMath.cs" />
     <Compile Include="src\bridge\ErrorCode.cs" />
     <Compile Include="src\bridge\BuildValidator.cs" />
     <Compile Include="src\bridge\SimThread.cs" />

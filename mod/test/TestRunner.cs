@@ -34,6 +34,7 @@ namespace SkylineBench.Tests
             SerializeTests.Register(tests);
             RequestParseTests.Register(tests);
             DirectionTests.Register(tests);
+            FlybyMathTests.Register(tests);
 
             int passed = 0, failed = 0;
             foreach (var t in tests)

@@ -9,9 +9,13 @@
     <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
     <OutputPath>bin\$(Configuration)\</OutputPath>
   </PropertyGroup>
+  <PropertyGroup Condition=" '$(ManagedDLLPath)' == '' ">
+    <ManagedDLLPath>$(HOME)/Library/Application Support/Steam/steamapps/common/Cities_Skylines/Cities.app/Contents/Resources/Data/Managed</ManagedDLLPath>
+  </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="UnityEngine"><HintPath>$(ManagedDLLPath)/UnityEngine.dll</HintPath><Private>true</Private></Reference>
   </ItemGroup>
   <ItemGroup>
     <!-- Pure source under test (no game deps). -->
@@ -29,6 +33,8 @@
     <Compile Include="SerializeTests.cs" />
     <Compile Include="RequestParseTests.cs" />
     <Compile Include="DirectionTests.cs" />
+    <Compile Include="..\src\bridge\FlybyMath.cs"><Link>src\FlybyMath.cs</Link></Compile>
+    <Compile Include="FlybyMathTests.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

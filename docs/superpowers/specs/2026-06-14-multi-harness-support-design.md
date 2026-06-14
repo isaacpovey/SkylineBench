@@ -73,7 +73,7 @@ run.sh (thin orchestrator)
   ├─ skylinebench harness-prepare  ──>  writes config files + launch.argv + launch.env
   ├─ read argv (mapfile -d '') + export env
   ├─ wrap: caffeinate + sandbox-exec  ──>  exec harness CLI  ──> stdout (harness JSON)
-  │     headless: tee transcript.jsonl | skylinebench format-stream --harness X
+  │     tee transcript.jsonl | skylinebench format-stream --harness X
   ├─ skylinebench render-transcript --harness X  ──> transcript.md
   └─ skylinebench benchmark-finalize (unchanged)
 ```
@@ -98,17 +98,13 @@ struct LaunchInputs {
     mcp_command: String,        // the `broker benchmark …` invocation (sh -c …)
     session_dir: PathBuf,
     out_dir: PathBuf,
-    mode: RunMode,              // Headless | Watch
 }
 ```
 
-`mode` distinguishes the two `run.sh` paths. **Headless** uses the harness's
-JSON output mode (the parsed transcript path). **Watch** runs the harness's
-interactive form for an operator to observe and produces no parsed transcript —
-matching today, where `--watch` skips the `format-stream`/`render-transcript`
-pipeline. Concretely: claude drops `--output-format stream-json --verbose` and
-`-p` in watch mode; codex/gemini/opencode drop their JSON flags and use their
-interactive invocation (`codex`, `gemini -i`, `opencode` TUI).
+Every run is headless — each harness uses its JSON output mode (the parsed
+transcript path). `run.sh`'s old `--watch`/`--interactive` flag is removed as
+part of this work (see "`run.sh` changes"); there is no interactive variant per
+harness to maintain.
 
 ```rust
 
@@ -142,9 +138,9 @@ session dir:
 
 #### Per-harness LaunchSpec contents
 
-- **claude** — `argv = claude [-p P | P] [--model m] --mcp-config <session>/mcp.json
+- **claude** — `argv = claude -p P [--model m] --mcp-config <session>/mcp.json
   --strict-mcp-config --allowedTools <list> --disallowedTools WebFetch,WebSearch
-  --permission-mode bypassPermissions [--output-format stream-json --verbose]`.
+  --permission-mode bypassPermissions --output-format stream-json --verbose`.
   `env = CLAUDE_CONFIG_DIR=…`. `config_files = mcp.json` (today's content).
   `required_env`: none here — `run.sh` keeps the existing OAuth-dir check, and
   `ANTHROPIC_API_KEY` also works. Behavior is byte-for-byte what runs today.
@@ -228,15 +224,18 @@ exposes** — not identical content:
 
 - Add `--harness <name>` (default `claude`); validate against the known set,
   error on unknown.
+- **Remove the `--watch`/`--interactive` flag and its branch.** All runs are
+  headless; the single exec path pipes harness stdout through
+  `format-stream --harness X` and then `render-transcript --harness X`. This
+  deletes the `WATCH` variable, the interactive `CMD` branch, and the
+  watch-specific `|| true` handling.
 - **Preflight per harness:** the harness binary is on `PATH` and every
   `required_env` secret is set; otherwise exit early with a clear message
   (mirrors today's "not logged in" check). Claude keeps its existing OAuth-dir
   check.
 - Replace the inline `claude …` command construction with: call
   `harness-prepare`, `mapfile -d ''` the argv, export the isolation env, then
-  wrap with `caffeinate` + `sandbox-exec` and exec — for both `--watch` and
-  headless paths. Headless pipes stdout through `format-stream --harness X` and
-  then `render-transcript --harness X`.
+  wrap with `caffeinate` + `sandbox-exec` and exec.
 - Record `harness.txt` next to `model.txt` in the run dir; copy the harness
   config file(s) into the run dir for reproducibility (as `mcp.json` is copied
   today).
@@ -245,6 +244,8 @@ exposes** — not identical content:
   best-effort on top of it.
 - `DRY_RUN=1` prints the resolved argv, isolation env, and config file contents
   for the chosen harness (extends today's behavior).
+- Update docs that reference `--watch` (`README.md`, `benchmark/README.md`) to
+  drop it and document `--harness`.
 
 ## Anti-cheat model
 

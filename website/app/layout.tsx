@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter_Tight } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import { Reveal } from "@/components/reveal";
 import "./globals.css";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
@@ -19,6 +20,7 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => (
     <body className="ds dark">
       {children}
       <Analytics />
+      <Reveal />
     </body>
   </html>
 );

@@ -10,6 +10,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_ID="$(date +%Y%m%d-%H%M%S)"
 OUT_DIR="$ROOT/benchmark/runs/$RUN_ID"
 
+if [ -f "$ROOT/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$ROOT/.env"
+  set +a
+fi
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --map) MAP="$2"; shift 2 ;;
@@ -177,6 +184,19 @@ if [ -d "$SESSION_DIR/screenshots" ]; then
 fi
 
 "$REPO_BIN" render-transcript --input "$OUT_DIR/transcript.jsonl" --out "$OUT_DIR/transcript.md" --harness "$HARNESS" || true
+
+if [ ! -f "$OUT_DIR/end-state.json" ]; then
+  echo "benchmark session ended before writing end-state.json; skipping final measurement" >&2
+  if [ -s "$OUT_DIR/run.log" ]; then
+    echo "--- last run.log lines ---" >&2
+    tail -n 40 "$OUT_DIR/run.log" >&2
+  else
+    echo "--- last transcript.jsonl lines ---" >&2
+    tail -n 20 "$OUT_DIR/transcript.jsonl" >&2
+  fi
+  echo "artifacts in $OUT_DIR" >&2
+  exit 1
+fi
 
 # The slow settle + final measurement runs here, outside the agent session, so
 # no MCP client timeout can kill it (the old in-server finalize made

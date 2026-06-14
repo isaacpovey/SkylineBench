@@ -8,6 +8,9 @@ Score a Claude Code agent on improving traffic in a bad-traffic city.
    `curl -s http://127.0.0.1:8787/health` shows `"city_loaded":true`.
 2. Build the broker once: `cargo build --release --manifest-path broker/Cargo.toml`.
 3. Run: `./benchmark/run.sh --map gridlock-v1`
+   - Put harness secrets in a root `.env` file if you do not want to export
+     them in your shell each time: `cp .env.example .env`, then fill in the
+     keys you need. `.env` is ignored by git.
    - The broker measures a baseline and the agent works inside a Seatbelt
      sandbox that blocks reading this repo. On any run-end condition
      (submit / congestion target / 3h) the run state is snapshotted to
@@ -15,7 +18,7 @@ Score a Claude Code agent on improving traffic in a bad-traffic city.
      `skylinebench benchmark-finalize`, which settles the sim, measures the
      final window, scores, and writes the artifacts.
    - Use `--harness <claude|codex|gemini|opencode>` to pick the agent harness
-     (default `claude`). codex needs `OPENAI_API_KEY`, gemini `GEMINI_API_KEY`,
+     (default `claude`). codex needs `CODEX_API_KEY`, gemini `GEMINI_API_KEY`,
      opencode `OPENROUTER_API_KEY`; each harness binary must be on `PATH`.
    - Use `--model <name>` to pick the model (e.g. `claude-opus-4-8`,
      `gpt-5.5`, `gemini-2.5-pro`, `openrouter/qwen/qwen-2.5-coder-32b-instruct`).

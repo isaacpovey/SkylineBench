@@ -96,6 +96,11 @@ fn claude_blocks(v: &Value, results: bool) -> Vec<Block> {
 /// type spelling, which drift across codex versions.
 fn parse_codex(v: &Value) -> Vec<Event> {
     let event_type = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
+    if matches!(event_type, "error" | "turn.failed") {
+        return codex_error_text(v)
+            .map(|t| vec![Event::Assistant(vec![Block::Text(format!("Error: {t}"))])])
+            .unwrap_or_default();
+    }
     if event_type != "item.completed" {
         return vec![];
     }
@@ -137,6 +142,25 @@ fn parse_codex(v: &Value) -> Vec<Event> {
         }
         _ => vec![],
     }
+}
+
+fn codex_error_text(v: &Value) -> Option<String> {
+    if let Some(message) = v.get("message").and_then(|m| m.as_str()) {
+        return Some(extract_nested_error_message(message).unwrap_or_else(|| message.to_string()));
+    }
+    let error = v.get("error")?;
+    if let Some(message) = error.get("message").and_then(|m| m.as_str()) {
+        return Some(extract_nested_error_message(message).unwrap_or_else(|| message.to_string()));
+    }
+    Some(value_to_text(error))
+}
+
+fn extract_nested_error_message(raw: &str) -> Option<String> {
+    let v: Value = serde_json::from_str(raw).ok()?;
+    v.get("error")
+        .and_then(|e| e.get("message"))
+        .and_then(|m| m.as_str())
+        .map(String::from)
 }
 
 /// Extract readable text parts from an MCP tool result value: prefer a
@@ -483,6 +507,18 @@ mod tests {
         )
         .unwrap();
         assert!(format_event_live(Harness::Codex, &line).is_none());
+    }
+
+    #[test]
+    fn codex_surfaces_api_errors() {
+        let line: Value = serde_json::from_str(
+            r#"{"type":"error","message":"{\n  \"type\": \"error\",\n  \"error\": {\n    \"type\": \"invalid_request_error\",\n    \"code\": \"model_not_found\",\n    \"message\": \"The requested model 'gpt5.5' does not exist.\",\n    \"param\": \"model\"\n  },\n  \"status\": 400\n}"}"#,
+        )
+        .unwrap();
+        let live = format_event_live(Harness::Codex, &line).unwrap();
+        assert!(live.contains("gpt5.5"), "live error: {live}");
+        let md = render_transcript(Harness::Codex, &line.to_string());
+        assert!(md.contains("model 'gpt5.5'"), "md error: {md}");
     }
 
     #[test]

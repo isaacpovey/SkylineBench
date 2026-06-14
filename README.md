@@ -87,8 +87,8 @@ You need Cities: Skylines (Steam, macOS), [Rust](https://rustup.rs), and Mono
    main menu — see [`mod/README.md`](mod/README.md). Confirm it's up:
    `curl -s http://127.0.0.1:8787/health` should report `"city_loaded":true`.
 2. **Build the broker:** `cargo build --release --manifest-path broker/Cargo.toml`
-3. **Run:** `./benchmark/run.sh --map gridlock-v1` (add `--watch` to watch the
-   session live instead of headless).
+3. **Run:** `./benchmark/run.sh --map gridlock-v1` (add `--harness codex`
+   etc. to run a non-Claude agent).
 4. **Read the results** in `benchmark/runs/<timestamp>/`: `score.json` for the
    breakdown, `transcript.md` for everything the agent did, `renders/` and
    `screenshots/` for the visuals, and `skylinebench timelapse <run-dir>` for an

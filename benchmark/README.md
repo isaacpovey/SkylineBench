@@ -14,13 +14,18 @@ Score a Claude Code agent on improving traffic in a bad-traffic city.
      `end-state.json`; after the agent session exits, run.sh runs
      `skylinebench benchmark-finalize`, which settles the sim, measures the
      final window, scores, and writes the artifacts.
-   - Use `--watch` to observe an interactive session instead of headless.
-   - Use `--model <name>` (e.g. `claude-opus-4-8`, `claude-sonnet-4-6`) to pick
-     the Claude Code model; omitted = the config's default. The choice is
-     recorded in the run dir as `model.txt`.
+   - Use `--harness <claude|codex|gemini|opencode>` to pick the agent harness
+     (default `claude`). codex needs `OPENAI_API_KEY`, gemini `GEMINI_API_KEY`,
+     opencode `OPENROUTER_API_KEY`; each harness binary must be on `PATH`.
+   - Use `--model <name>` to pick the model (e.g. `claude-opus-4-8`,
+     `gpt-5.5`, `gemini-2.5-pro`, `openrouter/qwen/qwen-2.5-coder-32b-instruct`).
+     The harness + model are recorded in the run dir as `harness.txt` / `model.txt`.
+   - The deny-repo-read sandbox (macOS Seatbelt, Linux bubblewrap/firejail)
+     wraps the agent; the active backend is recorded in `sandbox.txt`. On a host
+     with no sandbox available the run proceeds with a loud warning and
+     `sandbox.txt = none`.
    - Runs are serialized by a lock at `${TMPDIR:-/tmp}/skylinebench.lock`; never start
-     two runs against one game instance. `run.sh` keeps the machine awake
-     (`caffeinate`) for the whole session.
+     two runs against one game instance.
 4. Read the results in `benchmark/runs/<timestamp>/`:
    - `score.json` — the composite score and per-term breakdown.
    - `run-record.json` — baseline/final stats, tally, per-action cost log.

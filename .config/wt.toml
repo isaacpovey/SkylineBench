@@ -4,11 +4,11 @@
 # SkylineBench is a monorepo:
 #   broker/     Rust crate `skylinebench`  — `cargo build` / `cargo test`
 #   mod/        C# Cities: Skylines mod    — `./build.sh`
-#   website/    static HTML/CSS            — no build step
+#   website/    Next.js app (App Router)   — `npm install` / `npm run build`
 #   benchmark/  bash run scripts           — `benchmark/run.sh`
 #
-# There are no node deps or `.env` files to provision, so new worktrees need
-# no setup hooks. Uncomment a hook below if that changes.
+# website/ has its own node toolchain (npm). Other components need no setup.
+# Uncomment a hook below if that changes.
 #
 # pre-start  = "..."   # runs before a worktree is initialised
 # post-start = "..."   # runs after creation (background) — e.g. start a dev server

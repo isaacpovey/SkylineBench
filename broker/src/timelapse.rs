@@ -204,6 +204,12 @@ fn encode_png_dir(dir: &Path, fps: u32, out: &Path) -> Result<(), anyhow::Error>
 }
 
 /// Concatenate mp4 `parts` into `out` via the ffmpeg concat demuxer.
+///
+/// Uses `-c copy` (stream copy, no re-encode), which assumes all parts share
+/// codec/container params. The flyby clips (24fps) and the core timelapse
+/// (caller `fps`) differ in framerate; if `-c copy` rejects the mismatch or
+/// produces drift on a real run, drop `-c copy` and re-encode here
+/// (`-pix_fmt yuv420p`). Tracked as a known real-run risk in the timelapse spec.
 fn concat_mp4(parts: &[PathBuf], out: &Path) -> Result<(), anyhow::Error> {
     let staging = out.with_extension("concat.txt");
     let list = parts

@@ -27,6 +27,19 @@ case "$MAP" in
   *[!A-Za-z0-9_-]*) echo "map id must be alphanumeric, dash, or underscore" >&2; exit 2 ;;
 esac
 
+# Preflight: the mod must be running with a city loaded (skipped under DRY_RUN,
+# which only inspects the resolved command). The broker talks to the mod over
+# HTTP; build/install it with mod/build.sh and enable it in-game first. Fail
+# fast here rather than after a 30s broker build and a launched agent session.
+if [ "${DRY_RUN:-0}" != "1" ]; then
+  HEALTH="$(curl -fsS "$MOD_URL/health" 2>/dev/null || true)"
+  case "$(printf '%s' "$HEALTH" | tr -d '[:space:]')" in
+    *'"city_loaded":true'*) : ;;
+    "") echo "mod not reachable at $MOD_URL/health — start Cities: Skylines with the SkylineBench mod enabled (build/install: mod/build.sh)" >&2; exit 1 ;;
+    *) echo "mod is up at $MOD_URL but no city is loaded — load the benchmark save from the game's main menu" >&2; exit 1 ;;
+  esac
+fi
+
 mkdir -p "$OUT_DIR"
 printf '%s\n' "$HARNESS" > "$OUT_DIR/harness.txt"
 if [ -n "$MODEL" ]; then printf '%s\n' "$MODEL" > "$OUT_DIR/model.txt"; fi

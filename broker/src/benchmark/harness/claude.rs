@@ -5,34 +5,34 @@ pub const ALLOWED: &str = "mcp__skylinebench__build_road,mcp__skylinebench__bull
 
 pub fn spec(inputs: &LaunchInputs) -> LaunchSpec {
     let mcp_config = inputs.session_dir.join("mcp.json");
+    let mcp_config_str = mcp_config.display().to_string();
     let contents = serde_json::json!({
         "mcpServers": {
             "skylinebench": { "command": "sh", "args": ["-c", inputs.mcp_shell] }
         }
     });
 
-    let mut argv = vec!["claude".to_string(), "-p".to_string(), inputs.prompt.clone()];
-    if let Some(model) = &inputs.model {
-        argv.push("--model".to_string());
-        argv.push(model.clone());
-    }
-    argv.extend(
-        [
-            "--mcp-config",
-            &mcp_config.display().to_string(),
-            "--strict-mcp-config",
-            "--allowedTools",
-            ALLOWED,
-            "--disallowedTools",
-            "WebFetch,WebSearch",
-            "--permission-mode",
-            "bypassPermissions",
-            "--output-format",
-            "stream-json",
-            "--verbose",
-        ]
-        .map(String::from),
-    );
+    let model_args = inputs
+        .model
+        .iter()
+        .flat_map(|m| ["--model".to_string(), m.clone()]);
+    let head = ["claude", "-p", inputs.prompt.as_str()].map(String::from);
+    let tail = [
+        "--mcp-config",
+        mcp_config_str.as_str(),
+        "--strict-mcp-config",
+        "--allowedTools",
+        ALLOWED,
+        "--disallowedTools",
+        "WebFetch,WebSearch",
+        "--permission-mode",
+        "bypassPermissions",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+    ]
+    .map(String::from);
+    let argv: Vec<String> = head.into_iter().chain(model_args).chain(tail).collect();
 
     LaunchSpec {
         argv,
@@ -40,7 +40,8 @@ pub fn spec(inputs: &LaunchInputs) -> LaunchSpec {
         env: vec![],
         config_files: vec![ConfigFile {
             path: mcp_config,
-            contents: serde_json::to_string_pretty(&contents).unwrap(),
+            contents: serde_json::to_string_pretty(&contents)
+                .expect("serde_json::Value is always serializable"),
         }],
         required_env: vec![],
     }

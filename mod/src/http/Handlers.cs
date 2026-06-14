@@ -62,7 +62,7 @@ namespace SkylineBench.Http
             var req = RequestParse.Screenshot(JsonReader.Parse(body));
             try
             {
-                byte[] png = CaptureBehaviour.Capture(req.X, req.Z, req.Size, req.TopDown, 5000);
+                byte[] png = CaptureBehaviour.Capture(req.X, req.Z, req.Size, req.Yaw, req.Pitch, req.InfoView, 5000);
                 return HttpReply.Png(png);
             }
             catch (Exception e)

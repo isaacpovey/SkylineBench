@@ -8,8 +8,8 @@ namespace SkylineBench.Bridge
 {
     public sealed class CaptureRequest
     {
-        public float X, Z, Size;
-        public bool TopDown;
+        public float X, Z, Size, Yaw, Pitch;
+        public string InfoView;
         public byte[] Png;
         public Exception Error;
         public readonly ManualResetEvent Done = new ManualResetEvent(false);
@@ -37,9 +37,9 @@ namespace SkylineBench.Bridge
         private static readonly Queue<MainThreadAction> _actions = new Queue<MainThreadAction>();
         private static readonly object _lock = new object();
 
-        public static byte[] Capture(float x, float z, float size, bool topDown, int timeoutMs)
+        public static byte[] Capture(float x, float z, float size, float yaw, float pitch, string infoView, int timeoutMs)
         {
-            var req = new CaptureRequest { X = x, Z = z, Size = size, TopDown = topDown };
+            var req = new CaptureRequest { X = x, Z = z, Size = size, Yaw = yaw, Pitch = pitch, InfoView = infoView };
             lock (_lock) { _queue.Enqueue(req); }
             if (!req.Done.WaitOne(timeoutMs))
                 throw new TimeoutException("screenshot capture timed out after " + timeoutMs + "ms");
@@ -110,24 +110,34 @@ namespace SkylineBench.Bridge
 
             CameraController cc = null;
             bool prevFree = false;
+            InfoManager im = null;
+            InfoManager.InfoMode prevMode = InfoManager.InfoMode.None;
+            InfoManager.SubInfoMode prevSub = InfoManager.SubInfoMode.Default;
+            bool trafficOn = string.Equals(req.InfoView, "traffic", StringComparison.OrdinalIgnoreCase);
             try
             {
                 cc = ToolsModifierControl.cameraController;
                 prevFree = cc.m_freeCamera;
-                // Free camera hides the game UI chrome so frames are clean.
                 cc.m_freeCamera = true;
                 var pos = new Vector3(req.X, 0f, req.Z);
-                var angle = req.TopDown ? new Vector2(0f, 90f) : new Vector2(0f, 45f);
-                // Setting target AND current skips the easing animation.
+                var angle = new Vector2(req.Yaw, req.Pitch);
                 cc.m_targetPosition = pos; cc.m_currentPosition = pos;
                 cc.m_targetSize = req.Size; cc.m_currentSize = req.Size;
                 cc.m_targetAngle = angle; cc.m_currentAngle = angle;
+                if (trafficOn)
+                {
+                    im = ColossalFramework.Singleton<InfoManager>.instance;
+                    prevMode = im.CurrentMode; prevSub = im.CurrentSubMode;
+                    im.SetCurrentMode(InfoManager.InfoMode.Traffic, InfoManager.SubInfoMode.Default);
+                }
             }
             catch (Exception e) { req.Error = e; req.Done.Set(); yield break; }
 
-            // Two end-of-frame waits so the moved camera actually renders.
+            // End-of-frame waits so the moved camera renders; the longer wait when
+            // the info view is on lets its colour fade settle.
             yield return new WaitForEndOfFrame();
             yield return new WaitForEndOfFrame();
+            if (trafficOn) yield return new WaitForSecondsRealtime(0.5f);
 
             try
             {
@@ -146,6 +156,7 @@ namespace SkylineBench.Bridge
             catch (Exception e) { req.Error = e; }
             finally
             {
+                if (im != null) try { im.SetCurrentMode(prevMode, prevSub); } catch { }
                 if (cc != null) cc.m_freeCamera = prevFree;
                 req.Done.Set();
             }

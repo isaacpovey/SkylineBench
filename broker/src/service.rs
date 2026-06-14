@@ -400,12 +400,31 @@ fn action_error_value(reason: ActionError) -> Value {
     json!({ "ok": false, "reason": reason })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InfoView {
+    None,
+    Traffic,
+}
+
+impl InfoView {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            InfoView::None => "none",
+            InfoView::Traffic => "traffic",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct CameraShot {
     pub x: f32,
     pub z: f32,
     pub size: f32,
-    pub top_down: bool,
+    /// Camera heading in degrees (0 = north-up).
+    pub yaw: f32,
+    /// Camera tilt in degrees (90 = straight down, 45 = default game tilt).
+    pub pitch: f32,
+    pub info_view: InfoView,
 }
 
 /// Floor for the overview zoom so tiny networks aren't framed from 10 m up.
@@ -435,19 +454,21 @@ pub fn overview_shot(net: &crate::contract::Network) -> CameraShot {
     let bounds = trimmed_bounds(net.nodes.iter().map(|n| n.x))
         .zip(trimmed_bounds(net.nodes.iter().map(|n| n.z)));
     match bounds {
-        None => CameraShot { x: 0.0, z: 0.0, size: 2000.0, top_down: true },
+        None => CameraShot { x: 0.0, z: 0.0, size: 2000.0, yaw: 0.0, pitch: 90.0, info_view: InfoView::None },
         Some(((min_x, max_x), (min_z, max_z))) => CameraShot {
             x: (min_x + max_x) / 2.0,
             z: (min_z + max_z) / 2.0,
             size: ((max_x - min_x).max(max_z - min_z) * OVERVIEW_MARGIN / 2.0)
                 .max(OVERVIEW_MIN_SIZE_M),
-            top_down: true,
+            yaw: 0.0,
+            pitch: 90.0,
+            info_view: InfoView::None,
         },
     }
 }
 
 pub fn closeup_shot(x: f32, z: f32) -> CameraShot {
-    CameraShot { x, z, size: CLOSEUP_SIZE_M, top_down: false }
+    CameraShot { x, z, size: CLOSEUP_SIZE_M, yaw: 0.0, pitch: 45.0, info_view: InfoView::None }
 }
 
 /// Frame a set of edit locations in one shot: a plain close-up for a single
@@ -463,7 +484,9 @@ pub fn region_shot(positions: &[(f32, f32)]) -> Option<CameraShot> {
         x: (min_x + max_x) / 2.0,
         z: (min_z + max_z) / 2.0,
         size: ((max_x - min_x).max(max_z - min_z) * CLOSEUP_MARGIN / 2.0).max(CLOSEUP_SIZE_M),
-        top_down: false,
+        yaw: 0.0,
+        pitch: 45.0,
+        info_view: InfoView::None,
     })
 }
 
@@ -471,7 +494,7 @@ pub async fn capture_screenshot(
     client: &BridgeClient,
     shot: CameraShot,
 ) -> Result<Vec<u8>, ServiceError> {
-    Ok(client.screenshot(shot.x, shot.z, shot.size, shot.top_down).await?)
+    Ok(client.screenshot(shot.x, shot.z, shot.size, shot.yaw, shot.pitch, shot.info_view.as_str()).await?)
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -562,6 +585,16 @@ pub async fn query_segments(
 mod tests {
     use super::*;
     use crate::mock;
+
+    #[test]
+    fn camera_shots_carry_yaw_pitch_and_info_view() {
+        let cu = closeup_shot(10.0, 20.0);
+        assert_eq!(cu.pitch, 45.0, "close-ups use the angled game tilt");
+        assert_eq!(cu.yaw, 0.0);
+        assert!(matches!(cu.info_view, InfoView::None), "close-ups stay a clean render");
+        assert_eq!(InfoView::Traffic.as_str(), "traffic");
+        assert_eq!(InfoView::None.as_str(), "none");
+    }
 
     async fn client() -> BridgeClient {
         let (addr, server) = mock::bind("127.0.0.1:0".parse().unwrap()).await;
@@ -1114,7 +1147,7 @@ mod tests {
         let shot = overview_shot(&net);
         assert_eq!(shot.x, 0.0);
         assert_eq!(shot.z, 0.0);
-        assert!(shot.top_down);
+        assert_eq!(shot.pitch, 90.0);
         // span 2000m * 1.15 margin / 2 = 1150, below the 1200 floor → clamped.
         assert_eq!(shot.size, 1200.0);
     }
@@ -1131,7 +1164,7 @@ mod tests {
     fn closeup_shot_targets_the_location() {
         let shot = closeup_shot(150.0, -75.0);
         assert_eq!((shot.x, shot.z), (150.0, -75.0));
-        assert!(!shot.top_down);
+        assert_eq!(shot.pitch, 45.0);
         assert_eq!(shot.size, 350.0);
     }
 
@@ -1160,7 +1193,7 @@ mod tests {
         let shot = region_shot(&[(150.0, -75.0)]).unwrap();
         assert_eq!((shot.x, shot.z), (150.0, -75.0));
         assert_eq!(shot.size, 350.0);
-        assert!(!shot.top_down);
+        assert_eq!(shot.pitch, 45.0);
     }
 
     #[test]

@@ -55,7 +55,7 @@ impl ScreenshotSink {
         if self.disabled() {
             return None;
         }
-        match client.screenshot(shot.x, shot.z, shot.size, shot.top_down).await {
+        match client.screenshot(shot.x, shot.z, shot.size, shot.yaw, shot.pitch, shot.info_view.as_str()).await {
             Ok(png) => Some(png),
             Err(e) => {
                 eprintln!("benchmark: screenshot capture failed ({e}); disabling screenshots for this run");

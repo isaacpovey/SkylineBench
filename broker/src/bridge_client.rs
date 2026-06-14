@@ -198,9 +198,14 @@ impl BridgeClient {
         x: f32,
         z: f32,
         size: f32,
-        top_down: bool,
+        yaw: f32,
+        pitch: f32,
+        info_view: &str,
     ) -> Result<Vec<u8>, BridgeError> {
-        let body = serde_json::json!({ "x": x, "z": z, "size": size, "top_down": top_down });
+        let body = serde_json::json!({
+            "x": x, "z": z, "size": size,
+            "yaw": yaw, "pitch": pitch, "info_view": info_view,
+        });
         Ok(self
             .http
             .post(format!("{}/screenshot", self.base))
@@ -279,7 +284,7 @@ mod tests {
     #[tokio::test]
     async fn fetches_screenshot_png_bytes() {
         let client = BridgeClient::new(start_mock().await);
-        let png = client.screenshot(0.0, 0.0, 500.0, true).await.unwrap();
+        let png = client.screenshot(0.0, 0.0, 500.0, 0.0, 90.0, "none").await.unwrap();
         assert_eq!(&png[1..4], b"PNG");
     }
 

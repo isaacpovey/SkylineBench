@@ -19,6 +19,10 @@ namespace SkylineBench.Tests
             tests.Add(new KeyValuePair<string, Action>("serialize: clock state", Clock));
             tests.Add(new KeyValuePair<string, Action>("serialize: clock state forced paused", ClockForcedPaused));
             tests.Add(new KeyValuePair<string, Action>("serialize: load result", Load));
+            tests.Add(new KeyValuePair<string, Action>("serialize: load miss lists available", LoadMissListsAvailable));
+            tests.Add(new KeyValuePair<string, Action>("serialize: saves list", SavesList));
+            tests.Add(new KeyValuePair<string, Action>("serialize: load baseline omits optional", LoadBaselineOmitsOptional));
+            tests.Add(new KeyValuePair<string, Action>("serialize: saves empty", SavesEmpty));
             tests.Add(new KeyValuePair<string, Action>("serialize: road types shape", RoadTypesShape));
         }
 
@@ -100,8 +104,39 @@ namespace SkylineBench.Tests
 
         static void Load()
         {
+            Assert.Equal("{\"ok\":true,\"city_loaded\":true,\"resolved\":{\"name\":\"gridlock\",\"city_name\":\"Gridlock City\",\"full_name\":\"pkg.gridlock\"}}",
+                Serialize.Load(new LoadResultDto
+                {
+                    Ok = true,
+                    CityLoaded = true,
+                    Resolved = new SaveInfoDto { Name = "gridlock", CityName = "Gridlock City", FullName = "pkg.gridlock" },
+                }));
+        }
+
+        static void LoadMissListsAvailable()
+        {
+            var r = new LoadResultDto { Ok = false, CityLoaded = false };
+            r.Available.Add(new SaveInfoDto { Name = "a", CityName = "A City", FullName = "pkg.a" });
+            Assert.Equal("{\"ok\":false,\"city_loaded\":false,\"available\":[{\"name\":\"a\",\"city_name\":\"A City\",\"full_name\":\"pkg.a\"}]}",
+                Serialize.Load(r));
+        }
+
+        static void SavesList()
+        {
+            var saves = new List<SaveInfoDto> { new SaveInfoDto { Name = "a", CityName = "A City", FullName = "pkg.a" } };
+            Assert.Equal("{\"saves\":[{\"name\":\"a\",\"city_name\":\"A City\",\"full_name\":\"pkg.a\"}]}",
+                Serialize.Saves(saves));
+        }
+
+        static void LoadBaselineOmitsOptional()
+        {
             Assert.Equal("{\"ok\":true,\"city_loaded\":true}",
                 Serialize.Load(new LoadResultDto { Ok = true, CityLoaded = true }));
+        }
+
+        static void SavesEmpty()
+        {
+            Assert.Equal("{\"saves\":[]}", Serialize.Saves(new List<SaveInfoDto>()));
         }
 
         // Verifies the JSON object shape the handler emits; built directly with JsonWriter because game prefabs can't be loaded in the no-game test harness.

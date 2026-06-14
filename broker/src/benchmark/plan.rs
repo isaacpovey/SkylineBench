@@ -84,15 +84,6 @@ fn lerp_pos(a: Position, b: Position, t: f32) -> Position {
     }
 }
 
-/// Split one straight span into equal chunks no longer than POLYLINE_CHUNK_M.
-/// Shares the chunk-boundary math with `build_chunks` via `chunk_fractions`.
-fn split_span(from: Position, to: Position) -> Vec<(Position, Position)> {
-    chunk_fractions(from, to)
-        .windows(2)
-        .map(|w| (lerp_pos(from, to, w[0]), lerp_pos(from, to, w[1])))
-        .collect()
-}
-
 /// Fraction (0..1) of the way from `from` to `to` for each chunk boundary.
 fn chunk_fractions(from: Position, to: Position) -> Vec<f32> {
     let len = horizontal_distance(from, to);
@@ -247,14 +238,24 @@ mod tests {
         assert_eq!(elevs, vec![(0.0, 6.0), (6.0, 12.0)]);
     }
 
+    fn build_endpoints(ops: &[ExecOp]) -> Vec<(Position, Position)> {
+        ops.iter()
+            .map(|op| match op {
+                ExecOp::Build { from, to, .. } => (*from, *to),
+                other => panic!("expected Build, got {other:?}"),
+            })
+            .collect()
+    }
+
     #[test]
-    fn split_span_respects_chunk_length() {
-        let chunks = split_span(pos(0.0, 0.0), pos(500.0, 0.0));
-        assert_eq!(chunks.len(), 3);
-        assert!((chunks[0].1.x - 166.66667).abs() < 0.01);
-        assert_eq!(chunks[0].0.x, 0.0);
-        assert_eq!(chunks[2].1.x, 500.0);
-        let max = chunks
+    fn build_chunks_respects_chunk_length() {
+        let chunks = build_chunks(pos(0.0, 0.0), pos(500.0, 0.0), "road", true, 0.0, 0.0);
+        let ends = build_endpoints(&chunks);
+        assert_eq!(ends.len(), 3);
+        assert!((ends[0].1.x - 166.66667).abs() < 0.01);
+        assert_eq!(ends[0].0.x, 0.0);
+        assert_eq!(ends[2].1.x, 500.0);
+        let max = ends
             .iter()
             .map(|(a, b)| crate::geometry::horizontal_distance(*a, *b))
             .fold(0.0_f32, f32::max);
@@ -263,7 +264,7 @@ mod tests {
 
     #[test]
     fn short_span_is_one_chunk() {
-        assert_eq!(split_span(pos(0.0, 0.0), pos(50.0, 0.0)).len(), 1);
+        assert_eq!(build_chunks(pos(0.0, 0.0), pos(50.0, 0.0), "road", true, 0.0, 0.0).len(), 1);
     }
 
     #[test]

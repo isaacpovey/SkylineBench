@@ -698,7 +698,9 @@ git commit -m "feat(benchmark): maps.tsv binds map id to in-game save name"
 ### Task 10: `run.sh` resolves `--map` via maps.tsv and loads the save with a reload wait
 
 **Files:**
-- Modify: `benchmark/run.sh` (the preflight block, lines ~37-46, and add helpers)
+- Modify: `benchmark/run.sh` (the preflight block, lines 37-48, and add helpers)
+
+Note: a recent commit (`ff6c8bf`) added a `.env`-sourcing block near the top of `run.sh` and a pre-finalize `end-state.json` guard near the bottom. Neither overlaps this task's edit region; the preflight block below is the only part being replaced.
 
 The current preflight only *checks* `city_loaded:true`. Replace it with: resolve the map id → save name, POST `/load-save`, then wait for the bridge to cycle (down then back up with `city_loaded:true`). The down→up cycle is the robust completion signal — the mod stops its HTTP bridge in `OnLevelUnloading` and restarts it in `OnLevelLoaded`.
 
@@ -770,7 +772,7 @@ json_str() {
 
 - [ ] **Step 2: Replace the check-only preflight with resolve + load**
 
-In `benchmark/run.sh`, replace the existing preflight block (lines 37-46, the `if [ "${DRY_RUN:-0}" != "1" ]; then ... fi` that only checks `/health`) with:
+In `benchmark/run.sh`, replace the existing preflight block (lines 37-48 — the comment plus the `if [ "${DRY_RUN:-0}" != "1" ]; then ... fi` that only checks `/health`) with:
 
 ```bash
 SAVE_NAME="$(resolve_save_name "$MAP")" || exit 1

@@ -224,7 +224,7 @@ pub struct ClockState {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SaveInfo {
     pub name: String,
-    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub city_name: Option<String>,
     pub full_name: String,
 }

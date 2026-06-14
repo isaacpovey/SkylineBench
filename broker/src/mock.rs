@@ -386,7 +386,6 @@ async fn set_zone(State(s): State<MockState>, Json(body): Json<SetZoneBody>) -> 
 
 #[derive(Deserialize)]
 struct LoadSaveBody {
-    #[allow(dead_code)]
     save_name: String,
 }
 

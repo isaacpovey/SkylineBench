@@ -1,0 +1,7 @@
+# Suite: one run per line, harness[:model]. '#' comments and blank lines ignored.
+# harness with no :model uses the harness default.
+claude:claude-opus-4-8
+claude:claude-sonnet-4-6
+codex
+gemini:gemini-2.5-flash
+opencode

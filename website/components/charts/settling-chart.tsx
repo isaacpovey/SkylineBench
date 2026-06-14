@@ -1,4 +1,4 @@
-import { normaliseSeries, polyline } from "@/lib/chart";
+import { normaliseSeries, polyline, shiftPoints } from "@/lib/chart";
 
 type Props = {
   base: number[];
@@ -9,15 +9,6 @@ const PLOT_X = 40;
 const PLOT_Y = 12;
 const PLOT_WIDTH = 304;
 const PLOT_HEIGHT = 150;
-
-const shiftPoints = ({ dx, dy }: { dx: number; dy: number }) => (points: string): string =>
-  points
-    .split(" ")
-    .map((pair) => {
-      const [x, y] = pair.split(",").map(Number);
-      return `${+(x + dx).toFixed(1)},${+(y + dy).toFixed(1)}`;
-    })
-    .join(" ");
 
 export const SettlingChart = ({ base, final }: Props) => {
   const combined = normaliseSeries([...base, ...final]);

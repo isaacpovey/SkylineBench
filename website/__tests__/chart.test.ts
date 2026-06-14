@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { scaleBars, polyline, normaliseSeries } from "@/lib/chart";
+import { scaleBars, polyline, normaliseSeries, shiftPoints } from "@/lib/chart";
 
 describe("scaleBars", () => {
   it("maps the largest value to full width", () => {
@@ -21,5 +21,11 @@ describe("polyline", () => {
   it("spreads points across the width and inverts y", () => {
     const pts = polyline({ width: 100, height: 100 })({ values: [0, 1] });
     expect(pts).toBe("0,100 100,0");
+  });
+});
+
+describe("shiftPoints", () => {
+  it("offsets each x,y pair by dx,dy", () => {
+    expect(shiftPoints({ dx: 40, dy: 12 })("0,100 100,0")).toBe("40,112 140,12");
   });
 });

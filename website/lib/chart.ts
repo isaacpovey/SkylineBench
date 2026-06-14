@@ -20,3 +20,14 @@ export const polyline =
       .map((v, i) => `${+(i * step).toFixed(2)},${+((1 - v) * height).toFixed(2)}`)
       .join(" ");
   };
+
+export const shiftPoints =
+  ({ dx, dy }: { dx: number; dy: number }) =>
+  (points: string): string =>
+    points
+      .split(" ")
+      .map((pair) => {
+        const [x, y] = pair.split(",").map(Number);
+        return `${+(x + dx).toFixed(1)},${+(y + dy).toFixed(1)}`;
+      })
+      .join(" ");

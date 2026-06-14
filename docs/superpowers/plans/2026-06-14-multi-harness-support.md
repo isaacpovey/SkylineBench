@@ -1739,8 +1739,8 @@ fn parse_opencode(v: &Value) -> Vec<Event> {
                 .cloned()
                 .unwrap_or(Value::Null);
             let mut events = vec![Event::Assistant(vec![Block::ToolUse { name, input }])];
-            if let Some(output) = state.and_then(|s| s.get("output")).and_then(|o| o.as_str()) {
-                events.push(Event::Results(vec![Block::ToolResult { parts: vec![output.to_string()] }]));
+            if let Some(output) = state.and_then(|s| s.get("output")) {
+                events.push(Event::Results(vec![Block::ToolResult { parts: vec![value_to_text(output)] }]));
             }
             events
         }

@@ -42,11 +42,12 @@ fi
 SESSION_DIR=""
 trap 'rm -rf "${SESSION_DIR:-}"; rmdir "$LOCK_DIR" 2>/dev/null' EXIT
 
-# Per-run session dir OUTSIDE the repo: the agent runs under a Seatbelt profile
-# that denies reading the repo (anti-cheating — run 20260609-191326 read the
-# scoring source via Bash). Everything claude must read or exec therefore
-# lives here: the broker binary copy, mcp.json, and the scratch workspace.
-# The agent may freely write/run code in its workspace; only repo reads die.
+# Per-run session dir OUTSIDE the repo: the agent runs under a deny-repo-read
+# sandbox (Seatbelt/bubblewrap/firejail; see sandbox-prepare) added for
+# anti-cheating — run 20260609-191326 read the scoring source via Bash.
+# Everything the harness must read or exec therefore lives here: the broker
+# binary copy, the harness config, and the scratch workspace. The agent may
+# freely write/run code in its workspace; only repo reads die.
 # Lives under ~/Library/Caches (not TMPDIR): macOS periodically reaps
 # /var/folders temp dirs, which deleted a live workspace mid-run on 2026-06-09.
 SESSION_BASE="$HOME/Library/Caches/skylinebench"
@@ -58,7 +59,9 @@ mkdir -p "$WORKSPACE"
 # Always build a fresh release binary so the MCP server can never be a stale
 # build that lacks the `benchmark` subcommand (skipped under DRY_RUN). The
 # binary is copied into SESSION_DIR because the repo copy is unreadable
-# inside the agent sandbox.
+# inside the agent sandbox. REPO_BIN (unsandboxed) runs the harness-prepare /
+# sandbox-prepare / format-stream / render-transcript helpers; BROKER_BIN (the
+# copy) is what the harness spawns as the MCP server.
 REPO_BIN="$ROOT/broker/target/release/skylinebench"
 BROKER_BIN="$SESSION_DIR/skylinebench"
 if [ "${DRY_RUN:-0}" != "1" ]; then
@@ -67,9 +70,11 @@ if [ "${DRY_RUN:-0}" != "1" ]; then
   cp "$REPO_BIN" "$BROKER_BIN"
 fi
 
-# The pre-serve baseline (and the post-run settle/final windows) drive the sim
-# for tens of seconds; give Claude Code's MCP startup + tool timeouts generous
-# headroom so the server isn't killed mid-measurement (defaults are ~30s/60s).
+# Claude Code MCP startup/tool timeouts: the post-run settle/final windows drive
+# the sim for tens of seconds, so give generous headroom (defaults ~30s/60s).
+# Claude Code-specific env (harmless to other harnesses, which ignore it); the
+# baseline is measured lazily on the first tool call to avoid blocking the MCP
+# `initialize` handshake regardless of harness.
 export MCP_TIMEOUT="${MCP_TIMEOUT:-600000}"
 export MCP_TOOL_TIMEOUT="${MCP_TOOL_TIMEOUT:-600000}"
 

@@ -7,6 +7,8 @@ namespace SkylineBench.Json
     public struct ClockReq { public string Op; public int Ticks; public int Speed; }
     public struct LoadSaveReq { public string SaveName; }
     public struct ScreenshotReq { public float X, Z, Size, Yaw, Pitch; public string InfoView; }
+    public struct KeyframeReq { public float X, Z, Yaw, Pitch, Size; }
+    public struct FlybyReq { public KeyframeReq[] Keyframes; public float DurationS; public int CaptureFps; public string OutDir; }
 
     /// <summary>Pure: JsonValue (parsed request body) → typed action arg structs.
     /// Field names match the broker's bridge_client JSON bodies.</summary>
@@ -67,6 +69,32 @@ namespace SkylineBench.Json
                 Yaw = v["yaw"].IsNull ? 0f : (float)v["yaw"].AsDouble(),
                 Pitch = v["pitch"].IsNull ? 90f : (float)v["pitch"].AsDouble(),
                 InfoView = v["info_view"].IsNull ? "none" : v["info_view"].AsString(),
+            };
+        }
+
+        public static FlybyReq Flyby(JsonValue v)
+        {
+            var arr = v["keyframes"];
+            int n = arr.Count;
+            var kfs = new KeyframeReq[n];
+            for (int i = 0; i < n; i++)
+            {
+                var k = arr[i];
+                kfs[i] = new KeyframeReq
+                {
+                    X = (float)k["x"].AsDouble(),
+                    Z = (float)k["z"].AsDouble(),
+                    Yaw = (float)k["yaw"].AsDouble(),
+                    Pitch = (float)k["pitch"].AsDouble(),
+                    Size = (float)k["size"].AsDouble(),
+                };
+            }
+            return new FlybyReq
+            {
+                Keyframes = kfs,
+                DurationS = (float)v["duration_s"].AsDouble(),
+                CaptureFps = (int)v["capture_fps"].AsDouble(),
+                OutDir = v["out_dir"].AsString(),
             };
         }
     }

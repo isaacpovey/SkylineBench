@@ -12,6 +12,7 @@ namespace SkylineBench.Tests
             tests.Add(new KeyValuePair<string, Action>("parse: clock step", Clock));
             tests.Add(new KeyValuePair<string, Action>("parse: set-zone rect", SetZone));
             tests.Add(new KeyValuePair<string, Action>("parse: screenshot", Screenshot));
+            tests.Add(new KeyValuePair<string, Action>("parse: flyby", Flyby));
         }
 
         static void BuildRoad()
@@ -50,6 +51,16 @@ namespace SkylineBench.Tests
             Assert.Equal(90.0, d.Pitch);
             Assert.Equal(0.0, d.Yaw);
             Assert.Equal("none", d.InfoView);
+        }
+
+        static void Flyby()
+        {
+            var r = RequestParse.Flyby(JsonReader.Parse(
+                "{\"keyframes\":[{\"x\":1,\"z\":2,\"yaw\":0,\"pitch\":32,\"size\":500},{\"x\":3,\"z\":4,\"yaw\":0,\"pitch\":32,\"size\":500}],\"duration_s\":6,\"capture_fps\":12,\"out_dir\":\"/tmp/fly\"}"));
+            Assert.True(r.Keyframes.Length == 2, "two keyframes");
+            Assert.Equal(1.0, r.Keyframes[0].X); Assert.Equal(4.0, r.Keyframes[1].Z);
+            Assert.Equal(6.0, r.DurationS); Assert.True(r.CaptureFps == 12, "fps");
+            Assert.Equal("/tmp/fly", r.OutDir);
         }
     }
 }

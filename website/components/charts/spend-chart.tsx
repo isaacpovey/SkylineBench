@@ -1,5 +1,6 @@
 import { normaliseSeries, polyline, shiftPoints } from "@/lib/chart";
 import { formatMillions } from "@/lib/format";
+import { Card } from "@/components/ui/card";
 
 type Props = {
   series: number[];
@@ -19,19 +20,21 @@ export const SpendChart = ({ series, total, changes }: Props) => {
   const points = shiftPoints({ dx: PLOT_X, dy: PLOT_Y })(rawPoints);
 
   return (
-    <figure className="chart-card">
-      <figcaption>Cumulative spend</figcaption>
-      <svg
-        viewBox="0 0 360 188"
-        className="chart-svg"
-        role="img"
-        aria-label="Cumulative spend"
-      >
-        <polyline points={points} className="c-line-final" />
-        <text x={PLOT_X} y="180" className="c-val c-val-final">
-          {formatMillions(total)} · {changes} changes
-        </text>
-      </svg>
-    </figure>
+    <Card asChild className="chart-card">
+      <figure>
+        <figcaption>Cumulative spend</figcaption>
+        <svg
+          viewBox="0 0 360 188"
+          className="chart-svg"
+          role="img"
+          aria-label="Cumulative spend"
+        >
+          <polyline points={points} className="c-line-final" />
+          <text x={PLOT_X} y="180" className="c-val c-val-final">
+            {formatMillions(total)} · {changes} changes
+          </text>
+        </svg>
+      </figure>
+    </Card>
   );
 };

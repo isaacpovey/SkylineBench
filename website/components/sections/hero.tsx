@@ -1,5 +1,6 @@
 import { Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { GitHub } from "@/components/icons/github";
 import { VideoPlayer } from "@/components/video-player";
 import { runs } from "@/content/runs";
@@ -45,33 +46,35 @@ export const Hero = () => {
           </div>
         </div>
 
-        <figure className="media-frame reveal" style={{ marginLeft: 0, marginRight: 0 }}>
-          <div className="media-bar">
-            <span className="media-dot" />
-            <span className="media-dot" />
-            <span className="media-dot" />
-            <span className="file">skylinebench timelapse · gridlock-v1</span>
-            <span className="right"><span className="live" /> annotated run</span>
-          </div>
-          <VideoPlayer src={`/runs/${best.slug}.mp4`} autoplayOnView>
-            <div className="media-placeholder">
-              <div className="play"><Play /></div>
-              <div className="ph-title">{best.modelName} · {best.map}</div>
-              <div className="ph-sub">the best run so far, annotated</div>
+        <Card asChild className="media-frame reveal" style={{ marginLeft: 0, marginRight: 0 }}>
+          <figure>
+            <div className="media-bar">
+              <span className="media-dot" />
+              <span className="media-dot" />
+              <span className="media-dot" />
+              <span className="file">skylinebench timelapse · gridlock-v1</span>
+              <span className="right"><span className="live" /> annotated run</span>
             </div>
-          </VideoPlayer>
-          <div className="media-foot">
-            <a className="mf-label" href={`/runs/${best.slug}`}>
-              Best run so far · {best.modelName} &#x2192;
-            </a>
-            <span className="mf-stats">
-              <span><b>{best.score.toFixed(2)}</b> score</span>
-              <span><b className="good">{formatDelta(best.metrics.congestedMetres)}</b> congestion</span>
-              <span><b className="good">{formatDelta(best.metrics.flow)}</b> flow</span>
-              <span><b className="bad">{formatDelta(best.metrics.population)}</b> population</span>
-            </span>
-          </div>
-        </figure>
+            <VideoPlayer src={`/runs/${best.slug}.mp4`} autoplayOnView>
+              <div className="media-placeholder">
+                <div className="play"><Play /></div>
+                <div className="ph-title">{best.modelName} · {best.map}</div>
+                <div className="ph-sub">the best run so far, annotated</div>
+              </div>
+            </VideoPlayer>
+            <div className="media-foot">
+              <a className="mf-label" href={`/runs/${best.slug}`}>
+                Best run so far · {best.modelName} &#x2192;
+              </a>
+              <span className="mf-stats">
+                <span><b>{best.score.toFixed(2)}</b> score</span>
+                <span><b className="good">{formatDelta(best.metrics.congestedMetres)}</b> congestion</span>
+                <span><b className="good">{formatDelta(best.metrics.flow)}</b> flow</span>
+                <span><b className="bad">{formatDelta(best.metrics.population)}</b> population</span>
+              </span>
+            </div>
+          </figure>
+        </Card>
       </div>
     </header>
   );

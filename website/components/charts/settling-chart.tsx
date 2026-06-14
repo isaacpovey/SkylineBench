@@ -1,4 +1,5 @@
 import { normaliseSeries, polyline, shiftPoints } from "@/lib/chart";
+import { Card } from "@/components/ui/card";
 
 type Props = {
   base: number[];
@@ -27,19 +28,21 @@ export const SettlingChart = ({ base, final }: Props) => {
   const minVal = Math.min(...allValues);
 
   return (
-    <figure className="chart-card">
-      <figcaption>Flow settling</figcaption>
-      <svg
-        viewBox="0 0 360 184"
-        className="chart-svg"
-        role="img"
-        aria-label="Flow settling curves"
-      >
-        <text x="0" y={PLOT_Y + 4} className="c-axis">{Math.round(maxVal)}</text>
-        <text x="0" y={PLOT_Y + PLOT_HEIGHT} className="c-axis">{Math.round(minVal)}</text>
-        <polyline points={basePoints} className="c-line-base" />
-        <polyline points={finalPoints} className="c-line-final" />
-      </svg>
-    </figure>
+    <Card asChild className="chart-card">
+      <figure>
+        <figcaption>Flow settling</figcaption>
+        <svg
+          viewBox="0 0 360 184"
+          className="chart-svg"
+          role="img"
+          aria-label="Flow settling curves"
+        >
+          <text x="0" y={PLOT_Y + 4} className="c-axis">{Math.round(maxVal)}</text>
+          <text x="0" y={PLOT_Y + PLOT_HEIGHT} className="c-axis">{Math.round(minVal)}</text>
+          <polyline points={basePoints} className="c-line-base" />
+          <polyline points={finalPoints} className="c-line-final" />
+        </svg>
+      </figure>
+    </Card>
   );
 };

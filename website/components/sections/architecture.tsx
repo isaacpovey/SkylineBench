@@ -1,4 +1,5 @@
 import { Monitor, Server, Bot, RefreshCw } from "lucide-react";
+import { Card } from "@/components/ui/card";
 
 export const Architecture = () => (
   <section className="section section-soft" id="built">
@@ -11,12 +12,14 @@ export const Architecture = () => (
 
       <div className="arch reveal">
         <div className="arch-flow">
-          <div className="arch-node">
-            <div className="ico"><Monitor /></div>
-            <span className="tag">mod/ <span className="lang">· C#</span></span>
-            <h3>The game</h3>
-            <p>A mod for Cities: Skylines 1 that runs inside the game and exposes the simulation&apos;s state and controls over a localhost HTTP API.</p>
-          </div>
+          <Card asChild className="arch-node">
+            <div>
+              <div className="ico"><Monitor /></div>
+              <span className="tag">mod/ <span className="lang">· C#</span></span>
+              <h3>The game</h3>
+              <p>A mod for Cities: Skylines 1 that runs inside the game and exposes the simulation&apos;s state and controls over a localhost HTTP API.</p>
+            </div>
+          </Card>
 
           <div className="arch-conn">
             <span className="label">HTTP</span>
@@ -24,12 +27,14 @@ export const Architecture = () => (
             <span className="sub">:8787</span>
           </div>
 
-          <div className="arch-node">
-            <div className="ico"><Server /></div>
-            <span className="tag">broker/ <span className="lang">· Rust</span></span>
-            <h3>The harness</h3>
-            <p>An MCP server. It turns the game into agent tools and runs the harness: measure a baseline, run the agent, let the sim settle, score it, and write out the artifacts.</p>
-          </div>
+          <Card asChild className="arch-node">
+            <div>
+              <div className="ico"><Server /></div>
+              <span className="tag">broker/ <span className="lang">· Rust</span></span>
+              <h3>The harness</h3>
+              <p>An MCP server. It turns the game into agent tools and runs the harness: measure a baseline, run the agent, let the sim settle, score it, and write out the artifacts.</p>
+            </div>
+          </Card>
 
           <div className="arch-conn">
             <span className="label">MCP</span>
@@ -37,12 +42,14 @@ export const Architecture = () => (
             <span className="sub">tools</span>
           </div>
 
-          <div className="arch-node">
-            <div className="ico"><Bot /></div>
-            <span className="tag">benchmark/ <span className="lang">· agent</span></span>
-            <h3>The run</h3>
-            <p>The prompt the agent sees, the run script, and the maps. The agent works inside a Seatbelt sandbox that blocks it from reading the repo.</p>
-          </div>
+          <Card asChild className="arch-node">
+            <div>
+              <div className="ico"><Bot /></div>
+              <span className="tag">benchmark/ <span className="lang">· agent</span></span>
+              <h3>The run</h3>
+              <p>The prompt the agent sees, the run script, and the maps. The agent works inside a Seatbelt sandbox that blocks it from reading the repo.</p>
+            </div>
+          </Card>
         </div>
 
         <div className="arch-loop">

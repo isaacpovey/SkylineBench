@@ -1,6 +1,7 @@
 import { Layers, Clock } from "lucide-react";
 import { runs } from "@/content/runs";
 import { formatDelta, percentChange } from "@/lib/format";
+import { Card } from "@/components/ui/card";
 
 export const Results = () => (
   <section className="section section-soft" id="results">
@@ -18,37 +19,41 @@ export const Results = () => (
           const flowGood = percentChange(run.metrics.flow) > 0;
           const popGood = percentChange(run.metrics.population) >= 0;
           return (
-            <a className="result-card reveal" href={`/runs/${run.slug}`} key={run.slug}>
-              <div className="result-body">
-                <div className="result-top">
-                  <div className="result-model">
-                    <span className="result-rank">{index + 1}</span>
-                    <span className="mico"><Layers /></span>
-                    <span className="name">{run.modelName}<small>{run.map}</small></span>
+            <Card asChild className="result-card reveal" key={run.slug}>
+              <a href={`/runs/${run.slug}`}>
+                <div className="result-body">
+                  <div className="result-top">
+                    <div className="result-model">
+                      <span className="result-rank">{index + 1}</span>
+                      <span className="mico"><Layers /></span>
+                      <span className="name">{run.modelName}<small>{run.map}</small></span>
+                    </div>
+                    <span className="status-pill scored">view run &#x2192;</span>
                   </div>
-                  <span className="status-pill scored">view run &#x2192;</span>
+                  <div className="result-score">
+                    <span className="val scored">{run.score.toFixed(2)}</span>
+                    <span className="of">/ 1.00</span>
+                    <span className="result-metrics">
+                      <span className="metric"><span className={`m-val ${flowGood ? "good" : "bad"}`}>{formatDelta(run.metrics.flow)}</span><span className="m-lbl">flow</span></span>
+                      <span className="metric"><span className={`m-val ${popGood ? "good" : "bad"}`}>{formatDelta(run.metrics.population)}</span><span className="m-lbl">population</span></span>
+                    </span>
+                  </div>
                 </div>
-                <div className="result-score">
-                  <span className="val scored">{run.score.toFixed(2)}</span>
-                  <span className="of">/ 1.00</span>
-                  <span className="result-metrics">
-                    <span className="metric"><span className={`m-val ${flowGood ? "good" : "bad"}`}>{formatDelta(run.metrics.flow)}</span><span className="m-lbl">flow</span></span>
-                    <span className="metric"><span className={`m-val ${popGood ? "good" : "bad"}`}>{formatDelta(run.metrics.population)}</span><span className="m-lbl">population</span></span>
-                  </span>
-                </div>
-              </div>
-            </a>
+              </a>
+            </Card>
           );
         })}
       </div>
 
-      <div className="coming-soon reveal">
-        <span className="cs-ico"><Clock /></span>
+      <Card asChild className="coming-soon reveal">
         <div>
-          <h4>Non-Anthropic models, coming soon</h4>
-          <p>Other frontier models will run the same gridlock-v1 scenario under identical scoring. Their results land here as the runs complete.</p>
+          <span className="cs-ico"><Clock /></span>
+          <div>
+            <h4>Non-Anthropic models, coming soon</h4>
+            <p>Other frontier models will run the same gridlock-v1 scenario under identical scoring. Their results land here as the runs complete.</p>
+          </div>
         </div>
-      </div>
+      </Card>
     </div>
   </section>
 );

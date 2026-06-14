@@ -1,4 +1,5 @@
 import { scaleBars } from "@/lib/chart";
+import { Card } from "@/components/ui/card";
 
 type Action = {
   type: string;
@@ -45,16 +46,18 @@ export const ActionsChart = ({ actions }: Props) => {
   });
 
   return (
-    <figure className="chart-card">
-      <figcaption>Actions by type</figcaption>
-      <svg
-        viewBox={`0 0 360 ${height}`}
-        className="chart-svg"
-        role="img"
-        aria-label="Actions by type"
-      >
-        {renderedRows}
-      </svg>
-    </figure>
+    <Card asChild className="chart-card">
+      <figure>
+        <figcaption>Actions by type</figcaption>
+        <svg
+          viewBox={`0 0 360 ${height}`}
+          className="chart-svg"
+          role="img"
+          aria-label="Actions by type"
+        >
+          {renderedRows}
+        </svg>
+      </figure>
+    </Card>
   );
 };

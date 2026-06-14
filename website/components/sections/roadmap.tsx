@@ -1,4 +1,6 @@
 import { Building2 } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 export const Roadmap = () => (
   <section className="section" id="future">
@@ -47,12 +49,16 @@ export const Roadmap = () => (
         </li>
       </ol>
 
-      <div className="rm-goal reveal">
-        <span className="goal-mark"><Building2 /></span>
-        <span className="badge-soon">The destination</span>
-        <h3>Hand it empty land.</h3>
-        <p>The version I actually want is harder: hand the agent empty land and have it build and run a whole city from scratch, balancing budgets, population growth, taxation, happiness, and the environment.</p>
-      </div>
+      <Card asChild className="rm-goal reveal">
+        <div>
+          <span className="goal-mark"><Building2 /></span>
+          <Badge asChild className="badge-soon">
+            <span>The destination</span>
+          </Badge>
+          <h3>Hand it empty land.</h3>
+          <p>The version I actually want is harder: hand the agent empty land and have it build and run a whole city from scratch, balancing budgets, population growth, taxation, happiness, and the environment.</p>
+        </div>
+      </Card>
     </div>
   </section>
 );

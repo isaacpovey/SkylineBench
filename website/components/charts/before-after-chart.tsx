@@ -1,4 +1,5 @@
 import { scaleBars } from "@/lib/chart";
+import { Card } from "@/components/ui/card";
 
 type Row = {
   label: string;
@@ -41,16 +42,18 @@ export const BeforeAfterChart = ({ rows }: Props) => {
   });
 
   return (
-    <figure className="chart-card">
-      <figcaption>Before → after</figcaption>
-      <svg
-        viewBox={`0 0 360 ${height}`}
-        className="chart-svg"
-        role="img"
-        aria-label="Before and after metrics"
-      >
-        {renderedRows}
-      </svg>
-    </figure>
+    <Card asChild className="chart-card">
+      <figure>
+        <figcaption>Before → after</figcaption>
+        <svg
+          viewBox={`0 0 360 ${height}`}
+          className="chart-svg"
+          role="img"
+          aria-label="Before and after metrics"
+        >
+          {renderedRows}
+        </svg>
+      </figure>
+    </Card>
   );
 };

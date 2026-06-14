@@ -9,6 +9,7 @@ import { SettlingChart } from "@/components/charts/settling-chart";
 import { SpendChart } from "@/components/charts/spend-chart";
 import { ActionsChart } from "@/components/charts/actions-chart";
 import { formatMillions, formatDelta } from "@/lib/format";
+import { Card } from "@/components/ui/card";
 
 export const generateStaticParams = () => runs.map((r) => ({ slug: r.slug }));
 
@@ -46,45 +47,59 @@ const RunPage = async ({ params }: { params: Promise<{ slug: string }> }) => {
           <p className="lead">{run.verdict}</p>
         </div>
         <div className="wrap">
-          <figure className="media-frame run-media">
-            <VideoPlayer src={`/runs/${run.slug}.mp4`} autoplayOnView>
-              <div className="media-placeholder">
-                <div className="ph-title">timelapse</div>
-              </div>
-            </VideoPlayer>
-          </figure>
+          <Card asChild className="media-frame run-media">
+            <figure>
+              <VideoPlayer src={`/runs/${run.slug}.mp4`} autoplayOnView>
+                <div className="media-placeholder">
+                  <div className="ph-title">timelapse</div>
+                </div>
+              </VideoPlayer>
+            </figure>
+          </Card>
         </div>
       </header>
 
       <section className="section">
         <div className="wrap">
           <div className="chips">
-            <div className="chip">
-              <span className="chip-v">{metrics.flow.from} → {metrics.flow.to}</span>
-              <span className="chip-l">flow</span>
-            </div>
-            <div className="chip">
-              <span className="chip-v">{formatDelta(metrics.congestedMetres)}</span>
-              <span className="chip-l">congested metres</span>
-            </div>
-            <div className="chip">
-              <span className="chip-v">{metrics.jammedJunctions.from} → {metrics.jammedJunctions.to}</span>
-              <span className="chip-l">jammed junctions</span>
-            </div>
-            <div className="chip">
-              <span className="chip-v">
-                {metrics.population.from.toLocaleString("en-US")} → {metrics.population.to.toLocaleString("en-US")}
-              </span>
-              <span className="chip-l">population</span>
-            </div>
-            <div className="chip">
-              <span className="chip-v">{metrics.changes}</span>
-              <span className="chip-l">changes</span>
-            </div>
-            <div className="chip">
-              <span className="chip-v">{formatMillions(metrics.spend)}</span>
-              <span className="chip-l">spent</span>
-            </div>
+            <Card asChild className="chip">
+              <div>
+                <span className="chip-v">{metrics.flow.from} → {metrics.flow.to}</span>
+                <span className="chip-l">flow</span>
+              </div>
+            </Card>
+            <Card asChild className="chip">
+              <div>
+                <span className="chip-v">{formatDelta(metrics.congestedMetres)}</span>
+                <span className="chip-l">congested metres</span>
+              </div>
+            </Card>
+            <Card asChild className="chip">
+              <div>
+                <span className="chip-v">{metrics.jammedJunctions.from} → {metrics.jammedJunctions.to}</span>
+                <span className="chip-l">jammed junctions</span>
+              </div>
+            </Card>
+            <Card asChild className="chip">
+              <div>
+                <span className="chip-v">
+                  {metrics.population.from.toLocaleString("en-US")} → {metrics.population.to.toLocaleString("en-US")}
+                </span>
+                <span className="chip-l">population</span>
+              </div>
+            </Card>
+            <Card asChild className="chip">
+              <div>
+                <span className="chip-v">{metrics.changes}</span>
+                <span className="chip-l">changes</span>
+              </div>
+            </Card>
+            <Card asChild className="chip">
+              <div>
+                <span className="chip-v">{formatMillions(metrics.spend)}</span>
+                <span className="chip-l">spent</span>
+              </div>
+            </Card>
           </div>
 
           <div className="chart-grid">

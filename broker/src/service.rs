@@ -197,6 +197,13 @@ pub struct BuildRoadArgs {
     pub road_type: String,
     #[serde(default = "default_true")]
     pub snap: bool,
+    /// Metres above terrain at the `from` end (0 = ground). Use a raised value
+    /// for overpasses; differ from `to_elevation` for ramps.
+    #[serde(default)]
+    pub from_elevation: f32,
+    /// Metres above terrain at the `to` end (0 = ground).
+    #[serde(default)]
+    pub to_elevation: f32,
 }
 
 fn default_true() -> bool {
@@ -209,7 +216,7 @@ pub async fn build_road(client: &BridgeClient, args: BuildRoadArgs) -> Result<Va
         return Ok(action_error_value(reason));
     }
     let res = client
-        .build_road(args.from, args.to, &args.road_type, args.snap)
+        .build_road_elevated(args.from, args.to, &args.road_type, args.snap, args.from_elevation, args.to_elevation)
         .await?;
     let isolated = res.ok && res.snapped_nodes.is_empty();
     let mut v = serde_json::to_value(res).unwrap();
@@ -744,6 +751,8 @@ mod tests {
                 },
                 road_type: "teleporter".into(),
                 snap: true,
+                from_elevation: 0.0,
+                to_elevation: 0.0,
             },
         )
         .await
@@ -770,6 +779,8 @@ mod tests {
                 },
                 road_type: "road".into(),
                 snap: true,
+                from_elevation: 0.0,
+                to_elevation: 0.0,
             },
         )
         .await
@@ -820,6 +831,8 @@ mod tests {
                 },
                 road_type: "road".into(),
                 snap: true,
+                from_elevation: 0.0,
+                to_elevation: 0.0,
             },
         )
         .await
@@ -879,6 +892,8 @@ mod tests {
                 to: Position { x: 50.0, y: 0.0, z: 0.0 },
                 road_type: "road".into(),
                 snap: false,
+                from_elevation: 0.0,
+                to_elevation: 0.0,
             },
         )
         .await
@@ -929,6 +944,8 @@ mod tests {
                 },
                 road_type: "road".into(),
                 snap: true,
+                from_elevation: 0.0,
+                to_elevation: 0.0,
             },
         )
         .await
@@ -985,6 +1002,8 @@ mod tests {
                 to: Position { x: 50.0, y: 0.0, z: 0.0 },
                 road_type: "road".into(),
                 snap: true,
+                from_elevation: 0.0,
+                to_elevation: 0.0,
             },
         )
         .await
@@ -1019,6 +1038,8 @@ mod tests {
                 },
                 road_type: "road".into(),
                 snap: true,
+                from_elevation: 0.0,
+                to_elevation: 0.0,
             },
         )
         .await
@@ -1071,6 +1092,8 @@ mod tests {
                     to: Position { x: x1, y: 0.0, z: 0.0 },
                     road_type: "road".into(),
                     snap: true,
+                    from_elevation: 0.0,
+                    to_elevation: 0.0,
                 },
             )
             .await
@@ -1137,6 +1160,8 @@ mod tests {
                     to: Position { x: x1, y: 0.0, z: 0.0 },
                     road_type: road_type.into(),
                     snap: false,
+                    from_elevation: 0.0,
+                    to_elevation: 0.0,
                 },
             )
             .await
@@ -1185,6 +1210,8 @@ mod tests {
                     to: Position { x: x1, y: 0.0, z: 0.0 },
                     road_type: "road".into(),
                     snap: true,
+                    from_elevation: 0.0,
+                    to_elevation: 0.0,
                 },
             )
             .await
@@ -1217,6 +1244,8 @@ mod tests {
                     to: Position { x: x1, y: 0.0, z: 0.0 },
                     road_type: "road".into(),
                     snap: true,
+                    from_elevation: 0.0,
+                    to_elevation: 0.0,
                 },
             )
             .await
@@ -1396,6 +1425,8 @@ mod tests {
                     to: Position { x: x1, y: 0.0, z: 0.0 },
                     road_type: "road".into(),
                     snap: true,
+                    from_elevation: 0.0,
+                    to_elevation: 0.0,
                 },
             )
             .await
@@ -1423,6 +1454,8 @@ mod tests {
                 to: Position { x: 200.0, y: 0.0, z: 0.0 },
                 road_type: "road".into(),
                 snap: true,
+                from_elevation: 0.0,
+                to_elevation: 0.0,
             },
         )
         .await

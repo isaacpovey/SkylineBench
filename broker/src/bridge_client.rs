@@ -19,6 +19,8 @@ struct BuildRoadBody<'a> {
     end: Position,
     prefab: &'a str,
     snap_to_existing_nodes: bool,
+    from_elevation: f32,
+    to_elevation: f32,
 }
 
 #[derive(Serialize)]
@@ -94,21 +96,23 @@ impl BridgeClient {
         prefab: &str,
         snap: bool,
     ) -> Result<ActionResult, BridgeError> {
+        self.build_road_elevated(start, end, prefab, snap, 0.0, 0.0).await
+    }
+
+    pub async fn build_road_elevated(
+        &self,
+        start: Position,
+        end: Position,
+        prefab: &str,
+        snap: bool,
+        from_elevation: f32,
+        to_elevation: f32,
+    ) -> Result<ActionResult, BridgeError> {
         let body = BuildRoadBody {
-            start,
-            end,
-            prefab,
-            snap_to_existing_nodes: snap,
+            start, end, prefab, snap_to_existing_nodes: snap, from_elevation, to_elevation,
         };
-        Ok(self
-            .http
-            .post(format!("{}/action/build-road", self.base))
-            .json(&body)
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?)
+        Ok(self.http.post(format!("{}/action/build-road", self.base))
+            .json(&body).send().await?.error_for_status()?.json().await?)
     }
 
     pub async fn validate_road(
@@ -117,16 +121,22 @@ impl BridgeClient {
         end: Position,
         prefab: &str,
     ) -> Result<ActionResult, BridgeError> {
-        let body = BuildRoadBody { start, end, prefab, snap_to_existing_nodes: true };
-        Ok(self
-            .http
-            .post(format!("{}/action/validate-road", self.base))
-            .json(&body)
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?)
+        self.validate_road_elevated(start, end, prefab, 0.0, 0.0).await
+    }
+
+    pub async fn validate_road_elevated(
+        &self,
+        start: Position,
+        end: Position,
+        prefab: &str,
+        from_elevation: f32,
+        to_elevation: f32,
+    ) -> Result<ActionResult, BridgeError> {
+        let body = BuildRoadBody {
+            start, end, prefab, snap_to_existing_nodes: true, from_elevation, to_elevation,
+        };
+        Ok(self.http.post(format!("{}/action/validate-road", self.base))
+            .json(&body).send().await?.error_for_status()?.json().await?)
     }
 
     pub async fn bulldoze(&self, target_type: &str, id: u32) -> Result<ActionResult, BridgeError> {
@@ -327,6 +337,25 @@ mod tests {
         };
         client.flyby(&[keyframe], 1.0, 12, tmp.to_str().unwrap()).await.unwrap();
         assert!(tmp.join("00001.png").exists());
+    }
+
+    #[tokio::test]
+    #[ignore = "needs mock elevation echo (Task 5.1)"]
+    async fn build_road_sends_elevation_fields() {
+        // The mock echoes elevation back via node y (Task 5 wires the mock).
+        let client = BridgeClient::new(start_mock().await);
+        let res = client
+            .build_road_elevated(
+                Position { x: 0.0, y: 0.0, z: 0.0 },
+                Position { x: 50.0, y: 0.0, z: 0.0 },
+                "road", true, 12.0, 12.0,
+            )
+            .await
+            .unwrap();
+        assert!(res.ok);
+        let net = client.network().await.unwrap();
+        // Mock sets node.y to the requested elevation (see Task 5 mock change).
+        assert!(net.nodes.iter().all(|n| (n.y - 12.0).abs() < 0.001));
     }
 
     #[tokio::test]

@@ -506,6 +506,90 @@ pub fn region_shot(positions: &[(f32, f32)]) -> Option<CameraShot> {
     })
 }
 
+/// Flyby tuning (single source of truth — adjust after the first real run).
+pub const FLYBY_KEYFRAMES_PER_PASS: usize = 8;
+pub const FLYBY_SIZE_M: f32 = 500.0;
+pub const FLYBY_PITCH_DEG: f32 = 32.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+pub struct CameraKeyframe {
+    pub x: f32,
+    pub z: f32,
+    pub yaw: f32,
+    pub pitch: f32,
+    pub size: f32,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct FlybyPath {
+    pub ns: Vec<CameraKeyframe>,
+    pub we: Vec<CameraKeyframe>,
+}
+
+fn is_highway(prefab: &str) -> bool {
+    prefab.to_lowercase().contains("highway")
+}
+
+/// Reduce a point cloud to a smoothed centerline of keyframes along one axis.
+/// `along_z` true: bucket by z (south→north), median x per bucket, yaw 0.
+/// false: bucket by x (west→east), median z per bucket, yaw 90.
+fn flyby_pass(mut pts: Vec<(f32, f32)>, along_z: bool) -> Vec<CameraKeyframe> {
+    if pts.is_empty() {
+        return vec![];
+    }
+    let along = |p: &(f32, f32)| if along_z { p.1 } else { p.0 };
+    let cross = |p: &(f32, f32)| if along_z { p.0 } else { p.1 };
+    pts.sort_by(|a, b| along(a).total_cmp(&along(b)));
+    let n = pts.len();
+    let bins = FLYBY_KEYFRAMES_PER_PASS.min(n).max(1);
+    (0..bins)
+        .map(|i| {
+            let lo = i * n / bins;
+            let hi = (((i + 1) * n / bins).max(lo + 1)).min(n);
+            let slice = &pts[lo..hi];
+            let along_mean = slice.iter().map(along).sum::<f32>() / slice.len() as f32;
+            let mut cs: Vec<f32> = slice.iter().map(cross).collect();
+            cs.sort_by(f32::total_cmp);
+            let cross_med = cs[cs.len() / 2];
+            let (x, z) = if along_z { (cross_med, along_mean) } else { (along_mean, cross_med) };
+            CameraKeyframe {
+                x,
+                z,
+                yaw: if along_z { 0.0 } else { 90.0 },
+                pitch: FLYBY_PITCH_DEG,
+                size: FLYBY_SIZE_M,
+            }
+        })
+        .collect()
+}
+
+/// Build N/S and W/E flyby keyframe passes along the main highways. Falls back
+/// to the whole network when the city has no highway segments.
+pub fn highway_flyby_path(net: &crate::contract::Network) -> FlybyPath {
+    let node_xz: std::collections::HashMap<u32, (f32, f32)> =
+        net.nodes.iter().map(|n| (n.id, (n.x, n.z))).collect();
+    let collect = |highway_only: bool| -> Vec<(f32, f32)> {
+        net.segments
+            .iter()
+            .filter(|s| !highway_only || is_highway(&s.prefab))
+            .flat_map(|s| [s.start_node, s.end_node])
+            .filter_map(|id| node_xz.get(&id).copied())
+            .collect()
+    };
+    let pts = {
+        let hw = collect(true);
+        if hw.is_empty() {
+            collect(false)
+        } else {
+            hw
+        }
+    };
+    FlybyPath {
+        ns: flyby_pass(pts.clone(), true),
+        we: flyby_pass(pts, false),
+    }
+}
+
 pub async fn capture_screenshot(
     client: &BridgeClient,
     shot: CameraShot,
@@ -1263,6 +1347,42 @@ mod tests {
         // span 1000m * 1.3 margin / 2 = 650 — wide enough to contain both edits.
         assert_eq!(shot.size, 650.0);
         assert!(region_shot(&[]).is_none());
+    }
+
+    #[test]
+    fn highway_flyby_path_orders_ns_by_z_and_we_by_x() {
+        use crate::contract::{NetNode, NetSegment, Network};
+        let node = |id: u32, x: f32, z: f32| NetNode { id, x, y: 0.0, z };
+        let seg = |id: u32, a: u32, b: u32| NetSegment {
+            id, start_node: a, end_node: b, prefab: "Highway".into(),
+            lanes: 4, length: 100.0, one_way: false, travel_direction: "both".into(), speed_limit: 2.0,
+        };
+        let net = Network {
+            nodes: vec![node(0, 0.0, -500.0), node(1, 10.0, 0.0), node(2, -10.0, 500.0),
+                        node(3, -500.0, 5.0), node(4, 500.0, -5.0)],
+            segments: vec![seg(0, 0, 1), seg(1, 1, 2), seg(2, 3, 4)],
+        };
+        let path = highway_flyby_path(&net);
+        assert!(!path.ns.is_empty() && !path.we.is_empty());
+        assert!(path.ns.windows(2).all(|w| w[0].z <= w[1].z), "ns ascends south->north");
+        assert!(path.we.windows(2).all(|w| w[0].x <= w[1].x), "we ascends west->east");
+        assert_eq!(path.ns[0].yaw, 0.0);
+        assert_eq!(path.we[0].yaw, 90.0);
+        assert_eq!(path.ns[0].pitch, FLYBY_PITCH_DEG);
+        assert_eq!(path.ns[0].size, FLYBY_SIZE_M);
+    }
+
+    #[test]
+    fn highway_flyby_path_falls_back_to_all_segments_without_highways() {
+        use crate::contract::{NetNode, NetSegment, Network};
+        let net = Network {
+            nodes: vec![NetNode { id: 0, x: 0.0, y: 0.0, z: 0.0 }, NetNode { id: 1, x: 100.0, y: 0.0, z: 100.0 }],
+            segments: vec![NetSegment {
+                id: 0, start_node: 0, end_node: 1, prefab: "Basic Road".into(),
+                lanes: 2, length: 100.0, one_way: false, travel_direction: "both".into(), speed_limit: 1.0,
+            }],
+        };
+        assert!(!highway_flyby_path(&net).ns.is_empty(), "falls back to all segments");
     }
 
     #[tokio::test]

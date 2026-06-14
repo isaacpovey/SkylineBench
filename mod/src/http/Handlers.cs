@@ -72,5 +72,30 @@ namespace SkylineBench.Http
                 return HttpReply.Json(500, w.ToString());
             }
         }
+
+        public static HttpReply Flyby(string body)
+        {
+            var req = RequestParse.Flyby(JsonReader.Parse(body));
+            try
+            {
+                var fb = new FlybyRequest
+                {
+                    Keyframes = req.Keyframes,
+                    DurationS = req.DurationS,
+                    CaptureFps = req.CaptureFps,
+                    OutDir = req.OutDir,
+                };
+                CaptureBehaviour.Flyby(fb, (int)(req.DurationS * 1000) + 30000);
+                var w = new JsonWriter();
+                w.BeginObject().Name("ok").Value(true).EndObject();
+                return HttpReply.Json(200, w.ToString());
+            }
+            catch (Exception e)
+            {
+                var w = new JsonWriter();
+                w.BeginObject().Name("error").Value("flyby_failed").Name("message").Value(e.Message).EndObject();
+                return HttpReply.Json(500, w.ToString());
+            }
+        }
     }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
+using SkylineBench.Json;
 using UnityEngine;
 
 namespace SkylineBench.Bridge
@@ -11,6 +12,16 @@ namespace SkylineBench.Bridge
         public float X, Z, Size, Yaw, Pitch;
         public string InfoView;
         public byte[] Png;
+        public Exception Error;
+        public readonly ManualResetEvent Done = new ManualResetEvent(false);
+    }
+
+    public sealed class FlybyRequest
+    {
+        public KeyframeReq[] Keyframes;
+        public float DurationS;
+        public int CaptureFps;
+        public string OutDir;
         public Exception Error;
         public readonly ManualResetEvent Done = new ManualResetEvent(false);
     }
@@ -35,6 +46,7 @@ namespace SkylineBench.Bridge
     {
         private static readonly Queue<CaptureRequest> _queue = new Queue<CaptureRequest>();
         private static readonly Queue<MainThreadAction> _actions = new Queue<MainThreadAction>();
+        private static readonly Queue<FlybyRequest> _flybys = new Queue<FlybyRequest>();
         private static readonly object _lock = new object();
 
         public static byte[] Capture(float x, float z, float size, float yaw, float pitch, string infoView, int timeoutMs)
@@ -45,6 +57,14 @@ namespace SkylineBench.Bridge
                 throw new TimeoutException("screenshot capture timed out after " + timeoutMs + "ms");
             if (req.Error != null) throw req.Error;
             return req.Png;
+        }
+
+        public static void Flyby(FlybyRequest req, int timeoutMs)
+        {
+            lock (_lock) { _flybys.Enqueue(req); }
+            if (!req.Done.WaitOne(timeoutMs))
+                throw new TimeoutException("flyby timed out after " + timeoutMs + "ms");
+            if (req.Error != null) throw req.Error;
         }
 
         /// <summary>Run an action on Unity's main thread and block until it
@@ -75,6 +95,12 @@ namespace SkylineBench.Bridge
                     job.Error = reason;
                     job.Done.Set();
                 }
+                while (_flybys.Count > 0)
+                {
+                    var fb = _flybys.Dequeue();
+                    fb.Error = reason;
+                    fb.Done.Set();
+                }
             }
         }
 
@@ -92,6 +118,10 @@ namespace SkylineBench.Bridge
             CaptureRequest req = null;
             lock (_lock) { if (_queue.Count > 0) req = _queue.Dequeue(); }
             if (req != null) StartCoroutine(Run(req));
+
+            FlybyRequest fly = null;
+            lock (_lock) { if (_flybys.Count > 0) fly = _flybys.Dequeue(); }
+            if (fly != null) StartCoroutine(RunFlyby(fly));
         }
 
         private IEnumerator Run(CaptureRequest req)
@@ -160,6 +190,80 @@ namespace SkylineBench.Bridge
                 if (cc != null) cc.m_freeCamera = prevFree;
                 req.Done.Set();
             }
+        }
+
+        private IEnumerator RunFlyby(FlybyRequest req)
+        {
+            if (req.Keyframes == null || req.Keyframes.Length < 2) { req.Done.Set(); yield break; }
+            var xs = new Vector2[req.Keyframes.Length];
+            for (int i = 0; i < req.Keyframes.Length; i++)
+                xs[i] = new Vector2(req.Keyframes[i].X, req.Keyframes[i].Z);
+            int total = Mathf.Max(2, Mathf.RoundToInt(req.DurationS * req.CaptureFps));
+            float interval = 1f / Mathf.Max(1, req.CaptureFps);
+
+            var t = ModRuntime.Threading;
+            CameraController cc = null;
+            bool prevFree = false;
+            bool prevPaused = t != null && t.simulationPaused;
+            int prevSpeed = t != null ? t.simulationSpeed : 1;
+            try
+            {
+                cc = ToolsModifierControl.cameraController;
+                prevFree = cc.m_freeCamera;
+                cc.m_freeCamera = true;
+                if (t != null) { t.simulationPaused = false; t.simulationSpeed = 1; }
+                try { System.IO.Directory.CreateDirectory(req.OutDir); } catch { }
+            }
+            catch (Exception e) { req.Error = e; req.Done.Set(); yield break; }
+
+            int frame = 0;
+            for (int i = 0; i < total; i++)
+            {
+                float u = (float)i / (total - 1);
+                Vector2 pos2 = FlybyMath.Sample(xs, u);
+                float fk = u * (req.Keyframes.Length - 1);
+                int k = Mathf.Min((int)fk, req.Keyframes.Length - 2);
+                float kt = fk - k;
+                var a = req.Keyframes[k];
+                var b = req.Keyframes[Mathf.Min(k + 1, req.Keyframes.Length - 1)];
+                float yaw = Mathf.Lerp(a.Yaw, b.Yaw, kt);
+                float pitch = Mathf.Lerp(a.Pitch, b.Pitch, kt);
+                float size = Mathf.Lerp(a.Size, b.Size, kt);
+
+                Exception err = null;
+                try
+                {
+                    var p = new Vector3(pos2.x, 0f, pos2.y);
+                    cc.m_targetPosition = p; cc.m_currentPosition = p;
+                    cc.m_targetSize = size; cc.m_currentSize = size;
+                    cc.m_targetAngle = new Vector2(yaw, pitch); cc.m_currentAngle = new Vector2(yaw, pitch);
+                }
+                catch (Exception e) { err = e; }
+                if (err != null) { req.Error = err; break; }
+
+                yield return new WaitForEndOfFrame();
+
+                try
+                {
+                    var tex = new Texture2D(Screen.width, Screen.height, TextureFormat.RGB24, false);
+                    try
+                    {
+                        tex.ReadPixels(new Rect(0f, 0f, Screen.width, Screen.height), 0, 0);
+                        tex.Apply();
+                        byte[] png = tex.EncodeToPNG();
+                        frame++;
+                        System.IO.File.WriteAllBytes(System.IO.Path.Combine(req.OutDir, frame.ToString("D5") + ".png"), png);
+                    }
+                    finally { UnityEngine.Object.Destroy(tex); }
+                }
+                catch (Exception e) { req.Error = e; break; }
+
+                yield return new WaitForSecondsRealtime(interval);
+            }
+
+            if (cc != null) cc.m_freeCamera = prevFree;
+            if (t != null) { t.simulationPaused = prevPaused; t.simulationSpeed = prevSpeed; }
+            req.Done.Set();
         }
     }
 }

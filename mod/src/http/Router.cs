@@ -31,6 +31,7 @@ namespace SkylineBench.Http
                 case "/load-save": return method == "POST" ? Handlers.LoadSave(body) : MethodNotAllowed();
                 case "/saves": return method == "GET" ? Handlers.Saves() : MethodNotAllowed();
                 case "/screenshot": return method == "POST" ? Handlers.Screenshot(body) : MethodNotAllowed();
+                case "/flyby": return method == "POST" ? Handlers.Flyby(body) : MethodNotAllowed();
                 default: return HttpReply.Json(404, "{\"error\":\"unknown_route\",\"path\":\"" + path + "\"}");
             }
         }

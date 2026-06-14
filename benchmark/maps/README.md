@@ -9,6 +9,8 @@ Requirements (spec §9):
 - Record the source and the game version it was made on.
 
 ## Pinned saves
-| id | file | source | game version | notes |
-|----|------|--------|--------------|-------|
-| gridlock-v1 | gridlock-v1.crp | (fill in) | 1.21.1-f9 | (what makes traffic bad) |
+
+The machine-readable id → save-name binding lives in `maps.tsv` (one row per map:
+`id`, `save_name`, `source`, `game_version`). `run.sh --map <id>` resolves the id
+to its `save_name` and loads it. List the game's actual save identities with
+`GET /saves` (or `curl http://127.0.0.1:8787/saves`) to fill in `save_name`.

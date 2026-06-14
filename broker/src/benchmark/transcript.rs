@@ -91,9 +91,72 @@ fn claude_blocks(v: &Value, results: bool) -> Vec<Block> {
         .collect()
 }
 
+/// Codex `--json` item stream. We render on `item.completed` only (item.started
+/// /updated would duplicate). Defensive about `type`/`item_type` and message
+/// type spelling, which drift across codex versions.
+fn parse_codex(v: &Value) -> Vec<Event> {
+    let event_type = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
+    if event_type != "item.completed" {
+        return vec![];
+    }
+    let item = match v.get("item") {
+        Some(i) => i,
+        None => return vec![],
+    };
+    let item_type = item
+        .get("type")
+        .or_else(|| item.get("item_type"))
+        .and_then(|t| t.as_str())
+        .unwrap_or("");
+    let text = |key: &str| item.get(key).and_then(|t| t.as_str()).map(String::from);
+
+    match item_type {
+        "agent_message" | "assistant_message" => {
+            text("text").map(|t| vec![Event::Assistant(vec![Block::Text(t)])]).unwrap_or_default()
+        }
+        "reasoning" => {
+            text("text").map(|t| vec![Event::Assistant(vec![Block::Thinking(t)])]).unwrap_or_default()
+        }
+        "mcp_tool_call" => {
+            let name = item.get("tool").and_then(|t| t.as_str()).unwrap_or("tool").to_string();
+            let input = item.get("arguments").cloned().unwrap_or(Value::Null);
+            let mut events = vec![Event::Assistant(vec![Block::ToolUse { name, input }])];
+            if let Some(result) = item.get("result") {
+                events.push(Event::Results(vec![Block::ToolResult { parts: result_parts(result) }]));
+            }
+            events
+        }
+        "command_execution" => {
+            let command = item.get("command").and_then(|c| c.as_str()).unwrap_or("").to_string();
+            let input = serde_json::json!({ "command": command });
+            let mut events = vec![Event::Assistant(vec![Block::ToolUse { name: "bash".to_string(), input }])];
+            if let Some(out) = item.get("aggregated_output").and_then(|o| o.as_str()) {
+                events.push(Event::Results(vec![Block::ToolResult { parts: vec![out.to_string()] }]));
+            }
+            events
+        }
+        _ => vec![],
+    }
+}
+
+/// Extract readable text parts from an MCP tool result value: prefer a
+/// `content` array of `{text}` (the MCP shape) so live progress parsing works;
+/// otherwise fall back to pretty JSON.
+fn result_parts(result: &Value) -> Vec<String> {
+    if let Some(arr) = result.get("content").and_then(|c| c.as_array()) {
+        let texts: Vec<String> = arr
+            .iter()
+            .filter_map(|c| c.get("text").and_then(|t| t.as_str()).map(String::from))
+            .collect();
+        if !texts.is_empty() {
+            return texts;
+        }
+    }
+    vec![serde_json::to_string_pretty(result).unwrap_or_else(|_| result.to_string())]
+}
+
 // Stubs for later phases — return no events so other harnesses are inert until
-// implemented (Tasks 11, 13, 15).
-fn parse_codex(_v: &Value) -> Vec<Event> { vec![] }
+// implemented (Tasks 13, 15).
 fn parse_gemini(_v: &Value) -> Vec<Event> { vec![] }
 fn parse_opencode(_v: &Value) -> Vec<Event> { vec![] }
 
@@ -301,5 +364,32 @@ mod tests {
     fn live_skips_unknown_events() {
         let event: Value = serde_json::from_str(r#"{"type":"rate_limit_event"}"#).unwrap();
         assert!(format_event_live(Harness::Claude, &event).is_none());
+    }
+
+    #[test]
+    fn codex_renders_message_reasoning_and_tool_call() {
+        let jsonl = concat!(
+            r#"{"type":"item.completed","item":{"type":"reasoning","text":"Plan the bypass."}}"#,
+            "\n",
+            r#"{"type":"item.completed","item":{"type":"agent_message","text":"Building it."}}"#,
+            "\n",
+            r#"{"type":"item.completed","item":{"type":"mcp_tool_call","tool":"build_road","arguments":{"road_type":"Highway"},"result":{"content":[{"text":"{\"ok\":true}"}]}}}"#,
+            "\n",
+        );
+        let md = render_transcript(Harness::Codex, jsonl);
+        assert!(md.contains("Plan the bypass."), "reasoning: {md}");
+        assert!(md.contains("Building it."), "message: {md}");
+        assert!(md.contains("build_road"), "tool: {md}");
+        assert!(md.contains("Highway"), "args: {md}");
+        assert!(md.contains("ok"), "result: {md}");
+    }
+
+    #[test]
+    fn codex_ignores_started_items() {
+        let line: Value = serde_json::from_str(
+            r#"{"type":"item.started","item":{"type":"mcp_tool_call","tool":"build_road"}}"#,
+        )
+        .unwrap();
+        assert!(format_event_live(Harness::Codex, &line).is_none());
     }
 }

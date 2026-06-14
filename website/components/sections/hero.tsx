@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { GitHub } from "@/components/icons/github";
 import { VideoPlayer } from "@/components/video-player";
 import { runs } from "@/content/runs";
-import { formatDelta } from "@/lib/format";
+import { formatDelta, formatMillions } from "@/lib/format";
 
 export const Hero = () => {
   const best = runs[0];
@@ -69,8 +69,9 @@ export const Hero = () => {
               <span className="mf-stats">
                 <span><b>{best.score.toFixed(2)}</b> score</span>
                 <span><b className="good">{formatDelta(best.metrics.congestedMetres)}</b> congestion</span>
-                <span><b className="good">{formatDelta(best.metrics.flow)}</b> flow</span>
+                <span><b className="good">{formatDelta(best.metrics.jammedJunctions)}</b> junctions</span>
                 <span><b className="bad">{formatDelta(best.metrics.population)}</b> population</span>
+                <span><b>{formatMillions(best.metrics.spend)}</b> spent</span>
               </span>
             </div>
           </figure>

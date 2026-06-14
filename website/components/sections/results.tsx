@@ -1,6 +1,6 @@
 import { Layers, Clock } from "lucide-react";
 import { runs } from "@/content/runs";
-import { formatDelta, percentChange } from "@/lib/format";
+import { formatDelta, formatMillions, percentChange } from "@/lib/format";
 import { Card } from "@/components/ui/card";
 
 export const Results = () => (
@@ -16,7 +16,7 @@ export const Results = () => (
 
       <div className="results-grid">
         {runs.map((run, index) => {
-          const flowGood = percentChange(run.metrics.flow) > 0;
+          const junctionsGood = percentChange(run.metrics.jammedJunctions) < 0;
           const popGood = percentChange(run.metrics.population) >= 0;
           return (
             <Card asChild className="result-card reveal" key={run.slug}>
@@ -34,8 +34,9 @@ export const Results = () => (
                     <span className="val scored">{run.score.toFixed(2)}</span>
                     <span className="of">/ 1.00</span>
                     <span className="result-metrics">
-                      <span className="metric"><span className={`m-val ${flowGood ? "good" : "bad"}`}>{formatDelta(run.metrics.flow)}</span><span className="m-lbl">flow</span></span>
+                      <span className="metric"><span className={`m-val ${junctionsGood ? "good" : "bad"}`}>{formatDelta(run.metrics.jammedJunctions)}</span><span className="m-lbl">junctions</span></span>
                       <span className="metric"><span className={`m-val ${popGood ? "good" : "bad"}`}>{formatDelta(run.metrics.population)}</span><span className="m-lbl">population</span></span>
+                      <span className="metric"><span className="m-val">{formatMillions(run.metrics.spend)}</span><span className="m-lbl">spent</span></span>
                     </span>
                   </div>
                 </div>
@@ -49,7 +50,7 @@ export const Results = () => (
         <div>
           <span className="cs-ico"><Clock /></span>
           <div>
-            <h4>Non-Anthropic models, coming soon</h4>
+            <h4>More models, coming soon</h4>
             <p>Other frontier models will run the same gridlock-v1 scenario under identical scoring. Their results land here as the runs complete.</p>
           </div>
         </div>

@@ -20,4 +20,4 @@ pub use record::{EndState, MapInfo, WindowStats};
 pub use server::BenchmarkServer;
 pub use state::RunState;
 pub use transcript::{format_event_live, render_transcript};
-pub use harness::Harness;
+pub use harness::{build as build_launch, ConfigFile, Harness, LaunchInputs, LaunchSpec};

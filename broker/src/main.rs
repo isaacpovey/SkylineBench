@@ -88,6 +88,21 @@ enum Command {
         #[arg(long, default_value = "website/assets/runs")]
         assets_dir: std::path::PathBuf,
     },
+    /// Resolve a harness launch plan: write its config files and emit
+    /// launch.argv (NUL-delimited), launch.env (NUL-delimited KEY=VALUE), and
+    /// launch.required-env (newline-delimited) into --session-dir.
+    HarnessPrepare {
+        #[arg(long)]
+        harness: String,
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(long)]
+        prompt_file: std::path::PathBuf,
+        #[arg(long)]
+        mcp_shell: String,
+        #[arg(long)]
+        session_dir: std::path::PathBuf,
+    },
 }
 
 #[tokio::main]
@@ -248,6 +263,38 @@ async fn main() -> anyhow::Result<()> {
         Command::BuildPage { narrative, out, assets_dir } => {
             let written = skylinebench::page::build(&narrative, out, &assets_dir)?;
             eprintln!("build-page: wrote {}", written.display());
+        }
+        Command::HarnessPrepare { harness, model, prompt_file, mcp_shell, session_dir } => {
+            let harness = skylinebench::benchmark::Harness::parse(&harness)
+                .ok_or_else(|| anyhow::anyhow!("unknown harness: {harness}"))?;
+            let prompt = std::fs::read_to_string(&prompt_file)?;
+            let inputs = skylinebench::benchmark::LaunchInputs {
+                model,
+                prompt,
+                mcp_shell,
+                session_dir: session_dir.clone(),
+            };
+            let spec = skylinebench::benchmark::build_launch(harness, &inputs);
+
+            for cf in &spec.config_files {
+                if let Some(parent) = cf.path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(&cf.path, &cf.contents)?;
+            }
+
+            let argv_blob: Vec<u8> =
+                spec.argv.iter().flat_map(|a| a.as_bytes().iter().copied().chain(std::iter::once(0u8))).collect();
+            std::fs::write(session_dir.join("launch.argv"), argv_blob)?;
+
+            let env_blob: Vec<u8> = spec
+                .env
+                .iter()
+                .flat_map(|(k, v)| format!("{k}={v}").into_bytes().into_iter().chain(std::iter::once(0u8)))
+                .collect();
+            std::fs::write(session_dir.join("launch.env"), env_blob)?;
+
+            std::fs::write(session_dir.join("launch.required-env"), spec.required_env.join("\n"))?;
         }
     }
     Ok(())

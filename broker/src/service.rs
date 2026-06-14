@@ -428,8 +428,11 @@ pub struct CameraShot {
 }
 
 /// Floor for the overview zoom so tiny networks aren't framed from 10 m up.
-const OVERVIEW_MIN_SIZE_M: f32 = 1200.0;
-const OVERVIEW_MARGIN: f32 = 1.15;
+const OVERVIEW_MIN_SIZE_M: f32 = 600.0;
+const OVERVIEW_MARGIN: f32 = 1.08;
+/// Screen aspect (≈16:9 at the 720p the game runs). The camera `size` is the
+/// vertical half-extent in metres; the horizontal half-extent is `size * aspect`.
+const OVERVIEW_ASPECT: f32 = 16.0 / 9.0;
 /// Fraction of node coordinates trimmed from each end per axis, so the
 /// outside-connection highways running to the map edge don't drag the frame
 /// off the city or zoom it out to the whole map.
@@ -454,16 +457,29 @@ pub fn overview_shot(net: &crate::contract::Network) -> CameraShot {
     let bounds = trimmed_bounds(net.nodes.iter().map(|n| n.x))
         .zip(trimmed_bounds(net.nodes.iter().map(|n| n.z)));
     match bounds {
-        None => CameraShot { x: 0.0, z: 0.0, size: 2000.0, yaw: 0.0, pitch: 90.0, info_view: InfoView::None },
-        Some(((min_x, max_x), (min_z, max_z))) => CameraShot {
-            x: (min_x + max_x) / 2.0,
-            z: (min_z + max_z) / 2.0,
-            size: ((max_x - min_x).max(max_z - min_z) * OVERVIEW_MARGIN / 2.0)
-                .max(OVERVIEW_MIN_SIZE_M),
-            yaw: 0.0,
-            pitch: 90.0,
-            info_view: InfoView::None,
-        },
+        None => CameraShot { x: 0.0, z: 0.0, size: 2000.0, yaw: 0.0, pitch: 90.0, info_view: InfoView::Traffic },
+        Some(((min_x, max_x), (min_z, max_z))) => {
+            let dx = max_x - min_x;
+            let dz = max_z - min_z;
+            // size needed to fit (vertical_span, horizontal_span) in the 16:9 frame.
+            // `size` is the vertical half-extent; horizontal half-extent = size * aspect.
+            let size_for = |vertical: f32, horizontal: f32| {
+                (vertical.max(horizontal / OVERVIEW_ASPECT) * OVERVIEW_MARGIN / 2.0).max(OVERVIEW_MIN_SIZE_M)
+            };
+            // yaw 0 (north-up): x spans horizontally, z spans vertically.
+            let north = size_for(dx, dz);
+            // yaw 90: axes swap — z spans horizontally, x spans vertically.
+            let rotated = size_for(dz, dx);
+            let (yaw, size) = if rotated < north { (90.0, rotated) } else { (0.0, north) };
+            CameraShot {
+                x: (min_x + max_x) / 2.0,
+                z: (min_z + max_z) / 2.0,
+                size,
+                yaw,
+                pitch: 90.0,
+                info_view: InfoView::Traffic,
+            }
+        }
     }
 }
 
@@ -1148,8 +1164,13 @@ mod tests {
         assert_eq!(shot.x, 0.0);
         assert_eq!(shot.z, 0.0);
         assert_eq!(shot.pitch, 90.0);
-        // span 2000m * 1.15 margin / 2 = 1150, below the 1200 floor → clamped.
-        assert_eq!(shot.size, 1200.0);
+        // dx=2000, dz=1000. City is wider in x → rotates so x runs across the wide frame.
+        // rotated = size_for(dz=1000, dx=2000) = max(1000, 1125) * 1.08/2 = 607.5.
+        // north  = size_for(dx=2000, dz=1000) = max(2000, 562.5) * 1.08/2 = 1080.
+        // rotated(607.5) < north(1080) → yaw=90, size=607.5.
+        assert_eq!(shot.yaw, 90.0, "wider network rotates so x spans the frame horizontally");
+        assert_eq!(shot.size, 607.5);
+        assert!(matches!(shot.info_view, InfoView::Traffic));
     }
 
     #[test]
@@ -1185,7 +1206,36 @@ mod tests {
         // grid, not the 16 km outlier span, and at the minimum height floor.
         assert!((shot.x - 350.0).abs() < 100.0, "x {} should be near the cluster centre", shot.x);
         assert!((shot.z - 200.0).abs() < 100.0, "z {} should be near the cluster centre", shot.z);
-        assert_eq!(shot.size, 1200.0);
+        assert_eq!(shot.size, 600.0);
+    }
+
+    #[test]
+    fn overview_rotates_long_axis_into_the_wide_frame_with_traffic() {
+        use crate::contract::{NetNode, Network};
+        let net = Network {
+            nodes: vec![
+                NetNode { id: 0, x: -1000.0, y: 0.0, z: -100.0 },
+                NetNode { id: 1, x: 1000.0, y: 0.0, z: 100.0 },
+            ],
+            segments: vec![],
+        };
+        let ov = overview_shot(&net);
+        assert_eq!(ov.yaw, 90.0, "wider-than-tall city rotates so x runs across the frame");
+        assert_eq!(ov.pitch, 90.0, "overview stays top-down");
+        assert!(matches!(ov.info_view, InfoView::Traffic), "overview carries the traffic layer");
+    }
+
+    #[test]
+    fn overview_keeps_north_up_when_taller_than_wide() {
+        use crate::contract::{NetNode, Network};
+        let net = Network {
+            nodes: vec![
+                NetNode { id: 0, x: -100.0, y: 0.0, z: -1000.0 },
+                NetNode { id: 1, x: 100.0, y: 0.0, z: 1000.0 },
+            ],
+            segments: vec![],
+        };
+        assert_eq!(overview_shot(&net).yaw, 0.0);
     }
 
     #[test]

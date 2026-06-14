@@ -8,6 +8,7 @@ import { BeforeAfterChart } from "@/components/charts/before-after-chart";
 import { SettlingChart } from "@/components/charts/settling-chart";
 import { SpendChart } from "@/components/charts/spend-chart";
 import { ActionsChart } from "@/components/charts/actions-chart";
+import { formatMillions } from "@/lib/format";
 
 export const generateStaticParams = () => runs.map((r) => ({ slug: r.slug }));
 
@@ -21,11 +22,6 @@ export const generateMetadata = async ({
   return { title: run ? `${run.modelName} · SkylineBench run` : "SkylineBench run" };
 };
 
-const formatSpend = (dollars: number): string => {
-  const m = dollars / 1_000_000;
-  return `$${m.toFixed(2)}M`;
-};
-
 const RunPage = async ({ params }: { params: Promise<{ slug: string }> }) => {
   const { slug } = await params;
   const run = getRun(slug);
@@ -33,7 +29,12 @@ const RunPage = async ({ params }: { params: Promise<{ slug: string }> }) => {
 
   const { metrics } = run;
 
-  const congestedPct = Math.round((metrics.congestedMetres.to - metrics.congestedMetres.from) / metrics.congestedMetres.from * 100);
+  const congestedPct =
+    metrics.congestedMetres.from === 0
+      ? 0
+      : Math.round(
+          ((metrics.congestedMetres.to - metrics.congestedMetres.from) / metrics.congestedMetres.from) * 100,
+        );
   const congestedSign = congestedPct > 0 ? "+" : "";
 
   return (
@@ -89,7 +90,7 @@ const RunPage = async ({ params }: { params: Promise<{ slug: string }> }) => {
               <span className="chip-l">changes</span>
             </div>
             <div className="chip">
-              <span className="chip-v">{formatSpend(metrics.spend)}</span>
+              <span className="chip-v">{formatMillions(metrics.spend)}</span>
               <span className="chip-l">spent</span>
             </div>
           </div>

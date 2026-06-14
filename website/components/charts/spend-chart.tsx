@@ -1,4 +1,5 @@
 import { normaliseSeries, polyline, shiftPoints } from "@/lib/chart";
+import { formatMillions } from "@/lib/format";
 
 type Props = {
   series: number[];
@@ -10,11 +11,6 @@ const PLOT_X = 8;
 const PLOT_Y = 12;
 const PLOT_WIDTH = 300;
 const PLOT_HEIGHT = 150;
-
-const formatMillions = (dollars: number): string => {
-  const m = dollars / 1_000_000;
-  return `$${m.toFixed(2)}M`;
-};
 
 export const SpendChart = ({ series, total, changes }: Props) => {
   const rawPoints = polyline({ width: PLOT_WIDTH, height: PLOT_HEIGHT })({

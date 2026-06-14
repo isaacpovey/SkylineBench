@@ -6,7 +6,7 @@ export const sonnet45 = defineRun({
   map: "gridlock-v1",
   runDir: "benchmark/runs/20260612-171912",
   score: 0.31270966298653896,
-  verdict: `Sonnet 4.5 made only 9 changes totalling $30k, but every one of them made congestion worse — junctions rose from 36 to 40, congested metres from 4,800 to 5,496, and population fell 9% to 28,631; composite 0.31 came almost entirely from the restraint terms because the congestion reward was zero.`,
+  verdict: `Sonnet 4.5 made only 9 changes totalling $30k, but every one of them made congestion worse — junctions rose from 36 to 39, congested metres from 4,800 to 5,496, and population fell 9% to 28,631; composite 0.31 came almost entirely from the restraint terms because the congestion reward was zero.`,
   metrics: {
     flow: { from: 58, to: 61 },
     congestedMetres: { from: 4800, to: 5496 },

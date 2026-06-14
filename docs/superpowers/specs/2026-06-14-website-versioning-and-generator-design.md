@@ -93,6 +93,10 @@ identifier; only the benchmark/mod version is added.
 re-runs of the same model on a new version get a version-suffixed slug
 (e.g. `opus-4-8-v0-2`); the generator warns on slug collision.
 
+The run detail page (`app/runs/[slug]/page.tsx`) eyebrow shows the version
+alongside the scenario, e.g. `Run detail · gridlock-v1 · v0.1` (rendering
+`run.map` and `run.harnessVersion`).
+
 ### 2. Results leaderboard selector
 
 - `components/sections/results.tsx` becomes a client component that renders from

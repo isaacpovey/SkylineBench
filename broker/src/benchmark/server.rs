@@ -740,8 +740,8 @@ impl BenchmarkServer {
                     "executed": false,
                 });
                 if args.validate_only && all_valid && v.is_ok() {
-                    if let ExecOp::Build { from, to, road_type, from_elevation, to_elevation, .. } = op {
-                        match self.client.validate_road_elevated(*from, *to, road_type, *from_elevation, *to_elevation).await {
+                    if let ExecOp::Build { from, to, road_type, snap, from_elevation, to_elevation } = op {
+                        match self.client.validate_road_elevated(*from, *to, road_type, *snap, *from_elevation, *to_elevation).await {
                             Ok(check) => {
                                 row["valid"] = serde_json::json!(check.ok);
                                 if let Some(r) = check.reason {

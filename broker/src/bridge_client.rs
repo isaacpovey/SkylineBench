@@ -121,7 +121,7 @@ impl BridgeClient {
         end: Position,
         prefab: &str,
     ) -> Result<ActionResult, BridgeError> {
-        self.validate_road_elevated(start, end, prefab, 0.0, 0.0).await
+        self.validate_road_elevated(start, end, prefab, true, 0.0, 0.0).await
     }
 
     pub async fn validate_road_elevated(
@@ -129,11 +129,12 @@ impl BridgeClient {
         start: Position,
         end: Position,
         prefab: &str,
+        snap: bool,
         from_elevation: f32,
         to_elevation: f32,
     ) -> Result<ActionResult, BridgeError> {
         let body = BuildRoadBody {
-            start, end, prefab, snap_to_existing_nodes: true, from_elevation, to_elevation,
+            start, end, prefab, snap_to_existing_nodes: snap, from_elevation, to_elevation,
         };
         Ok(self.http.post(format!("{}/action/validate-road", self.base))
             .json(&body).send().await?.error_for_status()?.json().await?)

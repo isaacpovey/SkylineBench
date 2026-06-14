@@ -627,7 +627,10 @@ pub async fn view_3d(client: &BridgeClient, args: ViewArgs) -> Result<Vec<u8>, S
         x: args.x,
         z: args.z,
         size: args.size.unwrap_or(CLOSEUP_SIZE_M),
-        top_down: args.top_down.unwrap_or(false),
+        yaw: 0.0,
+        // 90° = straight down; 45° = angled so road height/pillars are visible.
+        pitch: if args.top_down.unwrap_or(false) { 90.0 } else { 45.0 },
+        info_view: InfoView::None,
     };
     Ok(capture_screenshot(client, shot).await?)
 }

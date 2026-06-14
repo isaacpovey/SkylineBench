@@ -59,13 +59,14 @@ pub struct LaunchSpec {
 }
 
 mod claude;
+mod codex;
 
 /// Build the launch plan for a harness.
 pub fn build(harness: Harness, inputs: &LaunchInputs) -> LaunchSpec {
     match harness {
         Harness::Claude => claude::spec(inputs),
         // Added in later phases:
-        Harness::Codex => todo!("codex builder — Task 12"),
+        Harness::Codex => codex::spec(inputs),
         Harness::Gemini => todo!("gemini builder — Task 14"),
         Harness::Opencode => todo!("opencode builder — Task 16"),
     }

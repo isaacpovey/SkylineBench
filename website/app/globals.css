@@ -1,7 +1,54 @@
-/* SkylineBench landing: depends on colors_and_type.css for shadcn tokens */
+@import "tailwindcss";
+@import "tw-animate-css";
 
-:root {
-  /* single blue accent, tuned to read on near-black */
+@custom-variant dark (&:is(.dark *));
+
+/* ---------- Color tokens (light) ---------- */
+.ds, :root {
+  --radius: 0.625rem;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.97 0.01 17);
+
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+
+  --chart-1: oklch(0.809 0.105 251.813);
+  --chart-2: oklch(0.623 0.214 259.815);
+  --chart-3: oklch(0.546 0.245 262.881);
+  --chart-4: oklch(0.488 0.243 264.376);
+  --chart-5: oklch(0.424 0.199 265.638);
+
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+
+  --surface: oklch(0.98 0 0);
+  --surface-foreground: var(--foreground);
+
+  /* SkylineBench brand variables */
   --skl-blue: oklch(0.7 0.16 255);
   --skl-blue-bright: oklch(0.8 0.13 252);
   --skl-blue-dim: oklch(0.7 0.16 255 / 0.14);
@@ -14,7 +61,135 @@
   --ok: oklch(0.72 0.15 155);
   --warn: oklch(0.78 0.14 75);
   --bad: oklch(0.62 0.2 25);
+
+  /* Font wiring (next/font injects these CSS vars) */
+  --font-sans: var(--font-geist);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-geist), var(--font-inter-tight), var(--font-sans);
 }
+
+/* ---------- Color tokens (dark) ---------- */
+.dark, .ds.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.371 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.58 0.22 27);
+
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.439 0 0);
+
+  --surface: oklch(0.2 0 0);
+  --surface-foreground: oklch(0.708 0 0);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-skl-blue: var(--skl-blue);
+  --color-skl-blue-bright: var(--skl-blue-bright);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --font-sans: var(--font-geist);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* ---------- Base typography ---------- */
+.ds {
+  font-family: var(--font-sans);
+  color: var(--foreground);
+  background: var(--background);
+  font-synthesis-weight: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.ds h1, .ds .h1 {
+  font-family: var(--font-heading);
+  font-size: 2.25rem;       /* 36px */
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+.ds h2, .ds .h2 {
+  font-family: var(--font-heading);
+  font-size: 1.75rem;       /* 28px */
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  font-weight: 600;
+}
+.ds h3, .ds .h3 {
+  font-family: var(--font-heading);
+  font-size: 1.25rem;       /* 20px */
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+.ds h4, .ds .h4 {
+  font-family: var(--font-heading);
+  font-size: 1rem;          /* 16px */
+  line-height: 1.4;
+  font-weight: 500;
+}
+.ds p, .ds .body {
+  font-size: 0.875rem;      /* 14px = text-sm, the dominant body size */
+  line-height: 1.5;
+  color: var(--foreground);
+}
+.ds .body-lg { font-size: 1rem; line-height: 1.6; }
+.ds .small, .ds small { font-size: 0.75rem; line-height: 1.4; color: var(--muted-foreground); }
+.ds .muted { color: var(--muted-foreground); }
+.ds code, .ds kbd, .ds pre, .ds .mono {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-feature-settings: "calt" 0;
+}
+.ds a { color: var(--foreground); text-decoration: none; }
+.ds a:hover { text-decoration: underline; text-underline-offset: 4px; }
+
+/* SkylineBench landing styles. shadcn design tokens are defined above. */
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
@@ -84,12 +259,12 @@ h1, h2, h3 { font-family: var(--font-heading); font-weight: 600; letter-spacing:
 .btn:hover { text-decoration: none; }
 .btn:active { transform: translateY(1px); }
 .btn svg { width: 17px; height: 17px; }
-.ds a.btn-primary { background: var(--primary); color: var(--primary-foreground); }
-.ds a.btn-primary:hover { background: color-mix(in oklab, var(--primary) 88%, transparent); }
-.ds a.btn-outline { background: transparent; color: var(--foreground); border-color: var(--border); }
-.ds a.btn-outline:hover { background: color-mix(in oklab, var(--foreground) 6%, transparent); border-color: color-mix(in oklab, var(--foreground) 22%, transparent); }
-.ds a.btn-ghost { background: transparent; color: var(--muted-foreground); }
-.ds a.btn-ghost:hover { color: var(--foreground); }
+.ds a.btn-primary, .ds button.btn-primary { background: var(--primary); color: var(--primary-foreground); }
+.ds a.btn-primary:hover, .ds button.btn-primary:hover { background: color-mix(in oklab, var(--primary) 88%, transparent); }
+.ds a.btn-outline, .ds button.btn-outline { background: transparent; color: var(--foreground); border-color: var(--border); }
+.ds a.btn-outline:hover, .ds button.btn-outline:hover { background: color-mix(in oklab, var(--foreground) 6%, transparent); border-color: color-mix(in oklab, var(--foreground) 22%, transparent); }
+.ds a.btn-ghost, .ds button.btn-ghost { background: transparent; color: var(--muted-foreground); }
+.ds a.btn-ghost:hover, .ds button.btn-ghost:hover { color: var(--foreground); }
 .btn-sm { height: 36px; padding: 0 13px; font-size: 14px; }
 .btn-icon { padding: 0; width: 36px; justify-content: center; }
 .btn-icon svg { width: 16px; height: 16px; }
@@ -423,4 +598,78 @@ a.result-card:hover { transform: translateY(-3px); box-shadow: 0 8px 30px color-
   .tools { grid-template-columns: 1fr; }
   .hero-cta { flex-direction: column; align-items: stretch; }
   .hero-cta .btn { justify-content: center; }
+}
+
+/* Run-detail page styles. Variables come from the tokens defined above. */
+
+.run-hero { padding: clamp(90px, 14vw, 150px) 0 40px; }
+.run-hero .display { margin: 10px 0 14px; }
+.run-score { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+.run-score .rs-val { font-family: var(--font-heading); font-size: clamp(2.6rem, 7vw, 4rem); font-weight: 600; letter-spacing: -0.03em; color: var(--skl-blue-bright, #5b9dff); font-variant-numeric: tabular-nums; }
+.run-score .rs-of { font-family: var(--font-mono); font-size: 14px; color: var(--muted-foreground); }
+
+/* Detail-page hero timelapse: show the whole frame (including the burned-in
+   HUD strip) instead of cropping it to 16:9. */
+.run-hero .media-stage { aspect-ratio: auto; min-height: 220px; }
+.run-hero .media-stage video { height: auto; object-fit: contain; }
+
+.chips { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 40px; }
+@media (max-width: 900px) { .chips { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 540px) { .chips { grid-template-columns: repeat(2, 1fr); } }
+.chip { display: flex; flex-direction: column; gap: 4px; padding: 18px 22px; border-radius: 12px; background: var(--card); box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent); }
+.chip-v { font-family: var(--font-heading); font-size: 1.25rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.chip-l { font-family: var(--font-mono); font-size: 11px; color: var(--muted-foreground); }
+
+.chart-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+@media (max-width: 720px) { .chart-grid { grid-template-columns: 1fr; } }
+.chart-card { margin: 0; padding: 18px 20px 20px; border-radius: 14px; background: var(--card); box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent); }
+.chart-card figcaption { font-family: var(--font-heading); font-weight: 600; font-size: 0.95rem; margin-bottom: 12px; }
+.chart-svg { width: 100%; height: auto; overflow: visible; }
+
+/* SVG element classes (styled here so the inline SVG stays data-only) */
+.c-base { fill: color-mix(in oklab, var(--foreground) 28%, transparent); }
+.c-final { fill: var(--skl-blue-bright, #5b9dff); }
+.c-line-base { fill: none; stroke: color-mix(in oklab, var(--foreground) 30%, transparent); stroke-width: 2; }
+.c-line-final { fill: none; stroke: var(--skl-blue-bright, #5b9dff); stroke-width: 2.5; }
+.c-axis { fill: var(--muted-foreground); font-family: var(--font-mono); font-size: 11px; }
+.c-val { fill: var(--muted-foreground); font-family: var(--font-mono); font-size: 10.5px; }
+.c-val-final { fill: var(--foreground); }
+
+.timeline { list-style: none; margin: 28px 0 0; padding: 0; counter-reset: beat; }
+.beat { position: relative; padding: 0 0 26px 36px; border-left: 2px solid var(--border); }
+.beat:last-child { border-left-color: transparent; }
+.beat::before { counter-increment: beat; content: counter(beat); position: absolute; left: -15px; top: -2px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--card); box-shadow: 0 0 0 1px var(--border); font-family: var(--font-mono); font-size: 12px; color: var(--muted-foreground); }
+.beat h3 { font-family: var(--font-heading); font-size: 1.05rem; font-weight: 600; margin: 0 0 6px; }
+.beat p { color: var(--muted-foreground); margin: 0 0 8px; }
+
+/* ============ Scroll reveal ============
+   Hidden-initial state is ONLY applied after JS adds .reveal-on to <html>.
+   Without JS (SSR, no-JS, before hydration) .reveal has no opacity/transform
+   rules → content is always fully visible. Gated under prefers-reduced-motion
+   so users who prefer no animation see content immediately, no transitions. */
+@media (prefers-reduced-motion: no-preference) {
+  .reveal-on .reveal {
+    opacity: 0;
+    transform: translateY(12px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+    will-change: opacity, transform;
+  }
+  .reveal-on .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Subtle stagger for sibling reveal elements inside card grids */
+  .reveal-on .results-grid .reveal:nth-child(2),
+  .reveal-on .choices .reveal:nth-child(2) {
+    transition-delay: 40ms;
+  }
+  .reveal-on .results-grid .reveal:nth-child(3),
+  .reveal-on .choices .reveal:nth-child(3) {
+    transition-delay: 80ms;
+  }
+  .reveal-on .results-grid .reveal:nth-child(4),
+  .reveal-on .choices .reveal:nth-child(4) {
+    transition-delay: 80ms;
+  }
 }

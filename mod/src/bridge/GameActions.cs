@@ -9,105 +9,15 @@ namespace SkylineBench.Bridge
     public static class GameActions
     {
         private const int TimeoutMs = 8000;
-        private const float SnapToleranceM = 8f;
-        private const float MaxSegmentLengthM = 200f;
 
         public static ActionResultDto BuildRoad(BuildRoadReq req)
         {
-            var prefab = Prefabs.FindRoad(req.Prefab);
-            if (prefab == null) return ActionResultDto.Fail(ErrorCode.InvalidPrefab);
-            var startPos = new Vector3(req.StartX, req.StartY, req.StartZ);
-            var endPos = new Vector3(req.EndX, req.EndY, req.EndZ);
-            float len = VectorUtils.LengthXZ(endPos - startPos);
-            if (len < 0.001f) return ActionResultDto.Fail(ErrorCode.InvalidArgs);
-            if (len > MaxSegmentLengthM) return ActionResultDto.Fail(ErrorCode.SegmentTooLong);
-
-            return SimThread.Run<ActionResultDto>(delegate
-            {
-                var nm = Singleton<NetManager>.instance;
-                var sm = Singleton<SimulationManager>.instance;
-
-                var invalid = BuildValidator.Check(prefab, startPos, endPos);
-                if (invalid != null) return invalid;
-
-                var rand = new Randomizer(sm.m_currentBuildIndex);
-                var result = new ActionResultDto { Ok = true };
-                ushort startId, endId;
-                string nodeErr = ResolveNode(nm, startPos, prefab, req.Snap, ref rand, sm, out startId, result);
-                if (nodeErr != null) return FailReleasing(nm, result, nodeErr);
-                nodeErr = ResolveNode(nm, endPos, prefab, req.Snap, ref rand, sm, out endId, result);
-                if (nodeErr != null) return FailReleasing(nm, result, nodeErr);
-                Vector3 dir = VectorUtils.NormalizeXZ(endPos - startPos);
-                ushort segId;
-                bool ok = nm.CreateSegment(out segId, ref rand, prefab, startId, endId, dir, -dir, sm.m_currentBuildIndex, sm.m_currentBuildIndex, false);
-                if (!ok) return FailReleasing(nm, result, ErrorCode.NetBufferFull);
-                sm.m_currentBuildIndex += 2u;
-                result.CreatedSegments.Add(segId);
-                result.ZonedBuildingsFronting = (int)Frontage.CountZonedBuildingsNear(startPos, endPos, prefab.m_halfWidth);
-                return result;
-            }, TimeoutMs);
+            return SimThread.Run<ActionResultDto>(delegate { return RoadBuilder.Build(req); }, TimeoutMs);
         }
 
-        /// <summary>Free dry-run of BuildRoad's placement checks: same validation,
-        /// nothing created. Ok responses carry the frontage fact for the span.</summary>
         public static ActionResultDto ValidateRoad(BuildRoadReq req)
         {
-            var prefab = Prefabs.FindRoad(req.Prefab);
-            if (prefab == null) return ActionResultDto.Fail(ErrorCode.InvalidPrefab);
-            var startPos = new Vector3(req.StartX, req.StartY, req.StartZ);
-            var endPos = new Vector3(req.EndX, req.EndY, req.EndZ);
-            float len = VectorUtils.LengthXZ(endPos - startPos);
-            if (len < 0.001f) return ActionResultDto.Fail(ErrorCode.InvalidArgs);
-            if (len > MaxSegmentLengthM) return ActionResultDto.Fail(ErrorCode.SegmentTooLong);
-
-            return SimThread.Run<ActionResultDto>(delegate
-            {
-                var invalid = BuildValidator.Check(prefab, startPos, endPos);
-                if (invalid != null) return invalid;
-                var ok = new ActionResultDto { Ok = true };
-                ok.ZonedBuildingsFronting = (int)Frontage.CountZonedBuildingsNear(startPos, endPos, prefab.m_halfWidth);
-                return ok;
-            }, TimeoutMs);
-        }
-
-        /// <summary>null on success; otherwise a normalized ErrorCode. Snapped nodes
-        /// with a full connection budget (8 segments in CS1) are rejected rather than
-        /// silently producing a broken junction.</summary>
-        private static string ResolveNode(NetManager nm, Vector3 p, NetInfo prefab, bool snap, ref Randomizer rand, SimulationManager sm, out ushort id, ActionResultDto result)
-        {
-            id = 0;
-            if (snap)
-            {
-                ushort near = NearestNode(nm, p, SnapToleranceM);
-                if (near != 0)
-                {
-                    if (nm.m_nodes.m_buffer[near].CountSegments() >= 8) return ErrorCode.TooManyConnections;
-                    id = near; result.SnappedNodes.Add(near); return null;
-                }
-            }
-            if (!nm.CreateNode(out id, ref rand, prefab, p, sm.m_currentBuildIndex)) return ErrorCode.NetBufferFull;
-            result.CreatedNodes.Add(id);
-            return null;
-        }
-
-        /// <summary>Failing after node creation would leak orphan nodes; release them.</summary>
-        private static ActionResultDto FailReleasing(NetManager nm, ActionResultDto partial, string reason)
-        {
-            foreach (var n in partial.CreatedNodes) nm.ReleaseNode((ushort)n);
-            return ActionResultDto.Fail(reason);
-        }
-
-        private static ushort NearestNode(NetManager nm, Vector3 p, float tol)
-        {
-            ushort best = 0; float bestD = tol;
-            for (uint i = 1; i < nm.m_nodes.m_buffer.Length; i++)
-            {
-                var n = nm.m_nodes.m_buffer[i];
-                if ((n.m_flags & NetNode.Flags.Created) == NetNode.Flags.None) continue;
-                float d = VectorUtils.LengthXZ(n.m_position - p);
-                if (d <= bestD) { bestD = d; best = (ushort)i; }
-            }
-            return best;
+            return SimThread.Run<ActionResultDto>(delegate { return RoadBuilder.Validate(req); }, TimeoutMs);
         }
 
         public static ActionResultDto Bulldoze(BulldozeReq req)

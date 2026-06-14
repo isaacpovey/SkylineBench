@@ -259,12 +259,12 @@ h1, h2, h3 { font-family: var(--font-heading); font-weight: 600; letter-spacing:
 .btn:hover { text-decoration: none; }
 .btn:active { transform: translateY(1px); }
 .btn svg { width: 17px; height: 17px; }
-.ds a.btn-primary { background: var(--primary); color: var(--primary-foreground); }
-.ds a.btn-primary:hover { background: color-mix(in oklab, var(--primary) 88%, transparent); }
-.ds a.btn-outline { background: transparent; color: var(--foreground); border-color: var(--border); }
-.ds a.btn-outline:hover { background: color-mix(in oklab, var(--foreground) 6%, transparent); border-color: color-mix(in oklab, var(--foreground) 22%, transparent); }
-.ds a.btn-ghost { background: transparent; color: var(--muted-foreground); }
-.ds a.btn-ghost:hover { color: var(--foreground); }
+.ds a.btn-primary, .ds button.btn-primary { background: var(--primary); color: var(--primary-foreground); }
+.ds a.btn-primary:hover, .ds button.btn-primary:hover { background: color-mix(in oklab, var(--primary) 88%, transparent); }
+.ds a.btn-outline, .ds button.btn-outline { background: transparent; color: var(--foreground); border-color: var(--border); }
+.ds a.btn-outline:hover, .ds button.btn-outline:hover { background: color-mix(in oklab, var(--foreground) 6%, transparent); border-color: color-mix(in oklab, var(--foreground) 22%, transparent); }
+.ds a.btn-ghost, .ds button.btn-ghost { background: transparent; color: var(--muted-foreground); }
+.ds a.btn-ghost:hover, .ds button.btn-ghost:hover { color: var(--foreground); }
 .btn-sm { height: 36px; padding: 0 13px; font-size: 14px; }
 .btn-icon { padding: 0; width: 36px; justify-content: center; }
 .btn-icon svg { width: 16px; height: 16px; }

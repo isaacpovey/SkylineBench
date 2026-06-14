@@ -214,9 +214,43 @@ fn value_to_text(v: &Value) -> String {
     }
 }
 
-// Stub for later phase — returns no events so other harnesses are inert until
-// implemented (Task 15).
-fn parse_opencode(_v: &Value) -> Vec<Event> { vec![] }
+/// opencode `run --format json` JSONL parts. Schema is version-sensitive
+/// (end-of-stream bug #26855), so be defensive and skip unknown parts.
+fn parse_opencode(v: &Value) -> Vec<Event> {
+    match v.get("type").and_then(|t| t.as_str()).unwrap_or("") {
+        "text" => v
+            .get("part")
+            .and_then(|p| p.get("text"))
+            .or_else(|| v.get("text"))
+            .and_then(|t| t.as_str())
+            .filter(|t| !t.is_empty())
+            .map(|t| vec![Event::Assistant(vec![Block::Text(t.to_string())])])
+            .unwrap_or_default(),
+        "tool_use" => {
+            let part = v.get("part").unwrap_or(v);
+            let name = part
+                .get("tool")
+                .or_else(|| part.get("name"))
+                .and_then(|n| n.as_str())
+                .unwrap_or("tool")
+                .to_string();
+            let state = part.get("state");
+            let input = state
+                .and_then(|s| s.get("input"))
+                .cloned()
+                .unwrap_or(Value::Null);
+            let mut events = vec![Event::Assistant(vec![Block::ToolUse { name, input }])];
+            if let Some(output) = state.and_then(|s| s.get("output")) {
+                events.push(Event::Results(vec![Block::ToolResult { parts: vec![value_to_text(output)] }]));
+            }
+            events
+        }
+        "step_finish" if v.get("reason").and_then(|r| r.as_str()) == Some("stop") => {
+            vec![Event::Done("complete".to_string())]
+        }
+        _ => vec![],
+    }
+}
 
 /// Render a captured JSONL transcript into readable markdown.
 pub fn render_transcript(harness: Harness, jsonl: &str) -> String {
@@ -506,5 +540,28 @@ mod tests {
         .unwrap();
         let md = render_transcript(Harness::Gemini, &line.to_string());
         assert!(md.contains("Done planning."), "model role treated as assistant: {md}");
+    }
+
+    #[test]
+    fn opencode_renders_text_and_tool_use() {
+        let jsonl = concat!(
+            r#"{"type":"text","part":{"text":"Adding a bypass."}}"#,
+            "\n",
+            r#"{"type":"tool_use","part":{"tool":"build_road","state":{"input":{"road_type":"Highway"},"output":"{\"ok\":true}","status":"completed"}}}"#,
+            "\n",
+            r#"{"type":"step_finish","reason":"stop"}"#,
+            "\n",
+        );
+        let md = render_transcript(Harness::Opencode, jsonl);
+        assert!(md.contains("Adding a bypass."), "text: {md}");
+        assert!(md.contains("build_road"), "tool: {md}");
+        assert!(md.contains("Highway"), "args: {md}");
+        assert!(md.contains("ok"), "result: {md}");
+    }
+
+    #[test]
+    fn opencode_step_finish_stop_is_done_live() {
+        let line: Value = serde_json::from_str(r#"{"type":"step_finish","reason":"stop"}"#).unwrap();
+        assert_eq!(format_event_live(Harness::Opencode, &line).as_deref(), Some("● done: complete"));
     }
 }

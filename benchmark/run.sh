@@ -173,7 +173,11 @@ fi
 
 # `|| true`: when the broker hits the wall-clock cap it closes the MCP
 # connection, so the harness exits non-zero — expected, not a failure.
-(cd "$WORKSPACE" && "${CMD[@]}") | tee "$OUT_DIR/transcript.jsonl" | "$REPO_BIN" format-stream --harness "$HARNESS" | tee "$OUT_DIR/run.log" || true
+# Harness stderr (API error detail, model diagnostics) is teed to a file *and*
+# the terminal: stream-json on stdout carries only a terse `result` event for
+# API failures (e.g. gemini's "Operation cancelled"), so the real reason lives
+# on stderr and was previously lost.
+(cd "$WORKSPACE" && "${CMD[@]}" 2> >(tee "$OUT_DIR/harness.stderr" >&2)) | tee "$OUT_DIR/transcript.jsonl" | "$REPO_BIN" format-stream --harness "$HARNESS" | tee "$OUT_DIR/run.log" || true
 
 if [ -d "$SESSION_DIR/renders" ]; then
   mv "$SESSION_DIR/renders" "$OUT_DIR/renders"

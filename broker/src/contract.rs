@@ -222,14 +222,54 @@ pub struct ClockState {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SaveInfo {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub city_name: Option<String>,
+    pub full_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LoadResult {
     pub ok: bool,
     pub city_loaded: bool,
+    #[serde(default)]
+    pub resolved: Option<SaveInfo>,
+    #[serde(default)]
+    pub available: Vec<SaveInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Saves {
+    pub saves: Vec<SaveInfo>,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn load_result_defaults_resolved_and_available() {
+        let r: LoadResult = serde_json::from_str(r#"{"ok":true,"city_loaded":true}"#).unwrap();
+        assert!(r.resolved.is_none());
+        assert!(r.available.is_empty());
+    }
+
+    #[test]
+    fn load_result_parses_resolved_identity() {
+        let r: LoadResult = serde_json::from_str(
+            r#"{"ok":true,"city_loaded":true,"resolved":{"name":"g","city_name":"G","full_name":"pkg.g"}}"#,
+        )
+        .unwrap();
+        assert_eq!(r.resolved.unwrap().name, "g");
+    }
+
+    #[test]
+    fn save_info_handles_null_city_name() {
+        // The mod always emits city_name, writing JSON null for corrupt saves.
+        let s: SaveInfo = serde_json::from_str(r#"{"name":"x","city_name":null,"full_name":"y"}"#).unwrap();
+        assert!(s.city_name.is_none());
+    }
 
     #[test]
     fn net_segment_defaults_direction_fields() {

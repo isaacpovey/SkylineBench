@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using ColossalFramework;
 using ColossalFramework.Packaging;
 using SkylineBench.Dto;
@@ -23,7 +24,9 @@ namespace SkylineBench.Bridge
             if (string.IsNullOrEmpty(saveName)) return new LoadResultDto { Ok = false, CityLoaded = false };
 
             Package.Asset target = FindSave(saveName);
-            if (target == null) return new LoadResultDto { Ok = false, CityLoaded = false };
+            if (target == null) return Miss();
+
+            SaveInfoDto resolved = Describe(target);
 
             SimThread.Run(delegate
             {
@@ -34,8 +37,40 @@ namespace SkylineBench.Bridge
                 Singleton<LoadingManager>.instance.LoadLevel(target, "Game", "InGame", meta, false);
             }, 8000);
 
-            // Load runs asynchronously after kick-off; we do not await completion here.
-            return new LoadResultDto { Ok = true, CityLoaded = true };
+            // Load runs asynchronously after kick-off; callers confirm completion
+            // by polling /health (the bridge restarts on level reload).
+            return new LoadResultDto { Ok = true, CityLoaded = true, Resolved = resolved };
+        }
+
+        public static List<SaveInfoDto> ListSaves()
+        {
+            var list = new List<SaveInfoDto>();
+            foreach (Package.Asset asset in PackageManager.FilterAssets(UserAssetType.SaveGameMetaData))
+            {
+                if (asset == null) continue;
+                list.Add(Describe(asset));
+            }
+            return list;
+        }
+
+        private static LoadResultDto Miss()
+        {
+            return new LoadResultDto { Ok = false, CityLoaded = false, Available = ListSaves() };
+        }
+
+        private static SaveInfoDto Describe(Package.Asset asset)
+        {
+            string cityName = null;
+            try
+            {
+                SaveGameMetaData metaData = asset.Instantiate<SaveGameMetaData>();
+                if (metaData != null) cityName = metaData.cityName;
+            }
+            catch
+            {
+                // Corrupt save: report name/fullName without cityName.
+            }
+            return new SaveInfoDto { Name = asset.name, CityName = cityName, FullName = asset.fullName };
         }
 
         // We iterate rather than use PackageManager.FindAssetByName: that method returns null for

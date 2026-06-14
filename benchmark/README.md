@@ -81,3 +81,38 @@ rather than the scoreboard.
 
 Constants live in `broker/src/benchmark/config.rs`. The run ends on `submit_solution`
 or the wall-clock cap; the old auto-stop-at-5%-of-baseline condition was removed.
+
+## Running a suite
+
+To benchmark several harness/model combinations back-to-back, use
+`run-suite.sh` instead of invoking `run.sh` once per combination.
+
+1. Launch Cities: Skylines with the SkylineBench mod enabled and the benchmark
+   save available in your save list (the suite loads the map itself — see below —
+   so you do not need to load it from the menu first). Build the broker once:
+   `cargo build --release --manifest-path broker/Cargo.toml`.
+2. Map binding: each `--map <id>` resolves to a real in-game save name via
+   `benchmark/maps/maps.tsv` (columns: `id`, `save_name`, `source`,
+   `game_version`). Fill in `save_name` with the exact identity the game reports —
+   list them with `curl http://127.0.0.1:8787/saves`.
+3. Suite manifest: one run per line, `harness[:model]`; `#` comments and blank
+   lines are ignored; `harness` with no `:model` uses the harness default. See
+   `benchmark/suites/default.txt`.
+4. Run: `./benchmark/run-suite.sh --map gridlock-v1 --suite benchmark/suites/default.txt`
+
+The suite validates every entry up front (a `DRY_RUN` `run.sh` per entry, which
+fails fast on an unknown map id or an unsupported harness), then runs each entry
+in order. Before each run, `run.sh` loads the map and waits for the level reload
+to complete — so every run starts from the identical city. A failed load (or any
+run failure) is recorded and the suite **continues** to the next entry; pass
+`--fail-fast` to stop on the first failure instead.
+
+Output lands in `benchmark/runs/suite-<timestamp>/`:
+- `suite.txt` — a copy of the manifest used.
+- `<runid>-<harness>[-<model>]/` — one per entry, the normal `run.sh` layout
+  (`score.json`, `run-record.json`, transcript, renders, screenshots).
+- `summary.tsv` — `harness`, `model`, `runid`, `status` (`ok`/`failed`),
+  `exit_code`, one row per entry.
+
+Runs are still serialized by the `${TMPDIR:-/tmp}/skylinebench.lock` lock, so a
+suite cannot collide with a stray single run against the same game instance.

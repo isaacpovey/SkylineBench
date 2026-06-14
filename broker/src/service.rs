@@ -803,13 +803,43 @@ mod tests {
         reset_scenario(
             &c,
             ResetScenarioArgs {
-                save: "anything".into(),
+                save: "gridlock-v1".into(),
             },
         )
         .await
         .unwrap();
         let obs = observe_area(&c, ObserveAreaArgs { bounds: None }).await.unwrap();
         assert_eq!(obs["network"]["segments"].as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn reset_scenario_reports_resolved_identity() {
+        let c = client().await;
+        let res = reset_scenario(
+            &c,
+            ResetScenarioArgs {
+                save: "gridlock-v1".into(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(res["ok"], true);
+        assert_eq!(res["resolved"]["name"], "gridlock-v1");
+    }
+
+    #[tokio::test]
+    async fn reset_scenario_unknown_save_lists_available() {
+        let c = client().await;
+        let res = reset_scenario(
+            &c,
+            ResetScenarioArgs {
+                save: "nope".into(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(res["ok"], false);
+        assert_eq!(res["available"][0]["name"], "gridlock-v1");
     }
 
     #[tokio::test]

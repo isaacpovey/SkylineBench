@@ -38,5 +38,19 @@ namespace SkylineBench.Dto
     }
 
     public sealed class ClockStateDto { public bool Ok; public bool Paused; public ulong Tick; public bool ForcedPaused; }
-    public sealed class LoadResultDto { public bool Ok; public bool CityLoaded; }
+    // Identity of a savegame asset, mirroring the CS1 API: Name = Package.Asset.name
+    // (save file name), CityName = SaveGameMetaData.cityName, FullName = Package.Asset.fullName
+    // (package-qualified id).
+    public sealed class SaveInfoDto { public string Name; public string CityName; public string FullName; }
+
+    public sealed class LoadResultDto
+    {
+        public bool Ok;
+        public bool CityLoaded;
+        // Identity of the asset the loader resolved (null when Ok==false).
+        public SaveInfoDto Resolved;
+        // Save names the game exposes; populated only on a no-match miss, so a
+        // failed load tells the operator what to pin instead of guessing.
+        public List<SaveInfoDto> Available = new List<SaveInfoDto>();
+    }
 }

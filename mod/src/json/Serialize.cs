@@ -96,8 +96,30 @@ namespace SkylineBench.Json
         public static string Load(LoadResultDto l)
         {
             var w = new JsonWriter();
-            w.BeginObject().Name("ok").Value(l.Ok).Name("city_loaded").Value(l.CityLoaded).EndObject();
+            w.BeginObject().Name("ok").Value(l.Ok).Name("city_loaded").Value(l.CityLoaded);
+            if (l.Resolved != null) WriteSaveInfo(w.Name("resolved"), l.Resolved);
+            if (l.Available.Count > 0)
+            {
+                w.Name("available").BeginArray();
+                foreach (var s in l.Available) WriteSaveInfo(w, s);
+                w.EndArray();
+            }
+            w.EndObject();
             return w.ToString();
+        }
+
+        public static string Saves(System.Collections.Generic.List<SaveInfoDto> saves)
+        {
+            var w = new JsonWriter();
+            w.BeginObject().Name("saves").BeginArray();
+            foreach (var s in saves) WriteSaveInfo(w, s);
+            w.EndArray().EndObject();
+            return w.ToString();
+        }
+
+        private static void WriteSaveInfo(JsonWriter w, SaveInfoDto s)
+        {
+            w.BeginObject().Name("name").Value(s.Name).Name("city_name").Value(s.CityName).Name("full_name").Value(s.FullName).EndObject();
         }
 
         private static void WriteUintArray(JsonWriter w, string name, System.Collections.Generic.List<uint> xs)

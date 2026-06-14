@@ -189,6 +189,10 @@ impl BridgeClient {
             .await?)
     }
 
+    pub async fn list_saves(&self) -> Result<Saves, BridgeError> {
+        self.get_json("/saves").await
+    }
+
     pub async fn screenshot(
         &self,
         x: f32,

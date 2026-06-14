@@ -55,6 +55,7 @@ namespace SkylineBench.Http
         public static HttpReply SetZone(string body) { return HttpReply.Json(200, Serialize.Action(GameActions.SetZone(RequestParse.SetZone(JsonReader.Parse(body))))); }
         public static HttpReply Clock(string body) { return HttpReply.Json(200, Serialize.Clock(GameActions.Clock(RequestParse.Clock(JsonReader.Parse(body))))); }
         public static HttpReply LoadSave(string body) { return HttpReply.Json(200, Serialize.Load(SaveLoader.Load(RequestParse.LoadSave(JsonReader.Parse(body)).SaveName))); }
+        public static HttpReply Saves() { return HttpReply.Json(200, Serialize.Saves(SaveLoader.ListSaves())); }
 
         public static HttpReply Screenshot(string body)
         {

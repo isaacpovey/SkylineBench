@@ -605,6 +605,34 @@ pub async fn capture_screenshot(
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
+pub struct ViewArgs {
+    /// World X to centre on (metres).
+    pub x: f32,
+    /// World Z to centre on (metres).
+    pub z: f32,
+    /// Vertical view extent in metres (larger = more zoomed out). Default 350.
+    #[serde(default)]
+    pub size: Option<f32>,
+    /// true = straight-down; false (default) = 45° angled so road height,
+    /// pillars and overpass clearance are visible.
+    #[serde(default)]
+    pub top_down: Option<bool>,
+}
+
+/// Angled (default) game screenshot centred on (x, z). Returns PNG bytes; the
+/// rmcp layer wraps them as image content. This is how the agent perceives
+/// elevation — overpasses, ramps, clearances — which the 2-D render_map cannot show.
+pub async fn view_3d(client: &BridgeClient, args: ViewArgs) -> Result<Vec<u8>, ServiceError> {
+    let shot = CameraShot {
+        x: args.x,
+        z: args.z,
+        size: args.size.unwrap_or(CLOSEUP_SIZE_M),
+        top_down: args.top_down.unwrap_or(false),
+    };
+    Ok(capture_screenshot(client, shot).await?)
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
 pub struct QuerySegmentsArgs {
     /// Sort key, descending: "density" (default), "length", or "speed_limit".
     #[serde(default)]
@@ -1412,6 +1440,13 @@ mod tests {
             }],
         };
         assert!(!highway_flyby_path(&net).ns.is_empty(), "falls back to all segments");
+    }
+
+    #[tokio::test]
+    async fn view_3d_returns_png() {
+        let c = client().await;
+        let png = view_3d(&c, ViewArgs { x: 0.0, z: 0.0, size: None, top_down: None }).await.unwrap();
+        assert_eq!(&png[1..4], b"PNG");
     }
 
     #[tokio::test]

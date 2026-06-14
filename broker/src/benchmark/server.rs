@@ -919,6 +919,29 @@ impl BenchmarkServer {
         }
     }
 
+    #[tool(description = "Angled 3-D screenshot of a location: a 45° game render showing road height, \
+        bridges, pillars and overpass clearance — use it to SEE elevation that render_map (top-down) cannot. \
+        Args: x, z (world metres), optional size (default 350; larger zooms out), top_down (default false).")]
+    async fn view_3d(&self, Parameters(args): Parameters<crate::service::ViewArgs>) -> Result<CallToolResult, ErrorData> {
+        self.ensure_baseline().await;
+        match crate::service::view_3d(&self.client, args).await {
+            Ok(png) => {
+                let data = base64::engine::general_purpose::STANDARD.encode(png);
+                let progress = {
+                    let mut s = self.state.lock().await;
+                    s.check_timeout();
+                    s.progress()
+                };
+                let status = serde_json::json!({ "city_status": progress }).to_string();
+                Ok(CallToolResult::success(vec![
+                    Content::image(data, "image/png".to_string()),
+                    Content::text(status),
+                ]))
+            }
+            Err(e) => Ok(tool_err(e)),
+        }
+    }
+
     #[tool(description = "Declare the run finished. Returns immediately; the harness settles and \
         scores the city after your session ends. Call when satisfied, then stop — further \
         modifications will be rejected.")]
@@ -979,6 +1002,7 @@ mod tests {
                 "submit_solution",
                 "trace_route",
                 "upgrade_road",
+                "view_3d",
             ]
         );
     }

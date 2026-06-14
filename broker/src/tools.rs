@@ -220,6 +220,19 @@ impl Skyline {
             Err(e) => Ok(tool_error(e)),
         }
     }
+
+    #[tool(description = "Angled 3-D screenshot of a location: a 45° game render showing road height, \
+        bridges, pillars and overpass clearance — use it to SEE elevation that render_map (top-down) cannot. \
+        Args: x, z (world metres), optional size (default 350; larger zooms out), top_down (default false).")]
+    async fn view_3d(&self, Parameters(args): Parameters<service::ViewArgs>) -> Result<CallToolResult, ErrorData> {
+        match service::view_3d(&self.client, args).await {
+            Ok(png) => {
+                let data = base64::engine::general_purpose::STANDARD.encode(png);
+                Ok(CallToolResult::success(vec![Content::image(data, "image/png".to_string())]))
+            }
+            Err(e) => Ok(tool_error(e)),
+        }
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
@@ -257,6 +270,7 @@ mod tests {
                 "set_zoning",
                 "trace_route",
                 "upgrade_road",
+                "view_3d",
             ]
         );
     }

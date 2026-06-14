@@ -45,9 +45,11 @@ Three places hardcode Claude today:
 3. **`broker/src/main.rs`** — the `render-transcript` and `format-stream`
    subcommands.
 
-The deny-repo-read Seatbelt sandbox, the run lock, `caffeinate`, and
-`benchmark-finalize` are already harness-agnostic — they wrap or run after
-whatever command is exec'd.
+The run lock and `benchmark-finalize` are already harness-agnostic — they wrap
+or run after whatever command is exec'd. The deny-repo-read sandbox is also
+harness-agnostic but **macOS-only** (`sandbox-exec`); this work makes it
+pluggable across OSes (see "Sandbox"). `caffeinate` (macOS keep-awake) is
+**removed** — it is macOS-specific and not needed for portability.
 
 ## Harness landscape (researched 2026-06-14)
 
@@ -72,7 +74,7 @@ run.sh (thin orchestrator)
   ├─ parse --harness / --model
   ├─ skylinebench harness-prepare  ──>  writes config files + launch.argv + launch.env
   ├─ read argv (mapfile -d '') + export env
-  ├─ wrap: caffeinate + sandbox-exec  ──>  exec harness CLI  ──> stdout (harness JSON)
+  ├─ wrap: sandbox (per-OS backend)  ──>  exec harness CLI  ──> stdout (harness JSON)
   │     tee transcript.jsonl | skylinebench format-stream --harness X
   ├─ skylinebench render-transcript --harness X  ──> transcript.md
   └─ skylinebench benchmark-finalize (unchanged)
@@ -110,7 +112,7 @@ harness to maintain.
 
 struct LaunchSpec {
     argv: Vec<String>,                 // harness CLI + args (prompt included);
-                                       //   NO sandbox/caffeinate wrappers
+                                       //   NO sandbox wrapper (added by run.sh)
     env: Vec<(String, String)>,        // isolation env only (e.g. CODEX_HOME=…);
                                        //   never secrets
     config_files: Vec<ConfigFile>,     // { path, contents } written into session_dir
@@ -234,27 +236,53 @@ exposes** — not identical content:
   (mirrors today's "not logged in" check). Claude keeps its existing OAuth-dir
   check.
 - Replace the inline `claude …` command construction with: call
-  `harness-prepare`, `mapfile -d ''` the argv, export the isolation env, then
-  wrap with `caffeinate` + `sandbox-exec` and exec.
-- Record `harness.txt` next to `model.txt` in the run dir; copy the harness
-  config file(s) into the run dir for reproducibility (as `mcp.json` is copied
-  today).
-- The **deny-repo-read sandbox stays for every harness** — it is the hard
-  anti-cheat guarantee. Per-harness tool allowlists / web-disable are
-  best-effort on top of it.
-- `DRY_RUN=1` prints the resolved argv, isolation env, and config file contents
-  for the chosen harness (extends today's behavior).
-- Update docs that reference `--watch` (`README.md`, `benchmark/README.md`) to
-  drop it and document `--harness`.
+  `harness-prepare`, `mapfile -d ''` the argv, export the isolation env, select
+  the sandbox wrapper for the host OS (see "Sandbox"), then wrap and exec.
+- **Remove `caffeinate`** (the `KEEPAWAKE` array and its `command -v` guard).
+- Record `harness.txt` next to `model.txt` in the run dir, plus `sandbox.txt`
+  naming the active backend (`seatbelt` / `bubblewrap` / `firejail` / `none`)
+  so a run's anti-cheat status is auditable. Copy the harness config file(s)
+  into the run dir for reproducibility (as `mcp.json` is copied today).
+- The **deny-repo-read sandbox wraps every harness** where a backend exists —
+  it is the hard anti-cheat guarantee. Per-harness tool allowlists / web-disable
+  are best-effort on top of it.
+- `DRY_RUN=1` prints the resolved argv, isolation env, config file contents, and
+  the selected sandbox wrapper for the chosen harness.
+- Update docs that reference `--watch` / `caffeinate` (`README.md`,
+  `benchmark/README.md`) to drop them and document `--harness` and the
+  per-OS sandbox behavior.
+
+## Sandbox (cross-OS, pluggable)
+
+The sandbox enforces one invariant on every OS: **the agent process cannot read
+the repository subtree** (it must not reach the scoring source). The wrapper is
+selected at runtime by host OS / available tooling, all preserving that
+deny-repo-read semantic:
+
+- **macOS — `sandbox-exec` (Seatbelt):** today's profile, `(allow default)
+  (deny file-read* (subpath "$ROOT"))`. Unchanged.
+- **Linux — `bubblewrap` (`bwrap`), else `firejail`:** bubblewrap binds the
+  real filesystem then masks the repo (`--dev-bind / /` + `--tmpfs "$ROOT"`),
+  hiding repo contents while leaving everything else readable; firejail uses
+  `--blacklist="$ROOT"` as the fallback. First available wins.
+- **Neither available / other OS:** run **unsandboxed** with a loud stderr
+  warning that anti-cheat is OFF, and record `sandbox.txt = none`. The run is
+  still produced (so the benchmark works anywhere) but its integrity is flagged.
+
+Selection lives in a small, testable unit (a `sandbox` concern: detect backend →
+return the wrapper argv prefix + any profile file to write + the backend name).
+`run.sh` no longer hard-errors when `sandbox-exec` is absent.
 
 ## Anti-cheat model
 
-The Seatbelt profile denies reading the repo subtree and wraps whatever argv is
-exec'd, so it protects every harness identically — the agent cannot read the
-scoring source regardless of harness. Tool restriction (MCP-only allowlists,
-disabling web tools) is layered on where each harness supports it, but is
-treated as defense-in-depth, not the primary guarantee, because the built-in
-tool sets and restriction syntaxes differ per harness.
+The sandbox (per-OS backend above) denies reading the repo subtree and wraps
+whatever argv is exec'd, so it protects every harness identically — the agent
+cannot read the scoring source regardless of harness, on macOS or Linux. On an
+unsupported OS the run proceeds unsandboxed with a recorded `sandbox.txt = none`
+warning. Tool restriction (MCP-only allowlists, disabling web tools) is layered
+on where each harness supports it, but is treated as defense-in-depth, not the
+primary guarantee, because the built-in tool sets and restriction syntaxes
+differ per harness.
 
 ## Testing
 
@@ -268,8 +296,12 @@ Table-driven Rust unit tests, built TDD:
 - **Claude regression** — the refactored Claude path produces byte-identical
   `transcript.md` and live lines vs the pre-refactor output on an existing
   captured `transcript.jsonl`.
-- **`run.sh` DRY_RUN** — for each harness, the printed argv/env/config match
-  expectations.
+- **Sandbox backend selection** — given a (detected OS, available tools) input,
+  assert the chosen backend name and the wrapper argv prefix (macOS→seatbelt,
+  Linux+bwrap→bubblewrap, Linux+firejail-only→firejail, none→unsandboxed +
+  warning).
+- **`run.sh` DRY_RUN** — for each harness, the printed argv/env/config/sandbox
+  match expectations.
 
 The pure-function, typed design is what makes these tests cheap — the main
 payoff of putting the adapters in Rust.
@@ -279,8 +311,10 @@ payoff of putting the adapters in Rust.
 One spec, one feature. Implementation is staged so each step is independently
 verifiable:
 
-1. **Harness module + normalized transcript**, and **refactor Claude onto
-   them** — behavior-preserving; existing runs still produce identical output.
+1. **Harness module + normalized transcript + pluggable sandbox**, and
+   **refactor Claude onto them** — behavior-preserving on macOS (existing runs
+   produce identical output); `caffeinate` removed; Linux/unsandboxed backends
+   added.
 2. **codex** — LaunchSpec + parser + tests + fixture.
 3. **gemini** — LaunchSpec + parser + tests + fixture.
 4. **opencode** — LaunchSpec + parser + tests + fixture.
@@ -294,4 +328,5 @@ one sample fixture, with no change to the broker tools or scoring.
 - Changes to scoring, maps, the MCP tool set, or `benchmark-finalize`.
 - Website / results-page changes for new models (separate work once runs
   exist).
-- Non-macOS sandboxing (the benchmark is macOS-only today).
+- Windows sandboxing (the harness runner targets macOS + Linux; other OSes run
+  unsandboxed with a recorded warning).

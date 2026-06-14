@@ -5,6 +5,9 @@ import { Thesis } from "@/components/sections/thesis";
 import { HowItWorks } from "@/components/sections/how-it-works";
 import { Scoring } from "@/components/sections/scoring";
 import { Architecture } from "@/components/sections/architecture";
+import { Learnings } from "@/components/sections/learnings";
+import { Roadmap } from "@/components/sections/roadmap";
+import { Findings } from "@/components/sections/findings";
 
 const Home = () => (
   <>
@@ -16,6 +19,11 @@ const Home = () => (
     <hr className="divider" />
     <Scoring />
     <Architecture />
+    <Learnings />
+    <hr className="divider" />
+    <Roadmap />
+    <hr className="divider" />
+    <Findings />
     <Footer />
   </>
 );

@@ -21,9 +21,30 @@ pub const MAX_EXPANDED_OPS: usize = 120;
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum PlanOp {
     /// Straight link; spans longer than the segment cap are auto-split.
-    BuildRoad { from: Position, to: Position, road_type: String, #[serde(default = "default_true")] snap: bool, #[serde(default)] from_elevation: f32, #[serde(default)] to_elevation: f32 },
+    BuildRoad {
+        from: Position,
+        to: Position,
+        road_type: String,
+        #[serde(default = "default_true")]
+        snap: bool,
+        /// Metres above terrain at `from` (0 = ground).
+        #[serde(default)]
+        from_elevation: f32,
+        /// Metres above terrain at `to` (0 = ground); differ from `from_elevation` for a ramp.
+        #[serde(default)]
+        to_elevation: f32,
+    },
     /// Poly-link through `points` in order; each leg is auto-split.
-    BuildPolyline { points: Vec<Position>, road_type: String, #[serde(default = "default_true")] snap: bool, #[serde(default)] elevations: Vec<f32> },
+    BuildPolyline {
+        points: Vec<Position>,
+        road_type: String,
+        #[serde(default = "default_true")]
+        snap: bool,
+        /// Metres above terrain per point (parallel to `points`). Omitted or
+        /// short → missing entries default to 0 (ground).
+        #[serde(default)]
+        elevations: Vec<f32>,
+    },
     UpgradeRoad { segment: u32, road_type: String },
     Bulldoze { target_type: String, id: u32 },
     SetZoning { area: Bounds, zone_type: String },
@@ -64,16 +85,11 @@ fn lerp_pos(a: Position, b: Position, t: f32) -> Position {
 }
 
 /// Split one straight span into equal chunks no longer than POLYLINE_CHUNK_M.
-pub fn split_span(from: Position, to: Position) -> Vec<(Position, Position)> {
-    let len = horizontal_distance(from, to);
-    let n = (len / POLYLINE_CHUNK_M).ceil().max(1.0) as usize;
-    (0..n)
-        .map(|i| {
-            (
-                lerp_pos(from, to, i as f32 / n as f32),
-                lerp_pos(from, to, (i + 1) as f32 / n as f32),
-            )
-        })
+/// Shares the chunk-boundary math with `build_chunks` via `chunk_fractions`.
+fn split_span(from: Position, to: Position) -> Vec<(Position, Position)> {
+    chunk_fractions(from, to)
+        .windows(2)
+        .map(|w| (lerp_pos(from, to, w[0]), lerp_pos(from, to, w[1])))
         .collect()
 }
 

@@ -22,6 +22,13 @@ namespace SkylineBench.Tests
             Assert.Equal(-50.0, r.StartX); Assert.Equal(50.0, r.EndX); Assert.Equal(10.0, r.StartZ);
             Assert.Equal("Basic Road", r.Prefab);
             Assert.True(r.Snap, "snap");
+
+            var hi = RequestParse.BuildRoad(JsonReader.Parse(
+                "{\"start\":{\"x\":0,\"y\":0,\"z\":0},\"end\":{\"x\":50,\"y\":0,\"z\":0},\"prefab\":\"Basic Road\",\"snap_to_existing_nodes\":true,\"from_elevation\":0,\"to_elevation\":12}"));
+            Assert.Equal(0.0, hi.FromElevation);
+            Assert.Equal(12.0, hi.ToElevation);
+            // Missing fields default to 0.
+            Assert.Equal(0.0, r.FromElevation);
         }
 
         static void Clock()

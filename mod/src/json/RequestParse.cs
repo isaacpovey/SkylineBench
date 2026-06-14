@@ -1,6 +1,6 @@
 namespace SkylineBench.Json
 {
-    public struct BuildRoadReq { public float StartX, StartY, StartZ, EndX, EndY, EndZ; public string Prefab; public bool Snap; }
+    public struct BuildRoadReq { public float StartX, StartY, StartZ, EndX, EndY, EndZ; public string Prefab; public bool Snap; public float FromElevation, ToElevation; }
     public struct BulldozeReq { public string TargetType; public uint Id; }
     public struct UpgradeRoadReq { public uint SegmentId; public string Prefab; }
     public struct SetZoneReq { public float MinX, MinZ, MaxX, MaxZ; public string ZoneType; }
@@ -22,7 +22,9 @@ namespace SkylineBench.Json
                 StartX = (float)s["x"].AsDouble(), StartY = (float)s["y"].AsDouble(), StartZ = (float)s["z"].AsDouble(),
                 EndX = (float)e["x"].AsDouble(), EndY = (float)e["y"].AsDouble(), EndZ = (float)e["z"].AsDouble(),
                 Prefab = v["prefab"].AsString(),
-                Snap = !v["snap_to_existing_nodes"].IsNull && v["snap_to_existing_nodes"].AsBool()
+                Snap = !v["snap_to_existing_nodes"].IsNull && v["snap_to_existing_nodes"].AsBool(),
+                FromElevation = v["from_elevation"].IsNull ? 0f : (float)v["from_elevation"].AsDouble(),
+                ToElevation = v["to_elevation"].IsNull ? 0f : (float)v["to_elevation"].AsDouble()
             };
         }
 

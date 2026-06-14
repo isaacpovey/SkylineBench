@@ -12,6 +12,7 @@ pub mod server;
 pub mod state;
 pub mod transcript;
 pub mod harness;
+pub mod sandbox;
 
 pub use config::BenchConfig;
 pub use measure::{finalize, measure_window};

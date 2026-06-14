@@ -828,8 +828,8 @@ impl BenchmarkServer {
                 continue;
             }
             let outcome = match (*op).clone() {
-                ExecOp::Build { from, to, road_type, snap } => {
-                    service::build_road(&self.client, BuildRoadArgs { from, to, road_type, snap, from_elevation: 0.0, to_elevation: 0.0 }).await
+                ExecOp::Build { from, to, road_type, snap, from_elevation, to_elevation } => {
+                    service::build_road(&self.client, BuildRoadArgs { from, to, road_type, snap, from_elevation, to_elevation }).await
                 }
                 ExecOp::Upgrade { segment, road_type } => {
                     service::upgrade_road(&self.client, UpgradeRoadArgs { segment, road_type }).await
@@ -1375,6 +1375,8 @@ mod tests {
             to: crate::contract::Position { x: x1, y: 0.0, z: 0.0 },
             road_type: "road".into(),
             snap: true,
+            from_elevation: 0.0,
+            to_elevation: 0.0,
         }
     }
 

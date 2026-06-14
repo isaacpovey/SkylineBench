@@ -21,9 +21,9 @@ pub const MAX_EXPANDED_OPS: usize = 120;
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum PlanOp {
     /// Straight link; spans longer than the segment cap are auto-split.
-    BuildRoad { from: Position, to: Position, road_type: String, #[serde(default = "default_true")] snap: bool },
+    BuildRoad { from: Position, to: Position, road_type: String, #[serde(default = "default_true")] snap: bool, #[serde(default)] from_elevation: f32, #[serde(default)] to_elevation: f32 },
     /// Poly-link through `points` in order; each leg is auto-split.
-    BuildPolyline { points: Vec<Position>, road_type: String, #[serde(default = "default_true")] snap: bool },
+    BuildPolyline { points: Vec<Position>, road_type: String, #[serde(default = "default_true")] snap: bool, #[serde(default)] elevations: Vec<f32> },
     UpgradeRoad { segment: u32, road_type: String },
     Bulldoze { target_type: String, id: u32 },
     SetZoning { area: Bounds, zone_type: String },
@@ -36,7 +36,7 @@ fn default_true() -> bool {
 /// A primitive, directly executable op (post-expansion).
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExecOp {
-    Build { from: Position, to: Position, road_type: String, snap: bool },
+    Build { from: Position, to: Position, road_type: String, snap: bool, from_elevation: f32, to_elevation: f32 },
     Upgrade { segment: u32, road_type: String },
     Bulldoze { target_type: String, id: u32 },
     Zone { area: Bounds, zone_type: String },
@@ -77,25 +77,47 @@ pub fn split_span(from: Position, to: Position) -> Vec<(Position, Position)> {
         .collect()
 }
 
+/// Fraction (0..1) of the way from `from` to `to` for each chunk boundary.
+fn chunk_fractions(from: Position, to: Position) -> Vec<f32> {
+    let len = horizontal_distance(from, to);
+    let n = (len / POLYLINE_CHUNK_M).ceil().max(1.0) as usize;
+    (0..=n).map(|i| i as f32 / n as f32).collect()
+}
+
+fn lerp(a: f32, b: f32, t: f32) -> f32 { a + (b - a) * t }
+
+/// Split `from..to` into elevation-aware Build ops; endpoint elevations
+/// interpolate linearly between `from_elev` and `to_elev`.
+fn build_chunks(from: Position, to: Position, road_type: &str, snap: bool, from_elev: f32, to_elev: f32) -> Vec<ExecOp> {
+    let fr = chunk_fractions(from, to);
+    fr.windows(2)
+        .map(|w| ExecOp::Build {
+            from: lerp_pos(from, to, w[0]),
+            to: lerp_pos(from, to, w[1]),
+            road_type: road_type.to_string(),
+            snap,
+            from_elevation: lerp(from_elev, to_elev, w[0]),
+            to_elevation: lerp(from_elev, to_elev, w[1]),
+        })
+        .collect()
+}
+
 /// Expand source ops into primitive ops, each tagged with its source index.
 pub fn expand(ops: &[PlanOp]) -> Vec<(usize, ExecOp)> {
     ops.iter()
         .enumerate()
         .flat_map(|(i, op)| -> Vec<(usize, ExecOp)> {
             match op {
-                PlanOp::BuildRoad { from, to, road_type, snap } => split_span(*from, *to)
-                    .into_iter()
-                    .map(|(a, b)| (i, ExecOp::Build { from: a, to: b, road_type: road_type.clone(), snap: *snap }))
-                    .collect(),
-                PlanOp::BuildPolyline { points, road_type, snap } => {
-                    if points.len() < 2 {
-                        return vec![(i, ExecOp::Invalid)];
-                    }
-                    points
-                        .windows(2)
-                        .flat_map(|w| split_span(w[0], w[1]))
-                        .map(|(a, b)| (i, ExecOp::Build { from: a, to: b, road_type: road_type.clone(), snap: *snap }))
-                        .collect()
+                PlanOp::BuildRoad { from, to, road_type, snap, from_elevation, to_elevation } =>
+                    build_chunks(*from, *to, road_type, *snap, *from_elevation, *to_elevation)
+                        .into_iter().map(|op| (i, op)).collect(),
+                PlanOp::BuildPolyline { points, road_type, snap, elevations } => {
+                    if points.len() < 2 { return vec![(i, ExecOp::Invalid)]; }
+                    points.windows(2).enumerate().flat_map(|(leg, w)| {
+                        let e0 = elevations.get(leg).copied().unwrap_or(0.0);
+                        let e1 = elevations.get(leg + 1).copied().unwrap_or(0.0);
+                        build_chunks(w[0], w[1], road_type, *snap, e0, e1)
+                    }).map(|op| (i, op)).collect()
                 }
                 PlanOp::UpgradeRoad { segment, road_type } => {
                     vec![(i, ExecOp::Upgrade { segment: *segment, road_type: road_type.clone() })]
@@ -175,6 +197,41 @@ mod tests {
     }
 
     #[test]
+    fn build_road_carries_elevation_into_exec() {
+        let ops = vec![PlanOp::BuildRoad {
+            from: pos(0.0, 0.0), to: pos(50.0, 0.0),
+            road_type: "road".into(), snap: true,
+            from_elevation: 0.0, to_elevation: 12.0,
+        }];
+        let exec = expand(&ops);
+        assert_eq!(exec.len(), 1);
+        match &exec[0].1 {
+            ExecOp::Build { from_elevation, to_elevation, .. } => {
+                assert_eq!(*from_elevation, 0.0);
+                assert_eq!(*to_elevation, 12.0);
+            }
+            other => panic!("expected Build, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn polyline_interpolates_elevation_per_chunk() {
+        // 360 m line split at 180 m => 2 chunks; elevations 0 -> 12 over the line.
+        let ops = vec![PlanOp::BuildPolyline {
+            points: vec![pos(0.0, 0.0), pos(360.0, 0.0)],
+            road_type: "road".into(), snap: true,
+            elevations: vec![0.0, 12.0],
+        }];
+        let exec = expand(&ops);
+        assert_eq!(exec.len(), 2);
+        let elevs: Vec<(f32, f32)> = exec.iter().map(|(_, op)| match op {
+            ExecOp::Build { from_elevation, to_elevation, .. } => (*from_elevation, *to_elevation),
+            _ => panic!(),
+        }).collect();
+        assert_eq!(elevs, vec![(0.0, 6.0), (6.0, 12.0)]);
+    }
+
+    #[test]
     fn split_span_respects_chunk_length() {
         let chunks = split_span(pos(0.0, 0.0), pos(500.0, 0.0));
         assert_eq!(chunks.len(), 3);
@@ -199,6 +256,7 @@ mod tests {
             points: vec![pos(0.0, 0.0), pos(250.0, 0.0), pos(250.0, 100.0)],
             road_type: "road".into(),
             snap: true,
+            elevations: vec![],
         }];
         let exec = expand(&ops);
         // 250m span → 2 chunks, 100m span → 1 chunk.
@@ -220,6 +278,8 @@ mod tests {
             to: pos(400.0, 0.0),
             road_type: "road".into(),
             snap: true,
+            from_elevation: 0.0,
+            to_elevation: 0.0,
         }];
         assert_eq!(expand(&ops).len(), 3);
     }
@@ -227,7 +287,7 @@ mod tests {
     #[test]
     fn validate_catches_each_failure_mode() {
         let c = ctx();
-        let bad_prefab = ExecOp::Build { from: pos(0.0, 0.0), to: pos(50.0, 0.0), road_type: "monorail".into(), snap: true };
+        let bad_prefab = ExecOp::Build { from: pos(0.0, 0.0), to: pos(50.0, 0.0), road_type: "monorail".into(), snap: true, from_elevation: 0.0, to_elevation: 0.0 };
         assert_eq!(validate(&bad_prefab, &c), Err(ActionError::InvalidPrefab));
 
         let missing_segment = ExecOp::Upgrade { segment: 99, road_type: "road".into() };
@@ -248,7 +308,7 @@ mod tests {
 
     #[test]
     fn degenerate_polyline_is_invalid() {
-        let ops = vec![PlanOp::BuildPolyline { points: vec![pos(0.0, 0.0)], road_type: "road".into(), snap: true }];
+        let ops = vec![PlanOp::BuildPolyline { points: vec![pos(0.0, 0.0)], road_type: "road".into(), snap: true, elevations: vec![] }];
         let exec = expand(&ops);
         assert_eq!(exec.len(), 1);
         assert_eq!(validate(&exec[0].1, &ctx()), Err(ActionError::InvalidArgs));

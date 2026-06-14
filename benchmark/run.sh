@@ -34,17 +34,71 @@ case "$MAP" in
   *[!A-Za-z0-9_-]*) echo "map id must be alphanumeric, dash, or underscore" >&2; exit 2 ;;
 esac
 
-# Preflight: the mod must be running with a city loaded (skipped under DRY_RUN,
-# which only inspects the resolved command). The broker talks to the mod over
-# HTTP; build/install it with mod/build.sh and enable it in-game first. Fail
-# fast here rather than after a 30s broker build and a launched agent session.
-if [ "${DRY_RUN:-0}" != "1" ]; then
-  HEALTH="$(curl -fsS "$MOD_URL/health" 2>/dev/null || true)"
-  case "$(printf '%s' "$HEALTH" | tr -d '[:space:]')" in
-    *'"city_loaded":true'*) : ;;
-    "") echo "mod not reachable at $MOD_URL/health — start Cities: Skylines with the SkylineBench mod enabled (build/install: mod/build.sh)" >&2; exit 1 ;;
-    *) echo "mod is up at $MOD_URL but no city is loaded — load the benchmark save from the game's main menu" >&2; exit 1 ;;
+# Resolve a map id to its in-game save name via benchmark/maps/maps.tsv.
+# Tab-separated: id<TAB>save_name<TAB>source<TAB>game_version; '#'/blank skipped.
+resolve_save_name() {
+  local want="$1" maps="$ROOT/benchmark/maps/maps.tsv" id save_name rest
+  [ -f "$maps" ] || { echo "missing map binding file: $maps" >&2; return 1; }
+  while IFS="$(printf '\t')" read -r id save_name rest; do
+    case "$id" in ''|'#'*) continue ;; esac
+    if [ "$id" = "$want" ]; then printf '%s\n' "$save_name"; return 0; fi
+  done < "$maps"
+  echo "unknown map id '$want'. Known ids:" >&2
+  while IFS="$(printf '\t')" read -r id _; do
+    case "$id" in ''|'#'*) continue ;; esac
+    echo "  $id" >&2
+  done < "$maps"
+  return 1
+}
+
+# Minimal JSON string encoder (escape backslash and double-quote).
+json_str() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  printf '"%s"' "$s"
+}
+
+# Issue the load and wait for the level-reload bridge cycle to finish.
+# Returns non-zero on timeout (surfaces the "invalid file"/unstable-load case).
+load_and_wait() {
+  local save_name="$1" deadline resp h
+  resp="$(curl -fsS -X POST "$MOD_URL/load-save" \
+    -H 'content-type: application/json' \
+    -d "$(printf '{"save_name":%s}' "$(json_str "$save_name")")" 2>/dev/null || true)"
+  case "$(printf '%s' "$resp" | tr -d '[:space:]')" in
+    *'"ok":false'*)
+      echo "load rejected for save '$save_name'. Mod reported available saves:" >&2
+      printf '%s\n' "$resp" >&2
+      return 1 ;;
+    "") echo "mod not reachable at $MOD_URL/load-save" >&2; return 1 ;;
   esac
+  # Phase 1: bridge goes down (reload started). Tolerate up to 30s.
+  deadline=$(( $(date +%s) + 30 ))
+  until [ "$(date +%s)" -ge "$deadline" ]; do
+    curl -fsS "$MOD_URL/health" >/dev/null 2>&1 || break
+    sleep 1
+  done
+  # Phase 2: bridge back up with a city loaded (reload finished). Up to 180s.
+  deadline=$(( $(date +%s) + 180 ))
+  until [ "$(date +%s)" -ge "$deadline" ]; do
+    h="$(curl -fsS "$MOD_URL/health" 2>/dev/null || true)"
+    case "$(printf '%s' "$h" | tr -d '[:space:]')" in
+      *'"city_loaded":true'*) return 0 ;;
+    esac
+    sleep 2
+  done
+  echo "timed out waiting for save '$save_name' to finish loading" >&2
+  return 1
+}
+
+SAVE_NAME="$(resolve_save_name "$MAP")" || exit 1
+
+# Preflight + load (skipped under DRY_RUN, which only inspects the resolved
+# command). Reachability is implied by load_and_wait's first curl.
+if [ "${DRY_RUN:-0}" != "1" ]; then
+  echo "loading map '$MAP' (save '$SAVE_NAME')…" >&2
+  load_and_wait "$SAVE_NAME" || exit 1
 fi
 
 mkdir -p "$OUT_DIR"

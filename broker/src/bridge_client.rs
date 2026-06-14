@@ -218,6 +218,32 @@ impl BridgeClient {
             .to_vec())
     }
 
+    /// Drive a recorded flyby: the mod interpolates the camera along `keyframes`
+    /// over `duration_s` while the sim runs, writing numbered PNG frames into
+    /// `out_dir`. Blocks for the whole pass, so the timeout is generous.
+    pub async fn flyby(
+        &self,
+        keyframes: &[crate::service::CameraKeyframe],
+        duration_s: f32,
+        capture_fps: u32,
+        out_dir: &str,
+    ) -> Result<(), BridgeError> {
+        let body = serde_json::json!({
+            "keyframes": keyframes,
+            "duration_s": duration_s,
+            "capture_fps": capture_fps,
+            "out_dir": out_dir,
+        });
+        self.http
+            .post(format!("{}/flyby", self.base))
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(duration_s as u64 + 30))
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(())
+    }
+
     pub async fn clock(
         &self,
         op: &str,
@@ -286,6 +312,21 @@ mod tests {
         let client = BridgeClient::new(start_mock().await);
         let png = client.screenshot(0.0, 0.0, 500.0, 0.0, 90.0, "none").await.unwrap();
         assert_eq!(&png[1..4], b"PNG");
+    }
+
+    #[tokio::test]
+    async fn flyby_writes_stub_frames_into_out_dir() {
+        let client = BridgeClient::new(start_mock().await);
+        let tmp = std::env::temp_dir().join(format!("flyby_test_{}", std::process::id()));
+        let keyframe = crate::service::CameraKeyframe {
+            x: 0.0,
+            z: 0.0,
+            yaw: 0.0,
+            pitch: 32.0,
+            size: 500.0,
+        };
+        client.flyby(&[keyframe], 1.0, 12, tmp.to_str().unwrap()).await.unwrap();
+        assert!(tmp.join("00001.png").exists());
     }
 
     #[tokio::test]

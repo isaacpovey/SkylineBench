@@ -484,6 +484,28 @@ async fn screenshot(
     ([(axum::http::header::CONTENT_TYPE, "image/png")], png)
 }
 
+async fn flyby(Json(body): Json<serde_json::Value>) -> impl axum::response::IntoResponse {
+    // Write a couple of stub PNG frames so broker-side assembly is testable.
+    if let Some(dir) = body.get("out_dir").and_then(|v| v.as_str()) {
+        let _ = std::fs::create_dir_all(dir);
+        let opts = crate::render::RenderOptions {
+            bounds: crate::geometry::playable_bounds(),
+            width_px: 64,
+            height_px: 64,
+            grid_spacing_m: 0.0,
+        };
+        let png = crate::render::render_network(
+            &Network { nodes: vec![], segments: vec![] },
+            &std::collections::HashMap::new(),
+            &opts,
+        );
+        for i in 1..=2u32 {
+            let _ = std::fs::write(std::path::Path::new(dir).join(format!("{i:05}.png")), &png);
+        }
+    }
+    axum::http::StatusCode::OK
+}
+
 pub fn router() -> Router {
     Router::new()
         .route("/health", get(health))
@@ -502,6 +524,7 @@ pub fn router() -> Router {
         .route("/saves", get(saves))
         .route("/clock", post(clock))
         .route("/screenshot", post(screenshot))
+        .route("/flyby", post(flyby))
         .with_state(MockState::new())
 }
 

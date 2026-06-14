@@ -753,14 +753,9 @@ impl BenchmarkServer {
             Some(((start.x + end.x) / 2.0, (start.z + end.z) / 2.0))
         };
 
-        // One shot framing every planned edit, fixed before execution so the
-        // before/after frames are directly comparable.
-        let planned_positions: Vec<(f32, f32)> = exec
-            .iter()
-            .filter_map(|(_, op)| match op {
-                ExecOp::Build { from, to, .. } => {
-                    Some(((from.x + to.x) / 2.0, (from.z + to.z) / 2.0))
-                }
+        let op_position = |op: &ExecOp| -> Option<(f32, f32)> {
+            match op {
+                ExecOp::Build { from, to, .. } => Some(((from.x + to.x) / 2.0, (from.z + to.z) / 2.0)),
                 ExecOp::Upgrade { segment, .. } => seg_midpoint(*segment),
                 ExecOp::Bulldoze { target_type, id } => match target_type.as_str() {
                     "segment" => seg_midpoint(*id),
@@ -772,10 +767,30 @@ impl BenchmarkServer {
                     Some(((area.min_x + area.max_x) / 2.0, (area.min_z + area.max_z) / 2.0))
                 }
                 ExecOp::Invalid => None,
-            })
-            .collect();
-        let shot = crate::service::region_shot(&planned_positions);
-        let before = self.grab_before(shot).await;
+            }
+        };
+
+        let source_indices: Vec<usize> = exec.iter().fold(Vec::new(), |mut seen, (source, _)| {
+            if !seen.contains(source) {
+                seen.push(*source);
+            }
+            seen
+        });
+        let n_ops = source_indices.len();
+        let mut op_shots: std::collections::HashMap<usize, crate::service::CameraShot> =
+            std::collections::HashMap::new();
+        let mut op_before: std::collections::HashMap<usize, Option<Vec<u8>>> =
+            std::collections::HashMap::new();
+        for &src in &source_indices {
+            let positions: Vec<(f32, f32)> =
+                exec.iter().filter(|(s, _)| *s == src).filter_map(|(_, op)| op_position(op)).collect();
+            let shot = crate::service::region_shot(&positions);
+            op_before.insert(src, self.grab_before(shot).await);
+            if let Some(shot) = shot {
+                op_shots.insert(src, shot);
+            }
+        }
+        let mut ok_sources: std::collections::HashSet<usize> = std::collections::HashSet::new();
 
         let mut results: Vec<Value> = Vec::with_capacity(validations.len());
         let mut first_failed_at: Option<usize> = None;
@@ -808,6 +823,7 @@ impl BenchmarkServer {
                     let ok = v.get("ok").and_then(|b| b.as_bool()) == Some(true);
                     if ok {
                         n_all_ok += 1;
+                        ok_sources.insert(*source);
                         self.state.lock().await.record_mutation(tool_name(op), *cost);
                     } else if first_failed_at.is_none() {
                         first_failed_at = Some(i);
@@ -842,7 +858,20 @@ impl BenchmarkServer {
 
         if n_all_ok > 0 {
             self.refresh_topology().await;
-            self.shoot_action_pair(shot, before, "apply_plan", format!("apply_plan: {n_all_ok} ops")).await;
+            for (k, &src) in source_indices.iter().enumerate() {
+                if !ok_sources.contains(&src) {
+                    continue;
+                }
+                let tool = validations.iter().find(|v| v.0 == src).map(|v| tool_name(v.1)).unwrap_or("apply_plan");
+                let caption = format!("apply_plan op {}/{}: {tool}", k + 1, n_ops);
+                self.shoot_action_pair(
+                    op_shots.get(&src).copied(),
+                    op_before.get(&src).and_then(|b| b.clone()),
+                    "apply_plan",
+                    caption,
+                )
+                .await;
+            }
         }
 
         self.finish(serde_json::json!({
@@ -1277,7 +1306,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn apply_plan_persists_one_before_after_pair_framing_all_ops() {
+    async fn apply_plan_persists_a_before_after_pair_per_op() {
         let dir = std::env::temp_dir().join(format!("sb-srv-shots4-{}", std::process::id()));
         std::fs::remove_dir_all(&dir).ok();
         let bench = bench_with_mock().await.with_screenshots_dir(dir.clone());
@@ -1289,12 +1318,15 @@ mod tests {
             }))
             .await
             .unwrap();
-        let index = std::fs::read_to_string(dir.join("actions/index.jsonl")).unwrap();
+
+        let actions = std::fs::read_to_string(dir.join("actions/index.jsonl")).unwrap();
         let entries: Vec<serde_json::Value> =
-            index.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
-        assert_eq!(entries.len(), 2, "one pair for the whole plan: {entries:?}");
-        assert_eq!(entries[0]["caption"], "apply_plan: 2 ops (before)");
-        assert_eq!(entries[1]["caption"], "apply_plan: 2 ops (after)");
+            actions.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(entries.len(), 4, "two ops produce two before/after pairs");
+        assert_eq!(entries[0]["caption"], "apply_plan op 1/2: build_road (before)");
+        assert_eq!(entries[1]["caption"], "apply_plan op 1/2: build_road (after)");
+        assert_eq!(entries[2]["caption"], "apply_plan op 2/2: build_road (before)");
+        assert_eq!(entries[3]["caption"], "apply_plan op 2/2: build_road (after)");
         std::fs::remove_dir_all(&dir).ok();
     }
 

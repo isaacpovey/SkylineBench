@@ -776,7 +776,7 @@ impl BenchmarkServer {
             }
             seen
         });
-        let n_ops = source_indices.len();
+        let n_sources = source_indices.len();
         let mut op_shots: std::collections::HashMap<usize, crate::service::CameraShot> =
             std::collections::HashMap::new();
         let mut op_before: std::collections::HashMap<usize, Option<Vec<u8>>> =
@@ -863,10 +863,10 @@ impl BenchmarkServer {
                     continue;
                 }
                 let tool = validations.iter().find(|v| v.0 == src).map(|v| tool_name(v.1)).unwrap_or("apply_plan");
-                let caption = format!("apply_plan op {}/{}: {tool}", k + 1, n_ops);
+                let caption = format!("apply_plan op {}/{}: {tool}", k + 1, n_sources);
                 self.shoot_action_pair(
                     op_shots.get(&src).copied(),
-                    op_before.get(&src).and_then(|b| b.clone()),
+                    op_before.get(&src).cloned().flatten(),
                     "apply_plan",
                     caption,
                 )

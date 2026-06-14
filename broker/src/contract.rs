@@ -169,7 +169,8 @@ pub struct ZoneTypes {
 /// `SEGMENT_TOO_LONG`, `UNKNOWN`) with broker-side pre-validation reasons
 /// (`DEGENERATE_SEGMENT`, `INVALID_ARGS`). The placement-validation codes
 /// (`OBJECT_COLLISION`, `SLOPE_TOO_STEEP`, `OUT_OF_AREA`, `TOO_MANY_CONNECTIONS`,
-/// `NET_BUFFER_FULL`) come from the mod's BuildValidator.
+/// `NET_BUFFER_FULL`) come from the mod's BuildValidator. The elevation placement
+/// codes (`CANNOT_BUILD_ON_WATER`, `HEIGHT_TOO_HIGH`) come from NetTool.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ActionError {
@@ -186,6 +187,8 @@ pub enum ActionError {
     OutOfArea,
     TooManyConnections,
     NetBufferFull,
+    CannotBuildOnWater,
+    HeightTooHigh,
 }
 
 /// Result of a mutating action. `ok == true` ⇒ the diff fields are meaningful;
@@ -418,6 +421,12 @@ mod tests {
         assert_eq!(serde_json::to_string(&ActionError::OutOfArea).unwrap(), "\"OUT_OF_AREA\"");
         assert_eq!(serde_json::to_string(&ActionError::TooManyConnections).unwrap(), "\"TOO_MANY_CONNECTIONS\"");
         assert_eq!(serde_json::to_string(&ActionError::NetBufferFull).unwrap(), "\"NET_BUFFER_FULL\"");
+    }
+
+    #[test]
+    fn elevation_action_errors_serialize_screaming_snake() {
+        assert_eq!(serde_json::to_string(&ActionError::CannotBuildOnWater).unwrap(), "\"CANNOT_BUILD_ON_WATER\"");
+        assert_eq!(serde_json::to_string(&ActionError::HeightTooHigh).unwrap(), "\"HEIGHT_TOO_HIGH\"");
     }
 
     #[test]

@@ -66,7 +66,7 @@ export const Nav = ({ variant = "landing" }: NavProps) => {
             </>
           ) : (
             <>
-              <a className="nav-link" href="/#results">← Back to results</a>
+              <a className="nav-link" href="/results">← Back to results</a>
               <a className="nav-link hide-sm" href="/updates">Updates</a>
               <a className="nav-link hide-sm" href="/changelog">Changelog</a>
             </>

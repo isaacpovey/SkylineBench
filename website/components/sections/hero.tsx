@@ -34,7 +34,7 @@ export const Hero = () => {
               </a>
             </Button>
             <Button asChild variant="outline">
-              <a href="#results">See the results</a>
+              <a href="/results">See the results</a>
             </Button>
           </div>
           <div className="hero-meta reveal">

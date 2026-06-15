@@ -45,16 +45,19 @@ namespace SkylineBench.Tests
             Assert.True(json.Contains("\"traffic\":{\"flow_percent\":73.5,\"active_vehicles\":120,\"segment_loads\":[{\"segment_id\":7,\"density\":0.5,\"length\":0}]}"), "traffic group: " + json);
             Assert.True(json.Contains("\"economy\":{\"balance\":0,\"weekly_income\":500,\"weekly_expenses\":400,\"funds\":50000}"), "economy group");
             Assert.True(json.Contains("\"population\":{\"total\":2000,\"residential_demand\":50,\"commercial_demand\":40,\"workplace_demand\":30,\"employed\":1500}"), "population group");
-            Assert.True(json.Contains("\"services\":{\"happiness\":80,\"abandoned_buildings\":0}"), "services group");
+            Assert.True(json.Contains("\"services\":{\"happiness\":80,\"abandoned_buildings\":0,\"road_not_connected\":0,\"no_electricity\":0,\"no_water\":0,\"no_sewage\":0,\"garbage_piling\":0,\"no_fuel\":0}"), "services group: " + json);
         }
 
         static void MetricsIncludesSegmentLengthAndAbandoned()
         {
-            var m = new MetricsDto { Tick = 1, FlowPercent = 50f, ActiveVehicles = 10, AbandonedBuildings = 7 };
+            var m = new MetricsDto { Tick = 1, FlowPercent = 50f, ActiveVehicles = 10, AbandonedBuildings = 7, RoadNotConnected = 4, GarbagePiling = 9, NoFuel = 2 };
             m.SegmentLoads.Add(new SegmentLoadDto { SegmentId = 3, Density = 0.9f, Length = 52.5f });
             string json = Serialize.Metrics(m);
             Assert.True(json.Contains("\"length\":52.5"), "segment length in json: " + json);
             Assert.True(json.Contains("\"abandoned_buildings\":7"), "abandoned_buildings in json: " + json);
+            Assert.True(json.Contains("\"road_not_connected\":4"), "road_not_connected in json: " + json);
+            Assert.True(json.Contains("\"garbage_piling\":9"), "garbage_piling in json: " + json);
+            Assert.True(json.Contains("\"no_fuel\":2"), "no_fuel in json: " + json);
         }
 
         static void ActionOk()

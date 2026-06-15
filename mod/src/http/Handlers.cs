@@ -36,7 +36,15 @@ namespace SkylineBench.Http
             var w = new JsonWriter(); w.BeginObject().Name("road_types").BeginArray();
             foreach (var r in Prefabs.Roads())
             {
-                w.BeginObject().Name("name").Value(r.Name).Name("construction_cost").Value(r.ConstructionCost).EndObject();
+                w.BeginObject()
+                    .Name("name").Value(r.Name)
+                    .Name("construction_cost").Value(r.ConstructionCost)
+                    .Name("allows_zoning").Value(r.AllowsZoning)
+                    .Name("limited_access").Value(r.LimitedAccess)
+                    .Name("one_way").Value(r.OneWay)
+                    .Name("lanes").Value(r.Lanes)
+                    .Name("half_width").Value(r.HalfWidth)
+                 .EndObject();
             }
             w.EndArray().EndObject(); return HttpReply.Json(200, w.ToString());
         }
@@ -52,6 +60,17 @@ namespace SkylineBench.Http
         public static HttpReply ValidateRoad(string body) { return HttpReply.Json(200, Serialize.Action(GameActions.ValidateRoad(RequestParse.BuildRoad(JsonReader.Parse(body))))); }
         public static HttpReply Bulldoze(string body) { return HttpReply.Json(200, Serialize.Action(GameActions.Bulldoze(RequestParse.Bulldoze(JsonReader.Parse(body))))); }
         public static HttpReply UpgradeRoad(string body) { return HttpReply.Json(200, Serialize.Action(GameActions.UpgradeRoad(RequestParse.UpgradeRoad(JsonReader.Parse(body))))); }
+
+        public static HttpReply AddFunds(string body)
+        {
+            var v = JsonReader.Parse(body);
+            long dollars = v["dollars"].IsNull ? 1000000L : (long)v["dollars"].AsDouble();
+            long funds = GameActions.AddFunds(dollars);
+            var w = new JsonWriter();
+            if (funds == long.MinValue) { w.BeginObject().Name("ok").Value(false).Name("reason").Value("NO_CITY_LOADED").EndObject(); return HttpReply.Json(200, w.ToString()); }
+            w.BeginObject().Name("ok").Value(true).Name("added_dollars").Value(dollars).Name("funds").Value(funds).EndObject();
+            return HttpReply.Json(200, w.ToString());
+        }
         public static HttpReply SetZone(string body) { return HttpReply.Json(200, Serialize.Action(GameActions.SetZone(RequestParse.SetZone(JsonReader.Parse(body))))); }
         public static HttpReply Clock(string body) { return HttpReply.Json(200, Serialize.Clock(GameActions.Clock(RequestParse.Clock(JsonReader.Parse(body))))); }
         public static HttpReply LoadSave(string body) { return HttpReply.Json(200, Serialize.Load(SaveLoader.Load(RequestParse.LoadSave(JsonReader.Parse(body)).SaveName))); }

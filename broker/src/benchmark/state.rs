@@ -12,6 +12,20 @@ use crate::benchmark::record::{
 use crate::benchmark::rolling_window::RollingWindow;
 use crate::contract::{Metrics, Network};
 
+/// Leading-indicator counts of buildings reporting a connectivity/utility
+/// problem (cut off from the road network or starved of a service). Surfaced in
+/// city_status so the agent sees a stranded depot/plant immediately, rather
+/// than only when abandonment catches up many in-game days later.
+#[derive(Clone, Copy, Default)]
+pub struct ServiceProblems {
+    pub road_not_connected: u32,
+    pub no_electricity: u32,
+    pub no_water: u32,
+    pub no_sewage: u32,
+    pub garbage_piling: u32,
+    pub no_fuel: u32,
+}
+
 pub struct RunState {
     pub config: BenchConfig,
     /// Measured lazily on the agent's first tool call (None until then) so the
@@ -27,6 +41,7 @@ pub struct RunState {
     pub last_population: Option<u32>,
     pub last_abandoned_buildings: Option<u32>,
     pub last_happiness: Option<u8>,
+    pub last_service_problems: Option<ServiceProblems>,
     pub topology: Option<Topology>,
     pub last_densities: HashMap<u32, f64>,
     pub start: Instant,
@@ -50,6 +65,7 @@ impl RunState {
             last_population: None,
             last_abandoned_buildings: None,
             last_happiness: None,
+            last_service_problems: None,
             topology: None,
             last_densities: HashMap::new(),
             start: Instant::now(),
@@ -80,13 +96,23 @@ impl RunState {
     }
 
     pub fn record_mutation(&mut self, tool: &str, cost: i64) {
-        self.num_changes += 1;
         self.money_spent += cost;
+        if Self::counts_toward_change_cap(tool) {
+            self.num_changes += 1;
+        }
         self.actions.push(ActionEntry {
-            seq: self.num_changes,
+            seq: self.actions.len() as u32 + 1,
             tool: tool.to_string(),
             cost,
         });
+    }
+
+    /// Only adding or upgrading road counts against the change budget. Bulldoze
+    /// (demolition, including clearing abandoned-building blight) and re-zoning
+    /// are still recorded for cost and audit, but do not consume the change cap —
+    /// they are cleanup, not the network churn the cap is meant to discourage.
+    fn counts_toward_change_cap(tool: &str) -> bool {
+        matches!(tool, "build_road" | "upgrade_road")
     }
 
     pub fn observe_metrics(&mut self, m: &Metrics) {
@@ -96,6 +122,14 @@ impl RunState {
         self.last_population = Some(m.population.total);
         self.last_abandoned_buildings = Some(m.services.abandoned_buildings);
         self.last_happiness = Some(m.services.happiness);
+        self.last_service_problems = Some(ServiceProblems {
+            road_not_connected: m.services.road_not_connected,
+            no_electricity: m.services.no_electricity,
+            no_water: m.services.no_water,
+            no_sewage: m.services.no_sewage,
+            garbage_piling: m.services.garbage_piling,
+            no_fuel: m.services.no_fuel,
+        });
         self.last_densities = m
             .traffic
             .segment_loads
@@ -162,6 +196,18 @@ impl RunState {
             "population": self.last_population,
             "abandoned_buildings": self.last_abandoned_buildings,
             "happiness": self.last_happiness,
+            // Leading connectivity/utility signal: nonzero counts mean a recent
+            // change cut buildings off from the road network or a service (a
+            // limited-access highway over a connector strands the depots/plants
+            // it served). Null until the first metrics read.
+            "service_problems": self.last_service_problems.map(|p| json!({
+                "road_not_connected": p.road_not_connected,
+                "no_electricity": p.no_electricity,
+                "no_water": p.no_water,
+                "no_sewage": p.no_sewage,
+                "garbage_piling": p.garbage_piling,
+                "no_fuel": p.no_fuel,
+            })),
             "time_remaining": self.seconds_remaining(),
         })
     }
@@ -196,7 +242,7 @@ mod tests {
                 workplace_demand: 0,
                 employed: 0,
             },
-            services: ServiceMetrics { happiness: 80, abandoned_buildings: 2 },
+            services: ServiceMetrics { happiness: 80, abandoned_buildings: 2, ..Default::default() },
         }
     }
 
@@ -204,11 +250,16 @@ mod tests {
     fn records_changes_and_cost() {
         let mut s = state();
         s.record_mutation("build_road", 12_000);
+        s.record_mutation("upgrade_road", 3_000);
+        s.record_mutation("bulldoze", 0);
         s.record_mutation("set_zoning", 0);
+        // Only build_road + upgrade_road count toward the change cap; bulldoze and
+        // set_zoning are recorded for cost/audit but don't consume it.
         assert_eq!(s.num_changes, 2);
-        assert_eq!(s.money_spent, 12_000);
-        assert_eq!(s.actions.len(), 2);
+        assert_eq!(s.money_spent, 15_000);
+        assert_eq!(s.actions.len(), 4);
         assert_eq!(s.actions[0].seq, 1);
+        assert_eq!(s.actions[3].seq, 4);
     }
 
     #[test]
@@ -225,11 +276,30 @@ mod tests {
         assert!(p.get("congested_meters_target").is_none(), "scoring target must not leak");
         assert!(p["happiness"].is_null(), "no happiness before first sample");
 
+        // service_problems is null until the first metrics sample.
+        assert!(p.get("service_problems").map_or(true, Value::is_null), "no service_problems before first sample");
+
         s.observe_metrics(&sample_metrics(0.9));
         let p = s.progress();
         assert!(p["congested_road_meters"].is_number(), "current appears after first sample");
         assert!(p["traffic_flow"].is_number());
         assert_eq!(p["happiness"], 80, "happiness surfaced from the latest sample");
+    }
+
+    #[test]
+    fn service_problems_surface_in_progress() {
+        let mut s = state();
+        let mut m = sample_metrics(0.5);
+        m.services.road_not_connected = 7;
+        m.services.garbage_piling = 12;
+        m.services.no_fuel = 1;
+        s.observe_metrics(&m);
+        let p = s.progress();
+        let sp = &p["service_problems"];
+        assert_eq!(sp["road_not_connected"], 7, "stranded buildings must surface immediately");
+        assert_eq!(sp["garbage_piling"], 12);
+        assert_eq!(sp["no_fuel"], 1, "power-plant fuel starvation must surface");
+        assert_eq!(sp["no_electricity"], 0);
     }
 
     #[test]
@@ -266,7 +336,7 @@ mod tests {
             },
             economy: EconomyMetrics { balance: 0, weekly_income: 0, weekly_expenses: 0, funds: 0 },
             population: PopulationMetrics { total: 1000, residential_demand: 0, commercial_demand: 0, workplace_demand: 0, employed: 0 },
-            services: ServiceMetrics { happiness: 80, abandoned_buildings: 0 },
+            services: ServiceMetrics { happiness: 80, abandoned_buildings: 0, ..Default::default() },
         };
         s.observe_metrics(&m);
         assert_eq!(s.progress()["congested_junctions"], 1, "node 1 has 2 congested approaches");

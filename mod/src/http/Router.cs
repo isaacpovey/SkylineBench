@@ -26,6 +26,7 @@ namespace SkylineBench.Http
                 case "/action/validate-road": return method == "POST" ? Handlers.ValidateRoad(body) : MethodNotAllowed();
                 case "/action/bulldoze": return method == "POST" ? Handlers.Bulldoze(body) : MethodNotAllowed();
                 case "/action/upgrade-road": return method == "POST" ? Handlers.UpgradeRoad(body) : MethodNotAllowed();
+                case "/debug/add-funds": return method == "POST" ? Handlers.AddFunds(body) : MethodNotAllowed();
                 case "/action/set-zone": return method == "POST" ? Handlers.SetZone(body) : MethodNotAllowed();
                 case "/clock": return method == "POST" ? Handlers.Clock(body) : MethodNotAllowed();
                 case "/load-save": return method == "POST" ? Handlers.LoadSave(body) : MethodNotAllowed();

@@ -218,7 +218,21 @@ impl BenchmarkServer {
         }
     }
 
+    /// Best-effort refresh of the live readout (population, happiness,
+    /// abandoned buildings, flow) so the `city_status` block on every tool
+    /// response reflects current sim state rather than the value cached at the
+    /// last `get_metrics`/`step`. Without this the read-only observation tools
+    /// (render_map, observe_area, query_segments, view_3d, trace_route) report a
+    /// stale readout, hiding a population decline from the agent until it next
+    /// calls get_metrics — the prompt asks the agent to watch these and react.
+    async fn refresh_metrics(&self) {
+        if let Ok(m) = self.client.metrics().await {
+            self.state.lock().await.observe_metrics(&m);
+        }
+    }
+
     async fn finish(&self, value: Value) -> Result<CallToolResult, ErrorData> {
+        self.refresh_metrics().await;
         let mut s = self.state.lock().await;
         s.check_timeout();
         if let Some(p) = &self.persist {
@@ -354,6 +368,7 @@ impl BenchmarkServer {
                     let tick = self.client.health().await.map(|h| h.tick).unwrap_or(0);
                     self.persist_render(&png, tick, "render_map").await;
                 }
+                self.refresh_metrics().await;
                 let data = base64::engine::general_purpose::STANDARD.encode(&png);
                 let progress = {
                     let mut s = self.state.lock().await;
@@ -978,6 +993,7 @@ impl BenchmarkServer {
         // city-state frame — and it doesn't mutate state, so no persist write.
         match crate::service::view_3d(&self.client, args).await {
             Ok(png) => {
+                self.refresh_metrics().await;
                 let data = base64::engine::general_purpose::STANDARD.encode(png);
                 let progress = {
                     let mut s = self.state.lock().await;
@@ -1144,6 +1160,19 @@ mod tests {
             .filter_map(|c| c.as_text().map(|t| t.text.clone()))
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    #[tokio::test]
+    async fn read_only_tool_refreshes_live_city_status() {
+        let bench = bench_with_mock().await;
+        // get_city_overview is a read-only observation tool. Before the fresh-
+        // readout fix it never called observe_metrics, so the city_status block
+        // reported a stale (null until first get_metrics) population/happiness —
+        // the agent was blind to decline while exploring. The readout must carry
+        // the live mock values (population 1000, happiness 75) after any tool.
+        let text = result_text(&bench.get_city_overview().await.unwrap());
+        assert!(text.contains("\"happiness\":75"), "city_status must carry live happiness, got: {text}");
+        assert!(text.contains("\"population\":1000"), "city_status must carry live population, got: {text}");
     }
 
     #[tokio::test]
@@ -1610,8 +1639,9 @@ mod tests {
         assert_eq!(results[0]["ok"], true);
         assert_eq!(results[1]["ok"], false);
         assert_eq!(results[2]["executed"], false, "ops after the failure are skipped");
-        // 1 change from the setup build + 1 from the successful bulldoze.
-        assert_eq!(v["city_status"]["changes_made"], 2);
+        // Only the setup build counts toward the change cap; the successful
+        // bulldoze is recorded but does not consume it.
+        assert_eq!(v["city_status"]["changes_made"], 1);
     }
 
     #[tokio::test]
@@ -1651,8 +1681,9 @@ mod tests {
         assert_eq!(results[1]["ok"], false);
         assert_eq!(results[2]["executed"], true, "later ops still run when not stopping");
         assert_eq!(results[2]["ok"], true);
-        // setup build + first bulldoze + final build all recorded; failed bulldoze not.
-        assert_eq!(v["city_status"]["changes_made"], 3);
+        // setup build + final build count; the successful bulldoze is recorded
+        // but doesn't consume the change cap, and the failed bulldoze isn't recorded.
+        assert_eq!(v["city_status"]["changes_made"], 2);
     }
 
     #[tokio::test]

@@ -76,6 +76,8 @@ pub struct Building {
     pub footprint_width: f32,
     pub footprint_length: f32,
     pub level: u8,
+    #[serde(default)]
+    pub abandoned: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -130,13 +132,31 @@ pub struct PopulationMetrics {
     pub employed: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct ServiceMetrics {
     pub happiness: u8,
     /// Buildings flagged Abandoned — a lagging signal that parts of the city
     /// have lost road access or services.
     #[serde(default)]
     pub abandoned_buildings: u32,
+    /// Per-building problem counts — leading signals that a change cut buildings
+    /// off from the road network or a utility (e.g. upgrading a connector to a
+    /// limited-access highway strands the garbage depot / power plant it served).
+    /// These spike immediately, before the lagging abandonment shows up.
+    #[serde(default)]
+    pub road_not_connected: u32,
+    #[serde(default)]
+    pub no_electricity: u32,
+    #[serde(default)]
+    pub no_water: u32,
+    #[serde(default)]
+    pub no_sewage: u32,
+    #[serde(default)]
+    pub garbage_piling: u32,
+    /// Service buildings (e.g. power plants) out of fuel — fuel is delivered by
+    /// truck, so a severed road access starves them and then knocks out power.
+    #[serde(default)]
+    pub no_fuel: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -148,10 +168,24 @@ pub struct Metrics {
     pub services: ServiceMetrics,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct RoadType {
     pub name: String,
     pub construction_cost: i64,
+    /// Whether buildings and local/side roads can connect to this road. False
+    /// for limited-access highways — converting a connector road into one
+    /// strands the buildings and service depots (garbage, power) it served.
+    #[serde(default)]
+    pub allows_zoning: bool,
+    /// Controlled-access highway (highway merge rules, no direct connections).
+    #[serde(default)]
+    pub limited_access: bool,
+    #[serde(default)]
+    pub one_way: bool,
+    #[serde(default)]
+    pub lanes: u32,
+    #[serde(default)]
+    pub half_width: f32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -430,19 +464,31 @@ mod tests {
     }
 
     #[test]
-    fn road_types_round_trips_with_cost() {
+    fn road_types_round_trips_with_cost_and_connectivity() {
         let original = RoadTypes {
             road_types: vec![
-                RoadType { name: "Basic Road".into(), construction_cost: 1200 },
-                RoadType { name: "Highway".into(), construction_cost: 8000 },
+                RoadType { name: "Basic Road".into(), construction_cost: 1200, allows_zoning: true, limited_access: false, one_way: false, lanes: 2, half_width: 8.0 },
+                RoadType { name: "Four Lane Highway".into(), construction_cost: 8000, allows_zoning: false, limited_access: true, one_way: false, lanes: 4, half_width: 16.0 },
             ],
         };
         let json = serde_json::to_string(&original).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(v["road_types"][0]["name"], "Basic Road");
         assert_eq!(v["road_types"][0]["construction_cost"], 1200);
+        assert_eq!(v["road_types"][0]["allows_zoning"], true);
+        assert_eq!(v["road_types"][1]["allows_zoning"], false);
+        assert_eq!(v["road_types"][1]["limited_access"], true);
         let parsed: RoadTypes = serde_json::from_str(&json).unwrap();
         assert_eq!(original, parsed);
+    }
+
+    #[test]
+    fn road_type_defaults_connectivity_for_old_mods() {
+        // A mod that predates connectivity fields emits only name + cost; the
+        // new fields must default rather than fail to parse.
+        let rt: RoadType = serde_json::from_str(r#"{"name":"Basic Road","construction_cost":1200}"#).unwrap();
+        assert!(!rt.allows_zoning && !rt.limited_access && !rt.one_way);
+        assert_eq!(rt.lanes, 0);
     }
 
     #[test]
@@ -471,7 +517,7 @@ mod tests {
                 workplace_demand: 30,
                 employed: 1500,
             },
-            services: ServiceMetrics { happiness: 80, abandoned_buildings: 0 },
+            services: ServiceMetrics { happiness: 80, abandoned_buildings: 0, ..Default::default() },
         };
         let json = serde_json::to_string(&m).unwrap();
         let parsed: Metrics = serde_json::from_str(&json).unwrap();

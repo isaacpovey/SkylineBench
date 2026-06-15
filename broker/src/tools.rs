@@ -51,7 +51,8 @@ fn json_result(value: Value) -> Result<CallToolResult, ErrorData> {
 #[tool_router]
 impl Skyline {
     #[tool(
-        description = "Summarise the city: tick, population, funds, traffic flow, network size."
+        description = "Summarise the city: tick, population, funds, traffic flow, network size, \
+            and a list of any abandoned buildings (id + position) you may want to clear."
     )]
     async fn get_city_overview(&self) -> Result<CallToolResult, ErrorData> {
         match service::get_city_overview(&self.client).await {
@@ -159,7 +160,10 @@ impl Skyline {
     }
 
     #[tool(
-        description = "Remove a network segment, node, or building. target_type = segment | node | building."
+        description = "Remove a network segment, node, or building. target_type = segment | node | building. \
+            Bulldozing an abandoned building (find their ids via `get_city_overview`'s `abandoned_buildings` \
+            list, or the `abandoned` flag in `observe_area`) clears the blight it radiates onto its neighbours \
+            and frees the lot to be rebuilt by demand."
     )]
     async fn bulldoze(
         &self,

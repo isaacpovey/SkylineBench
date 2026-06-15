@@ -41,9 +41,9 @@ impl MockState {
 
 fn road_types() -> Vec<RoadType> {
     vec![
-        RoadType { name: "road".into(), construction_cost: 1000 },
-        RoadType { name: "oneway".into(), construction_cost: 1500 },
-        RoadType { name: "highway".into(), construction_cost: 5000 },
+        RoadType { name: "road".into(), construction_cost: 1000, allows_zoning: true, lanes: 2, half_width: 8.0, ..Default::default() },
+        RoadType { name: "oneway".into(), construction_cost: 1500, allows_zoning: true, one_way: true, lanes: 3, half_width: 11.0, ..Default::default() },
+        RoadType { name: "highway".into(), construction_cost: 5000, allows_zoning: false, limited_access: true, lanes: 4, half_width: 16.0, ..Default::default() },
     ]
 }
 
@@ -120,7 +120,7 @@ async fn metrics(State(s): State<MockState>) -> Json<Metrics> {
             workplace_demand: 30,
             employed: 700,
         },
-        services: ServiceMetrics { happiness: 75, abandoned_buildings: 0 },
+        services: ServiceMetrics { happiness: 75, abandoned_buildings: 0, ..Default::default() },
     })
 }
 

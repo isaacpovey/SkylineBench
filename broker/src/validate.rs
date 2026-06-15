@@ -38,8 +38,8 @@ mod tests {
 
     fn road_types() -> Vec<RoadType> {
         vec![
-            RoadType { name: "road".into(), construction_cost: 1000 },
-            RoadType { name: "highway".into(), construction_cost: 5000 },
+            RoadType { name: "road".into(), construction_cost: 1000, ..Default::default() },
+            RoadType { name: "highway".into(), construction_cost: 5000, ..Default::default() },
         ]
     }
 

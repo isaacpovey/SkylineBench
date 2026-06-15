@@ -106,6 +106,11 @@ namespace SkylineBench.Bridge
 
         private void Update()
         {
+            // Re-assert the session pause every frame (runs even while the sim
+            // is paused). Without this the game resumes the sim between agent
+            // tool calls and the city declines on wall-clock time.
+            PauseGuard.Enforce(ModRuntime.Threading);
+
             MainThreadAction action = null;
             lock (_lock) { if (_actions.Count > 0) action = _actions.Dequeue(); }
             if (action != null)
@@ -211,12 +216,17 @@ namespace SkylineBench.Bridge
                 cc = ToolsModifierControl.cameraController;
                 prevFree = cc.m_freeCamera;
                 cc.m_freeCamera = true;
+                // Filming needs the sim running at speed 1; suspend the pause
+                // guard so it doesn't re-pause mid-flyby, and re-arm it on every
+                // exit path below.
+                PauseGuard.Suspended = true;
                 if (t != null) { t.simulationPaused = false; t.simulationSpeed = 1; }
                 try { System.IO.Directory.CreateDirectory(req.OutDir); } catch { }
             }
             catch (Exception e)
             {
                 if (cc != null) cc.m_freeCamera = prevFree;
+                PauseGuard.Suspended = false;
                 req.Error = e;
                 req.Done.Set();
                 yield break;
@@ -269,6 +279,7 @@ namespace SkylineBench.Bridge
 
             if (cc != null) cc.m_freeCamera = prevFree;
             if (t != null) { t.simulationPaused = prevPaused; t.simulationSpeed = prevSpeed; }
+            PauseGuard.Suspended = false;
             req.Done.Set();
         }
     }

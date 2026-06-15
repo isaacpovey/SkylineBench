@@ -6,7 +6,7 @@ namespace SkylineBench.Dto
     public struct SegmentDto { public uint Id; public uint StartNode; public uint EndNode; public string Prefab; public byte Lanes; public float Length; public bool OneWay; public string TravelDirection; public float SpeedLimit; }
     public sealed class NetworkDto { public List<NodeDto> Nodes = new List<NodeDto>(); public List<SegmentDto> Segments = new List<SegmentDto>(); }
 
-    public struct BuildingDto { public uint Id; public string Prefab; public string Category; public float X; public float Y; public float Z; public float FootprintWidth; public float FootprintLength; public byte Level; }
+    public struct BuildingDto { public uint Id; public string Prefab; public string Category; public float X; public float Y; public float Z; public float FootprintWidth; public float FootprintLength; public byte Level; public bool Abandoned; }
     public sealed class BuildingsDto { public List<BuildingDto> Buildings = new List<BuildingDto>(); }
 
     public struct ZoneCellDto { public float X; public float Z; public string ZoneType; }
@@ -21,6 +21,16 @@ namespace SkylineBench.Dto
         public uint Population; public byte ResidentialDemand; public byte CommercialDemand; public byte WorkplaceDemand; public uint Employed;
         public byte Happiness;
         public uint AbandonedBuildings;
+        // Per-building problem flags — leading (non-lagging) signals that a
+        // change cut buildings off from the road network or a utility. A spike
+        // in RoadNotConnected/Garbage right after an upgrade is the death-spiral
+        // precursor that AbandonedBuildings only reflects many days later.
+        public uint RoadNotConnected;
+        public uint NoElectricity;
+        public uint NoWater;
+        public uint NoSewage;
+        public uint GarbagePiling;
+        public uint NoFuel;
     }
 
     /// <summary>Result of a mutation. Ok==true ⇒ diff fields meaningful; else Reason set (a normalized code).</summary>

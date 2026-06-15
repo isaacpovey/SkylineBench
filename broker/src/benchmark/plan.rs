@@ -194,7 +194,7 @@ mod tests {
 
     fn ctx() -> ExecCtx {
         ExecCtx {
-            road_types: vec![RoadType { name: "road".into(), construction_cost: 1000 }],
+            road_types: vec![RoadType { name: "road".into(), construction_cost: 1000, ..Default::default() }],
             zone_types: vec!["residential".into()],
             segment_ids: HashSet::from([10]),
             node_ids: HashSet::from([1, 2]),

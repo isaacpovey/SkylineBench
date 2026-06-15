@@ -18,6 +18,13 @@ pub async fn get_city_overview(client: &BridgeClient) -> Result<Value, ServiceEr
     let health = client.health().await?;
     let metrics = client.metrics().await?;
     let net = client.network().await?;
+    let buildings = client.buildings().await?;
+    let abandoned: Vec<Value> = buildings
+        .buildings
+        .iter()
+        .filter(|b| b.abandoned)
+        .map(|b| json!({ "id": b.id, "x": b.x, "z": b.z, "category": b.category }))
+        .collect();
     Ok(json!({
         "tick": health.tick,
         "paused": health.paused,
@@ -27,6 +34,7 @@ pub async fn get_city_overview(client: &BridgeClient) -> Result<Value, ServiceEr
         "traffic_flow_percent": metrics.traffic.flow_percent,
         "node_count": net.nodes.len(),
         "segment_count": net.segments.len(),
+        "abandoned_buildings": abandoned,
     }))
 }
 
@@ -287,7 +295,7 @@ pub async fn bulldoze(client: &BridgeClient, args: BulldozeArgs) -> Result<Value
                 return Ok(json!({
                     "ok": false,
                     "reason": "OUT_OF_BOUNDS",
-                    "warning": "Refused: one or both endpoints of this segment lie outside the buildable area. Demolition would be irreversible — build_road cannot recreate roads at those coordinates."
+                    "warning": "Refused: this segment touches the map edge (an outside connection), and build_road cannot recreate roads at those coordinates, so demolishing it would be irreversible. This applies only to edge segments — interior segments on the same corridor can be bulldozed and rebuilt."
                 }));
             }
         }

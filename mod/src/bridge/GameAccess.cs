@@ -102,6 +102,34 @@ namespace SkylineBench.Bridge
         }
     }
 
+    /// <summary>Holds the simulation paused for the whole agent session so the
+    /// city does not decline on wall-clock time while the agent reads and
+    /// reasons between actions. Setting IThreading.simulationPaused once does
+    /// not stick — the game resumes the sim between tool calls, so a fragile
+    /// (gridlocked) city death-spirals during the agent's exploration before it
+    /// makes a single change. Once a `pause` clock op arms the guard, every
+    /// frame re-asserts the pause until an explicit `resume`; a `step` (or a
+    /// flyby capture) suspends the guard while it actively advances the sim,
+    /// then re-arms it. This makes the documented model real: "the sim is
+    /// paused between agent steps", time only moves on an explicit step.</summary>
+    public static class PauseGuard
+    {
+        public static volatile bool Enabled;
+        public static volatile bool Suspended;
+
+        public static void Reset() { Enabled = false; Suspended = false; }
+
+        /// <summary>Re-assert the pause if armed and not mid-step/flyby. Called
+        /// every frame from CaptureBehaviour.Update (which runs on the main
+        /// thread even while the sim is paused).</summary>
+        public static void Enforce(IThreading t)
+        {
+            if (!Enabled || Suspended || t == null) return;
+            if (GameAccess.ForcedPaused()) return;
+            if (!t.simulationPaused) t.simulationPaused = true;
+        }
+    }
+
     public static class ModRuntime
     {
         private static HttpServer _server;
@@ -113,6 +141,7 @@ namespace SkylineBench.Bridge
         public static void Start()
         {
             if (_server != null) return;
+            PauseGuard.Reset();
             _server = new HttpServer(8787, Router.Route);
             _server.Start();
             _capture = new GameObject("SkylineBenchCapture");
@@ -129,6 +158,7 @@ namespace SkylineBench.Bridge
                 UnityEngine.Object.Destroy(_capture);
                 _capture = null;
             }
+            PauseGuard.Reset();
             Threading = null;
         }
     }

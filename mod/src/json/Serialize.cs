@@ -31,7 +31,7 @@ namespace SkylineBench.Json
                 w.BeginObject().Name("id").Value((long)x.Id).Name("prefab").Value(x.Prefab).Name("category").Value(x.Category)
                     .Name("x").Value(x.X).Name("y").Value(x.Y).Name("z").Value(x.Z)
                     .Name("footprint_width").Value(x.FootprintWidth).Name("footprint_length").Value(x.FootprintLength)
-                    .Name("level").Value((long)x.Level).EndObject();
+                    .Name("level").Value((long)x.Level).Name("abandoned").Value(x.Abandoned).EndObject();
             w.EndArray().EndObject();
             return w.ToString();
         }
@@ -60,7 +60,14 @@ namespace SkylineBench.Json
             w.Name("population").BeginObject().Name("total").Value((long)m.Population).Name("residential_demand").Value((long)m.ResidentialDemand)
                 .Name("commercial_demand").Value((long)m.CommercialDemand).Name("workplace_demand").Value((long)m.WorkplaceDemand)
                 .Name("employed").Value((long)m.Employed).EndObject();
-            w.Name("services").BeginObject().Name("happiness").Value((long)m.Happiness).Name("abandoned_buildings").Value((long)m.AbandonedBuildings).EndObject();
+            w.Name("services").BeginObject().Name("happiness").Value((long)m.Happiness).Name("abandoned_buildings").Value((long)m.AbandonedBuildings)
+                .Name("road_not_connected").Value((long)m.RoadNotConnected)
+                .Name("no_electricity").Value((long)m.NoElectricity)
+                .Name("no_water").Value((long)m.NoWater)
+                .Name("no_sewage").Value((long)m.NoSewage)
+                .Name("garbage_piling").Value((long)m.GarbagePiling)
+                .Name("no_fuel").Value((long)m.NoFuel)
+             .EndObject();
             w.EndObject();
             return w.ToString();
         }

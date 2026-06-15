@@ -67,7 +67,8 @@ namespace SkylineBench.Bridge
                         X = b.m_position.x, Y = b.m_position.y, Z = b.m_position.z,
                         FootprintWidth = info != null ? info.m_cellWidth * 8f : 0f,
                         FootprintLength = info != null ? info.m_cellLength * 8f : 0f,
-                        Level = (byte)b.m_level
+                        Level = (byte)b.m_level,
+                        Abandoned = (b.m_flags & Building.Flags.Abandoned) != Building.Flags.None
                     });
                 }
                 return dto;
@@ -130,16 +131,36 @@ namespace SkylineBench.Bridge
                 dto.Employed = 0;
                 dto.Happiness = (byte)Mathf.Clamp((int)dm.m_districts.m_buffer[0].m_finalHappiness, 0, 100);
                 var bm = Singleton<BuildingManager>.instance;
-                uint abandoned = 0;
+                uint abandoned = 0, roadNotConnected = 0, noElec = 0, noWater = 0, noSewage = 0, garbage = 0, noFuel = 0;
                 for (uint i = 0; i < bm.m_buildings.m_buffer.Length; i++)
                 {
                     var b = bm.m_buildings.m_buffer[i];
                     if ((b.m_flags & Building.Flags.Created) == Building.Flags.None) continue;
                     if ((b.m_flags & Building.Flags.Abandoned) != Building.Flags.None) abandoned++;
+                    // Building problem flags live in ProblemStruct.m_Problems1 (this game
+                    // version split the old flat Notification.Problem enum in two).
+                    var prob = b.m_problems.m_Problems1;
+                    if (Has(prob, Notification.Problem1.RoadNotConnected)) roadNotConnected++;
+                    if (Has(prob, Notification.Problem1.Electricity) || Has(prob, Notification.Problem1.ElectricityNotConnected)) noElec++;
+                    if (Has(prob, Notification.Problem1.Water) || Has(prob, Notification.Problem1.WaterNotConnected)) noWater++;
+                    if (Has(prob, Notification.Problem1.Sewage)) noSewage++;
+                    if (Has(prob, Notification.Problem1.Garbage)) garbage++;
+                    if (Has(prob, Notification.Problem1.NoFuel)) noFuel++;
                 }
                 dto.AbandonedBuildings = abandoned;
+                dto.RoadNotConnected = roadNotConnected;
+                dto.NoElectricity = noElec;
+                dto.NoWater = noWater;
+                dto.NoSewage = noSewage;
+                dto.GarbagePiling = garbage;
+                dto.NoFuel = noFuel;
                 return dto;
             }, TimeoutMs);
+        }
+
+        private static bool Has(Notification.Problem1 flags, Notification.Problem1 flag)
+        {
+            return (flags & flag) != Notification.Problem1.None;
         }
 
         public static ZonesDto Zones()

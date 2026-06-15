@@ -1,3 +1,4 @@
+using System.Reflection;
 using ColossalFramework;
 using ColossalFramework.Math;
 using UnityEngine;
@@ -47,6 +48,28 @@ namespace SkylineBench.Bridge
                     default: return ActionResultDto.Fail(ErrorCode.InvalidArgs);
                 }
                 var r = new ActionResultDto { Ok = true }; r.Destroyed.Add(req.Id); return r;
+            }, TimeoutMs);
+        }
+
+        // Debug-only: credit the city's treasury. The game stores cash internally in
+        // cents (display dollars × 100), so a $1,000,000 grant adds 100,000,000. Both
+        // the live field and its per-tick snapshot are bumped so /metrics reflects it
+        // immediately while the sim is paused. Returns the new balance in dollars, or
+        // long.MinValue if no city is loaded. Not exposed as an agent tool.
+        public static long AddFunds(long dollars)
+        {
+            return SimThread.Run<long>(delegate
+            {
+                var em = Singleton<EconomyManager>.instance;
+                if (em == null) return long.MinValue;
+                long internalDelta = dollars * 100L;
+                var flags = BindingFlags.NonPublic | BindingFlags.Instance;
+                var t = typeof(EconomyManager);
+                var cashField = t.GetField("m_cashAmount", flags);
+                var lastCashField = t.GetField("m_lastCashAmount", flags);
+                cashField.SetValue(em, (long)cashField.GetValue(em) + internalDelta);
+                lastCashField.SetValue(em, (long)lastCashField.GetValue(em) + internalDelta);
+                return (long)lastCashField.GetValue(em) / 100L;
             }, TimeoutMs);
         }
 
@@ -116,8 +139,8 @@ namespace SkylineBench.Bridge
             if (t == null) return new ClockStateDto { Ok = false, Paused = false, Tick = 0, ForcedPaused = GameAccess.ForcedPaused() };
             switch (req.Op)
             {
-                case "pause": t.simulationPaused = true; break;
-                case "resume": t.simulationPaused = false; break;
+                case "pause": PauseGuard.Enabled = true; t.simulationPaused = true; break;
+                case "resume": PauseGuard.Enabled = false; t.simulationPaused = false; break;
                 case "set-speed": t.simulationSpeed = Mathf.Clamp(req.Speed, 1, 3); break;
                 case "step": Step(t, req.Ticks); break;
                 default: return new ClockStateDto { Ok = false, Paused = t.simulationPaused, Tick = t.simulationTick, ForcedPaused = GameAccess.ForcedPaused() };
@@ -137,21 +160,31 @@ namespace SkylineBench.Bridge
             if (GameAccess.ForcedPaused()) return;
             uint target = t.simulationTick + (uint)ticks;
             bool wasPaused = t.simulationPaused;
+            // Suspend the pause guard so its per-frame re-assert doesn't fight
+            // this step's deliberate advance; re-arm it once the step settles.
+            PauseGuard.Suspended = true;
             t.simulationPaused = false;
-            int guard = 0;
-            while (t.simulationTick < target && guard < 600000)
+            try
             {
-                if (guard % 1000 == 999 && GameAccess.ForcedPaused())
+                int guard = 0;
+                while (t.simulationTick < target && guard < 600000)
                 {
-                    // A modal appeared mid-step (e.g. a milestone crossed while
-                    // stepping). Try to clear it and keep going; bail only if it sticks.
-                    GameAccess.DismissForcedPauseModal();
-                    if (GameAccess.ForcedPaused()) break;
+                    if (guard % 1000 == 999 && GameAccess.ForcedPaused())
+                    {
+                        // A modal appeared mid-step (e.g. a milestone crossed while
+                        // stepping). Try to clear it and keep going; bail only if it sticks.
+                        GameAccess.DismissForcedPauseModal();
+                        if (GameAccess.ForcedPaused()) break;
+                    }
+                    System.Threading.Thread.Sleep(1);
+                    guard++;
                 }
-                System.Threading.Thread.Sleep(1);
-                guard++;
             }
-            if (wasPaused) t.simulationPaused = true;
+            finally
+            {
+                if (wasPaused) t.simulationPaused = true;
+                PauseGuard.Suspended = false;
+            }
             // A modal that appeared in the step's final stretch would otherwise
             // be reported as ForcedPaused to the caller (stopping its chunk
             // loop) and contaminate the post-step screenshot.

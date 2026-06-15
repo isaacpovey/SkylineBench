@@ -31,7 +31,7 @@ const parseArgs = (argv: string[]): Args => {
     throw new Error("usage: generate-run --run-dir <dir> --slug <slug> --model-name <name> [--harness-version v0.1] [--skip-timelapse] [--repo-root <path>]");
   }
   return {
-    runDir,
+    runDir: path.resolve(runDir),
     slug,
     modelName,
     harnessVersion: get("--harness-version") ?? CURRENT_HARNESS_VERSION,
@@ -40,7 +40,7 @@ const parseArgs = (argv: string[]): Args => {
   };
 };
 
-const readJson = <T>(file: string): T => JSON.parse(fs.readFileSync(file, "utf8")) as T;
+const readJson = <T>(file: string): T => JSON.parse(fs.readFileSync(file, "utf8"));
 
 const buildTimelapse = (repoRoot: string, runDir: string): string => {
   const binary = path.join(repoRoot, "broker/target/release/skylinebench");

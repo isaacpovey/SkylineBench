@@ -210,14 +210,24 @@ fn encode_png_dir(dir: &Path, fps: u32, out: &Path) -> Result<(), anyhow::Error>
 /// (caller `fps`) differ in framerate; if `-c copy` rejects the mismatch or
 /// produces drift on a real run, drop `-c copy` and re-encode here
 /// (`-pix_fmt yuv420p`). Tracked as a known real-run risk in the timelapse spec.
+/// Build the concat-demuxer list body. ffmpeg resolves relative `file` entries
+/// against the list file's own directory, not the CWD, so a relative `run_dir`
+/// would otherwise double the path. Canonicalize each part to an absolute path.
+fn concat_list(parts: &[PathBuf]) -> Result<String, anyhow::Error> {
+    parts
+        .iter()
+        .map(|p| {
+            std::fs::canonicalize(p)
+                .map(|abs| format!("file '{}'", abs.display()))
+                .map_err(|e| anyhow::anyhow!("cannot resolve concat part {}: {e}", p.display()))
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(|lines| lines.join("\n"))
+}
+
 fn concat_mp4(parts: &[PathBuf], out: &Path) -> Result<(), anyhow::Error> {
     let staging = out.with_extension("concat.txt");
-    let list = parts
-        .iter()
-        .map(|p| format!("file '{}'", p.display()))
-        .collect::<Vec<_>>()
-        .join("\n");
-    std::fs::write(&staging, list)?;
+    std::fs::write(&staging, concat_list(parts)?)?;
     let status = std::process::Command::new("ffmpeg")
         .args(["-y", "-f", "concat", "-safe", "0", "-i"])
         .arg(&staging)
@@ -358,6 +368,32 @@ mod tests {
         std::fs::remove_dir_all(base.join("start_we")).unwrap();
         assert_eq!(flyby_pass_dirs(&run, "start"), vec![base.join("start_ns")]);
         std::fs::remove_dir_all(&run).ok();
+    }
+
+    #[test]
+    fn concat_list_emits_absolute_paths_for_relative_parts() {
+        let dir = std::env::temp_dir().join(format!("sb-concat-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = dir.join("flyby-start-0.mp4");
+        let b = dir.join("flyby-start-1.mp4");
+        std::fs::write(&a, b"x").unwrap();
+        std::fs::write(&b, b"x").unwrap();
+
+        let body = concat_list(&[a.clone(), b.clone()]).unwrap();
+        for line in body.lines() {
+            let path = line.trim_start_matches("file '").trim_end_matches('\'');
+            assert!(
+                Path::new(path).is_absolute(),
+                "concat entry must be absolute so ffmpeg does not re-root it: {line}"
+            );
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn concat_list_errors_on_missing_part() {
+        let missing = std::env::temp_dir().join("sb-concat-does-not-exist.mp4");
+        assert!(concat_list(&[missing]).is_err());
     }
 
     #[test]

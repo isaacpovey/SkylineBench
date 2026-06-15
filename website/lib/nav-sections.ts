@@ -1,8 +1,8 @@
 export type NavSection = { href: string; label: string; route?: boolean };
 
 export const navSections: NavSection[] = [
-  { href: "#thesis", label: "Thesis" },
-  { href: "#how", label: "How it works" },
+  { href: "#thesis", label: "Why" },
+  { href: "#how", label: "Methodology" },
   { href: "#scoring", label: "Scoring" },
   { href: "#built", label: "Architecture" },
   { href: "#future", label: "Roadmap" },

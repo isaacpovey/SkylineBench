@@ -37,7 +37,7 @@ const RunPage = async ({ params }: { params: Promise<{ slug: string }> }) => {
       <header className="run-hero">
         <div className="wrap-narrow">
           <p className="eyebrow">
-            Run detail · <span className="mono">{run.map}</span>
+            Run detail · <span className="mono">{run.map}</span> · <span className="mono">{run.harnessVersion}</span>
           </p>
           <h1 className="display">{run.modelName}</h1>
           <div className="run-score">

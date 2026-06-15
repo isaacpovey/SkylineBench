@@ -37,4 +37,8 @@ describe("buildLeaderboards", () => {
     expect(pickCurrent(boards, "v0.2").harnessVersion).toBe("v0.2");
     expect(pickCurrent(boards, "v9.9").harnessVersion).toBe("v0.1"); // falls back to first
   });
+
+  it("throws when there are no leaderboards", () => {
+    expect(() => pickCurrent([], "v0.1")).toThrow();
+  });
 });

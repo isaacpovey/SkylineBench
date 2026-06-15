@@ -4,6 +4,7 @@ export const gpt54mini = defineRun({
   slug: "gpt-5-4-mini",
   modelName: "GPT-5.4 mini",
   map: "gridlock-v1",
+  harnessVersion: "v0.1",
   runDir: "benchmark/runs/20260614-145729",
   score: 0.30282225141670915,
   verdict: `GPT-5.4 mini treated gridlock-v1 as a capacity problem on a single corridor and made just 3 changes — all road upgrades — spending only $31,737 and disturbing almost nothing. It read flow as improving and stopped, but that was a transient: after the harness settled the run, congestion was untouched (congested metres 5105 → 5300, jammed junctions 35 → 41, both slightly worse) and population fell ~10% to 28,473. With a congestion norm of 0.0, the composite (0.30) is almost entirely the reward for spending nearly nothing and changing nearly nothing rather than for fixing anything.`,

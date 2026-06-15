@@ -4,6 +4,7 @@ export const opus48 = defineRun({
   slug: "opus-4-8",
   modelName: "Claude Opus 4.8",
   map: "gridlock-v1",
+  harnessVersion: "v0.1",
   runDir: "benchmark/runs/20260612-161516",
   score: 0.2086070641323373,
   verdict: `Opus 4.8 made only 23 changes and barely dented congestion (−9% metres, −5% junctions), but a mistaken road-widening on a residential arterial demolished ~60 occupied buildings and sent population down 15% — the health factor (0.49) roughly halved the final score to 0.21.`,

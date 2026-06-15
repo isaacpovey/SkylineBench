@@ -4,6 +4,7 @@ export const fable5 = defineRun({
   slug: "fable-5",
   modelName: "Claude Fable 5",
   map: "gridlock-v1",
+  harnessVersion: "v0.1",
   runDir: "benchmark/runs/20260612-121219",
   score: 0.632437213931585,
   verdict: `Fable 5 diagnosed gridlock-v1 as a queue-spillback problem and fixed it almost entirely by upgrading existing roads rather than rebuilding — cutting jammed road-metres by 64% and jammed junctions from 35 to 12 while holding population essentially flat. Composite 0.63.`,

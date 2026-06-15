@@ -4,6 +4,7 @@ export const gpt55 = defineRun({
   slug: "gpt-5-5",
   modelName: "GPT-5.5",
   map: "gridlock-v1",
+  harnessVersion: "v0.1",
   runDir: "benchmark/runs/20260614-142734",
   score: 0.29148260367795353,
   verdict: `GPT-5.5 correctly diagnosed gridlock-v1 as a west-interchange weave plus a saturated urban/elevated corridor, but every durable fix it built was ultimately torn back out, so the network it submitted is the original map with only renumbered segments. Its one structural idea — an elevated highway bypass — was first built in the wrong directed orientation, rebuilt reversed for a second $155k, then bulldozed entirely; a $157k corridor widening to Large Road was reverted within two in-game days when abandonment climbed. The "improvement" the harness rewarded is illusory: across the run population fell ~9% (31,571 → 28,696) and active vehicles dropped, so flow climbed to a reported 100% on emptier roads while congested metres actually rose (5086 → 6225) and jammed junctions went from 35 to 38. With congestion norm at 0.0, $526,978 spent for no lasting network change, and the health factor (0.79) dragging on a degenerate flow_gain, the composite lands at 0.29.`,

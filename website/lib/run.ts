@@ -6,6 +6,7 @@ export const runSchema = z.object({
   slug: z.string(),
   modelName: z.string(),
   map: z.string(),
+  harnessVersion: z.string(),
   runDir: z.string(),
   score: z.number().min(0).max(1),
   verdict: z.string(),

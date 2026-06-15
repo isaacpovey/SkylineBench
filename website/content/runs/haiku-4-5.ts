@@ -4,6 +4,7 @@ export const haiku45 = defineRun({
   slug: "haiku-4-5",
   modelName: "Claude Haiku 4.5",
   map: "gridlock-v1",
+  harnessVersion: "v0.1",
   runDir: "benchmark/runs/20260612-182148",
   score: 0.0,
   verdict: `Haiku 4.5 made 16 changes across two phases — 6 ramp upgrades that barely moved the needle, then 7 bulldozes of bottleneck ramps that severed critical city connections — collapsing population from 28,643 to 12,278 (−57%); the health multiplier hit 0.0 and zeroed the entire composite score to 0.00.`,

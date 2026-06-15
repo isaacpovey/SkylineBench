@@ -3,7 +3,7 @@ import { runSchema } from "@/lib/run";
 import { runs } from "@/content/runs";
 
 const valid = {
-  slug: "demo", modelName: "Demo", map: "gridlock-v1", runDir: "benchmark/runs/x",
+  slug: "demo", modelName: "Demo", map: "gridlock-v1", harnessVersion: "v0.1", runDir: "benchmark/runs/x",
   score: 0.5, verdict: "ok",
   metrics: {
     flow: { from: 57, to: 71 }, congestedMetres: { from: 5122, to: 1854 },
@@ -23,11 +23,15 @@ describe("runSchema", () => {
   it("rejects a score above 1", () => {
     expect(() => runSchema.parse({ ...valid, score: 1.5 })).toThrow();
   });
+  it("requires harnessVersion", () => {
+    const { harnessVersion: _omit, ...withoutVersion } = valid;
+    expect(() => runSchema.parse(withoutVersion)).toThrow();
+  });
 });
 
 describe("runs content", () => {
   it("all authored runs are valid and ranked by score", () => {
-    expect(runs.length).toBe(4);
+    expect(runs.length).toBe(6);
     expect(runs[0].slug).toBe("fable-5");
     runs.forEach((r) => expect(() => runSchema.parse(r)).not.toThrow());
   });

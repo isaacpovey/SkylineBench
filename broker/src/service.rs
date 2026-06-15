@@ -570,9 +570,12 @@ fn flyby_pass(mut pts: Vec<(f32, f32)>, along_z: bool) -> Vec<CameraKeyframe> {
         .collect()
 }
 
-/// Build N/S and W/E flyby keyframe passes along the main highways. Falls back
-/// to the whole network when the city has no highway segments.
+/// Build N/S and W/E flyby keyframe passes along the main highways, restricted
+/// to the playable city bounds so the camera never wanders out to connector
+/// stubs at the map edge. Falls back to the whole (in-bounds) network when the
+/// city has no highway segments.
 pub fn highway_flyby_path(net: &crate::contract::Network) -> FlybyPath {
+    let bounds = playable_bounds();
     let node_xz: std::collections::HashMap<u32, (f32, f32)> =
         net.nodes.iter().map(|n| (n.id, (n.x, n.z))).collect();
     let collect = |highway_only: bool| -> Vec<(f32, f32)> {
@@ -581,6 +584,7 @@ pub fn highway_flyby_path(net: &crate::contract::Network) -> FlybyPath {
             .filter(|s| !highway_only || is_highway(&s.prefab))
             .flat_map(|s| [s.start_node, s.end_node])
             .filter_map(|id| node_xz.get(&id).copied())
+            .filter(|&(x, z)| in_bounds(Position { x, y: 0.0, z }, bounds))
             .collect()
     };
     let pts = {
@@ -628,8 +632,8 @@ pub async fn view_3d(client: &BridgeClient, args: ViewArgs) -> Result<Vec<u8>, S
         z: args.z,
         size: args.size.unwrap_or(CLOSEUP_SIZE_M),
         yaw: 0.0,
-        // 90° = straight down; 45° = angled so road height/pillars are visible.
-        pitch: if args.top_down.unwrap_or(false) { 90.0 } else { 45.0 },
+        // 90° = straight down; 25° = low angle so road height/pillars are visible.
+        pitch: if args.top_down.unwrap_or(false) { 90.0 } else { 25.0 },
         info_view: InfoView::None,
     };
     Ok(capture_screenshot(client, shot).await?)

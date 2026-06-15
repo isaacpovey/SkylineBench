@@ -146,7 +146,7 @@ impl BenchmarkServer {
             }
             let dir = base.join(format!("{label}_{suffix}"));
             let dir_str = dir.to_string_lossy().to_string();
-            if let Err(e) = self.client.flyby(kfs, 6.0, 12, &dir_str).await {
+            if let Err(e) = self.client.flyby(kfs, 12.0, 12, &dir_str).await {
                 eprintln!("benchmark: flyby '{label}_{suffix}' failed ({e}); skipping");
                 return;
             }

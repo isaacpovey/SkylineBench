@@ -46,6 +46,21 @@ namespace SkylineBench.Json
             return w.ToString();
         }
 
+        public static string Problems(ProblemsDto p)
+        {
+            var w = new JsonWriter();
+            w.BeginObject().Name("buildings").BeginArray();
+            foreach (var b in p.Buildings)
+            {
+                w.BeginObject().Name("id").Value((long)b.Id).Name("x").Value(b.X).Name("z").Value(b.Z)
+                    .Name("category").Value(b.Category).Name("problems").BeginArray();
+                foreach (var pr in b.Problems) w.Value(pr);
+                w.EndArray().EndObject();
+            }
+            w.EndArray().EndObject();
+            return w.ToString();
+        }
+
         public static string Metrics(MetricsDto m)
         {
             var w = new JsonWriter();

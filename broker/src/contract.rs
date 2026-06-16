@@ -220,6 +220,8 @@ pub enum ActionError {
     NetBufferFull,
     CannotBuildOnWater,
     HeightTooHigh,
+    TooShort,
+    InvalidShape,
 }
 
 /// Result of a mutating action. `ok == true` ⇒ the diff fields are meaningful;
@@ -476,6 +478,12 @@ mod tests {
             serde_json::to_string(&ActionError::NetBufferFull).unwrap(),
             "\"NET_BUFFER_FULL\""
         );
+    }
+
+    #[test]
+    fn short_and_shape_errors_serialize_screaming_snake() {
+        assert_eq!(serde_json::to_string(&ActionError::TooShort).unwrap(), "\"TOO_SHORT\"");
+        assert_eq!(serde_json::to_string(&ActionError::InvalidShape).unwrap(), "\"INVALID_SHAPE\"");
     }
 
     #[test]

@@ -40,7 +40,10 @@ fn stroke_line(pixmap: &mut Pixmap, a: (f32, f32), b: (f32, f32), color: Color, 
     let mut paint = Paint::default();
     paint.set_color(color);
     paint.anti_alias = true;
-    let stroke = Stroke { width, ..Stroke::default() };
+    let stroke = Stroke {
+        width,
+        ..Stroke::default()
+    };
     let mut pb = PathBuilder::new();
     pb.move_to(a.0, a.1);
     pb.line_to(b.0, b.1);
@@ -60,14 +63,32 @@ fn draw_grid(pixmap: &mut Pixmap, opts: &RenderOptions, w: u32, h: u32) {
     let axis = Color::from_rgba8(75, 75, 95, 255);
     let mut x = line(b.min_x);
     while x <= b.max_x {
-        let (px, _) = to_pixel(Position { x, y: 0.0, z: b.min_z }, b, w, h);
+        let (px, _) = to_pixel(
+            Position {
+                x,
+                y: 0.0,
+                z: b.min_z,
+            },
+            b,
+            w,
+            h,
+        );
         let color = if x == 0.0 { axis } else { grid };
         stroke_line(pixmap, (px, 0.0), (px, h as f32), color, 1.0);
         x += spacing;
     }
     let mut z = line(b.min_z);
     while z <= b.max_z {
-        let (_, py) = to_pixel(Position { x: b.min_x, y: 0.0, z }, b, w, h);
+        let (_, py) = to_pixel(
+            Position {
+                x: b.min_x,
+                y: 0.0,
+                z,
+            },
+            b,
+            w,
+            h,
+        );
         let color = if z == 0.0 { axis } else { grid };
         stroke_line(pixmap, (0.0, py), (w as f32, py), color, 1.0);
         z += spacing;
@@ -93,7 +114,11 @@ fn draw_arrow(pixmap: &mut Pixmap, a: (f32, f32), b: (f32, f32)) {
 
 /// Render the road network to PNG bytes. `loads` maps segment id → density
 /// (0..1); segments missing from it draw neutral gray.
-pub fn render_network(network: &Network, loads: &HashMap<u32, f32>, opts: &RenderOptions) -> Vec<u8> {
+pub fn render_network(
+    network: &Network,
+    loads: &HashMap<u32, f32>,
+    opts: &RenderOptions,
+) -> Vec<u8> {
     // Clamp to at least 1px: dimensions arrive from MCP tool args, and
     // Pixmap::new returns None (→ panic) on a zero dimension.
     let w = opts.width_px.max(1);
@@ -106,7 +131,16 @@ pub fn render_network(network: &Network, loads: &HashMap<u32, f32>, opts: &Rende
     let node_pos: HashMap<u32, Position> = network
         .nodes
         .iter()
-        .map(|n| (n.id, Position { x: n.x, y: n.y, z: n.z }))
+        .map(|n| {
+            (
+                n.id,
+                Position {
+                    x: n.x,
+                    y: n.y,
+                    z: n.z,
+                },
+            )
+        })
         .collect();
 
     for seg in &network.segments {
@@ -120,7 +154,11 @@ pub fn render_network(network: &Network, loads: &HashMap<u32, f32>, opts: &Rende
             let width = (1.0 + seg.lanes as f32 * 0.5).min(5.0);
             stroke_line(&mut pixmap, pa, pb, color, width);
             if seg.one_way {
-                let (from, to) = if seg.travel_direction == "end_to_start" { (pb, pa) } else { (pa, pb) };
+                let (from, to) = if seg.travel_direction == "end_to_start" {
+                    (pb, pa)
+                } else {
+                    (pa, pb)
+                };
                 draw_arrow(&mut pixmap, from, to);
             }
         }
@@ -140,9 +178,24 @@ mod tests {
     fn sample_network() -> Network {
         Network {
             nodes: vec![
-                NetNode { id: 1, x: -50.0, y: 0.0, z: -50.0 },
-                NetNode { id: 2, x: 50.0, y: 0.0, z: -50.0 },
-                NetNode { id: 3, x: 50.0, y: 0.0, z: 50.0 },
+                NetNode {
+                    id: 1,
+                    x: -50.0,
+                    y: 0.0,
+                    z: -50.0,
+                },
+                NetNode {
+                    id: 2,
+                    x: 50.0,
+                    y: 0.0,
+                    z: -50.0,
+                },
+                NetNode {
+                    id: 3,
+                    x: 50.0,
+                    y: 0.0,
+                    z: 50.0,
+                },
             ],
             segments: vec![
                 NetSegment {
@@ -177,7 +230,12 @@ mod tests {
 
     fn opts() -> RenderOptions {
         RenderOptions {
-            bounds: Bounds { min_x: -100.0, min_z: -100.0, max_x: 100.0, max_z: 100.0 },
+            bounds: Bounds {
+                min_x: -100.0,
+                min_z: -100.0,
+                max_x: 100.0,
+                max_z: 100.0,
+            },
             width_px: 128,
             height_px: 128,
             grid_spacing_m: 50.0,
@@ -225,7 +283,10 @@ mod tests {
 
     #[test]
     fn grid_can_be_disabled() {
-        let no_grid = RenderOptions { grid_spacing_m: 0.0, ..opts() };
+        let no_grid = RenderOptions {
+            grid_spacing_m: 0.0,
+            ..opts()
+        };
         assert_ne!(
             render_network(&sample_network(), &sample_loads(), &opts()),
             render_network(&sample_network(), &sample_loads(), &no_grid),

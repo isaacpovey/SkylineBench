@@ -56,9 +56,7 @@ pub async fn observe_area(
     let net = match args.bounds {
         None => net,
         Some(b) => {
-            let inside = |x: f32, z: f32| {
-                crate::geometry::in_bounds(Position { x, y: 0.0, z }, b)
-            };
+            let inside = |x: f32, z: f32| crate::geometry::in_bounds(Position { x, y: 0.0, z }, b);
             let node_in: std::collections::HashSet<u32> = net
                 .nodes
                 .iter()
@@ -75,7 +73,11 @@ pub async fn observe_area(
                 .flat_map(|s| [s.start_node, s.end_node])
                 .collect();
             crate::contract::Network {
-                nodes: net.nodes.into_iter().filter(|n| kept.contains(&n.id)).collect(),
+                nodes: net
+                    .nodes
+                    .into_iter()
+                    .filter(|n| kept.contains(&n.id))
+                    .collect(),
                 segments,
             }
         }
@@ -85,7 +87,16 @@ pub async fn observe_area(
         Some(b) => buildings
             .buildings
             .into_iter()
-            .filter(|bd| crate::geometry::in_bounds(Position { x: bd.x, y: 0.0, z: bd.z }, b))
+            .filter(|bd| {
+                crate::geometry::in_bounds(
+                    Position {
+                        x: bd.x,
+                        y: 0.0,
+                        z: bd.z,
+                    },
+                    b,
+                )
+            })
             .collect(),
     };
     let zones: Vec<_> = match args.bounds {
@@ -93,7 +104,16 @@ pub async fn observe_area(
         Some(b) => zones
             .cells
             .into_iter()
-            .filter(|zc| crate::geometry::in_bounds(Position { x: zc.x, y: 0.0, z: zc.z }, b))
+            .filter(|zc| {
+                crate::geometry::in_bounds(
+                    Position {
+                        x: zc.x,
+                        y: 0.0,
+                        z: zc.z,
+                    },
+                    b,
+                )
+            })
             .collect(),
     };
     let connectivity = build_connectivity(&net);
@@ -176,7 +196,11 @@ pub async fn render_map(
         .collect();
     // Clamp: a tiny spacing would draw millions of gridlines; 0 disables.
     let grid_spacing_m = args.grid_spacing_m.unwrap_or(1000.0);
-    let grid_spacing_m = if grid_spacing_m <= 0.0 || !grid_spacing_m.is_finite() { 0.0 } else { grid_spacing_m.max(100.0) };
+    let grid_spacing_m = if grid_spacing_m <= 0.0 || !grid_spacing_m.is_finite() {
+        0.0
+    } else {
+        grid_spacing_m.max(100.0)
+    };
     let opts = RenderOptions {
         bounds: args.bounds.unwrap_or_else(playable_bounds),
         width_px: args.width_px,
@@ -224,7 +248,14 @@ pub async fn build_road(client: &BridgeClient, args: BuildRoadArgs) -> Result<Va
         return Ok(action_error_value(reason));
     }
     let res = client
-        .build_road_elevated(args.from, args.to, &args.road_type, args.snap, args.from_elevation, args.to_elevation)
+        .build_road_elevated(
+            args.from,
+            args.to,
+            &args.road_type,
+            args.snap,
+            args.from_elevation,
+            args.to_elevation,
+        )
         .await?;
     let isolated = res.ok && res.snapped_nodes.is_empty();
     let mut v = serde_json::to_value(res).unwrap();
@@ -288,7 +319,16 @@ pub async fn bulldoze(client: &BridgeClient, args: BulldozeArgs) -> Result<Value
                 net.nodes
                     .iter()
                     .find(|n| n.id == nid)
-                    .map(|n| !in_bounds(Position { x: n.x, y: n.y, z: n.z }, bounds))
+                    .map(|n| {
+                        !in_bounds(
+                            Position {
+                                x: n.x,
+                                y: n.y,
+                                z: n.z,
+                            },
+                            bounds,
+                        )
+                    })
                     .unwrap_or(false)
             };
             if node_out(seg.start_node) || node_out(seg.end_node) {
@@ -375,7 +415,14 @@ pub async fn trace_route(
             .map(|n| {
                 (
                     n.id,
-                    crate::geometry::horizontal_distance(p, Position { x: n.x, y: 0.0, z: n.z }),
+                    crate::geometry::horizontal_distance(
+                        p,
+                        Position {
+                            x: n.x,
+                            y: 0.0,
+                            z: n.z,
+                        },
+                    ),
                 )
             })
             .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
@@ -472,20 +519,32 @@ pub fn overview_shot(net: &crate::contract::Network) -> CameraShot {
     let bounds = trimmed_bounds(net.nodes.iter().map(|n| n.x))
         .zip(trimmed_bounds(net.nodes.iter().map(|n| n.z)));
     match bounds {
-        None => CameraShot { x: 0.0, z: 0.0, size: 2000.0, yaw: 0.0, pitch: 90.0, info_view: InfoView::Traffic },
+        None => CameraShot {
+            x: 0.0,
+            z: 0.0,
+            size: 2000.0,
+            yaw: 0.0,
+            pitch: 90.0,
+            info_view: InfoView::Traffic,
+        },
         Some(((min_x, max_x), (min_z, max_z))) => {
             let dx = max_x - min_x;
             let dz = max_z - min_z;
             // size needed to fit (vertical_span, horizontal_span) in the 16:9 frame.
             // `size` is the vertical half-extent; horizontal half-extent = size * aspect.
             let size_for = |vertical: f32, horizontal: f32| {
-                (vertical.max(horizontal / OVERVIEW_ASPECT) * OVERVIEW_MARGIN / 2.0).max(OVERVIEW_MIN_SIZE_M)
+                (vertical.max(horizontal / OVERVIEW_ASPECT) * OVERVIEW_MARGIN / 2.0)
+                    .max(OVERVIEW_MIN_SIZE_M)
             };
             // yaw 0 (north-up): z spans vertically, x spans horizontally.
             let north = size_for(dz, dx);
             // yaw 90: axes swap — x spans vertically, z spans horizontally.
             let rotated = size_for(dx, dz);
-            let (yaw, size) = if rotated < north { (90.0, rotated) } else { (0.0, north) };
+            let (yaw, size) = if rotated < north {
+                (90.0, rotated)
+            } else {
+                (0.0, north)
+            };
             CameraShot {
                 x: (min_x + max_x) / 2.0,
                 z: (min_z + max_z) / 2.0,
@@ -499,7 +558,14 @@ pub fn overview_shot(net: &crate::contract::Network) -> CameraShot {
 }
 
 pub fn closeup_shot(x: f32, z: f32) -> CameraShot {
-    CameraShot { x, z, size: CLOSEUP_SIZE_M, yaw: 0.0, pitch: 45.0, info_view: InfoView::None }
+    CameraShot {
+        x,
+        z,
+        size: CLOSEUP_SIZE_M,
+        yaw: 0.0,
+        pitch: 45.0,
+        info_view: InfoView::None,
+    }
 }
 
 /// Frame a set of edit locations in one shot: a plain close-up for a single
@@ -566,7 +632,11 @@ fn flyby_pass(mut pts: Vec<(f32, f32)>, along_z: bool) -> Vec<CameraKeyframe> {
             let mut cs: Vec<f32> = slice.iter().map(cross).collect();
             cs.sort_by(f32::total_cmp);
             let cross_med = cs[cs.len() / 2];
-            let (x, z) = if along_z { (cross_med, along_mean) } else { (along_mean, cross_med) };
+            let (x, z) = if along_z {
+                (cross_med, along_mean)
+            } else {
+                (along_mean, cross_med)
+            };
             CameraKeyframe {
                 x,
                 z,
@@ -613,7 +683,16 @@ pub async fn capture_screenshot(
     client: &BridgeClient,
     shot: CameraShot,
 ) -> Result<Vec<u8>, ServiceError> {
-    Ok(client.screenshot(shot.x, shot.z, shot.size, shot.yaw, shot.pitch, shot.info_view.as_str()).await?)
+    Ok(client
+        .screenshot(
+            shot.x,
+            shot.z,
+            shot.size,
+            shot.yaw,
+            shot.pitch,
+            shot.info_view.as_str(),
+        )
+        .await?)
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -641,7 +720,11 @@ pub async fn view_3d(client: &BridgeClient, args: ViewArgs) -> Result<Vec<u8>, S
         size: args.size.unwrap_or(CLOSEUP_SIZE_M),
         yaw: 0.0,
         // 90° = straight down; 25° = low angle so road height/pillars are visible.
-        pitch: if args.top_down.unwrap_or(false) { 90.0 } else { 25.0 },
+        pitch: if args.top_down.unwrap_or(false) {
+            90.0
+        } else {
+            25.0
+        },
         info_view: InfoView::None,
     };
     Ok(capture_screenshot(client, shot).await?)
@@ -690,8 +773,21 @@ pub async fn query_segments(
             let (bx, bz) = node_pos.get(&s.end_node).copied()?;
             let d = density.get(&s.id).copied().unwrap_or(0.0);
             let in_bounds = args.bounds.is_none_or(|b| {
-                crate::geometry::in_bounds(Position { x: ax, y: 0.0, z: az }, b)
-                    || crate::geometry::in_bounds(Position { x: bx, y: 0.0, z: bz }, b)
+                crate::geometry::in_bounds(
+                    Position {
+                        x: ax,
+                        y: 0.0,
+                        z: az,
+                    },
+                    b,
+                ) || crate::geometry::in_bounds(
+                    Position {
+                        x: bx,
+                        y: 0.0,
+                        z: bz,
+                    },
+                    b,
+                )
             });
             let dense_enough = args.min_density.is_none_or(|m| d >= m);
             let prefab_match = needle
@@ -741,7 +837,10 @@ mod tests {
         let cu = closeup_shot(10.0, 20.0);
         assert_eq!(cu.pitch, 45.0, "close-ups use the angled game tilt");
         assert_eq!(cu.yaw, 0.0);
-        assert!(matches!(cu.info_view, InfoView::None), "close-ups stay a clean render");
+        assert!(
+            matches!(cu.info_view, InfoView::None),
+            "close-ups stay a clean render"
+        );
         assert_eq!(InfoView::Traffic.as_str(), "traffic");
         assert_eq!(InfoView::None.as_str(), "none");
     }
@@ -829,7 +928,9 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(built["ok"], true);
-        let obs = observe_area(&c, ObserveAreaArgs { bounds: None }).await.unwrap();
+        let obs = observe_area(&c, ObserveAreaArgs { bounds: None })
+            .await
+            .unwrap();
         assert_eq!(obs["network"]["segments"].as_array().unwrap().len(), 1);
     }
 
@@ -838,7 +939,12 @@ mod tests {
         let c = client().await;
         let (png, legend) = render_map(
             &c,
-            RenderMapArgs { bounds: None, width_px: 64, height_px: 64, grid_spacing_m: None },
+            RenderMapArgs {
+                bounds: None,
+                width_px: 64,
+                height_px: 64,
+                grid_spacing_m: None,
+            },
         )
         .await
         .unwrap();
@@ -849,7 +955,12 @@ mod tests {
 
         let (_, clamped) = render_map(
             &c,
-            RenderMapArgs { bounds: None, width_px: 64, height_px: 64, grid_spacing_m: Some(1.0) },
+            RenderMapArgs {
+                bounds: None,
+                width_px: 64,
+                height_px: 64,
+                grid_spacing_m: Some(1.0),
+            },
         )
         .await
         .unwrap();
@@ -891,7 +1002,9 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(res["ok"], true);
-        let obs = observe_area(&c, ObserveAreaArgs { bounds: None }).await.unwrap();
+        let obs = observe_area(&c, ObserveAreaArgs { bounds: None })
+            .await
+            .unwrap();
         assert_eq!(obs["network"]["segments"].as_array().unwrap().len(), 0);
     }
 
@@ -905,8 +1018,16 @@ mod tests {
         let raw = BridgeClient::new(format!("http://{addr}"));
         let oob = raw
             .build_road(
-                Position { x: 0.0, y: 0.0, z: 0.0 },
-                Position { x: 20000.0, y: 0.0, z: 0.0 }, // well outside ±8640
+                Position {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Position {
+                    x: 20000.0,
+                    y: 0.0,
+                    z: 0.0,
+                }, // well outside ±8640
                 "road",
                 false,
             )
@@ -917,9 +1038,15 @@ mod tests {
 
         // Service-layer bulldoze must refuse because the endpoint is outside bounds.
         let c = BridgeClient::new(format!("http://{addr}"));
-        let res = bulldoze(&c, BulldozeArgs { target_type: "segment".into(), id: seg_id })
-            .await
-            .unwrap();
+        let res = bulldoze(
+            &c,
+            BulldozeArgs {
+                target_type: "segment".into(),
+                id: seg_id,
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(res["ok"], false, "out-of-bounds segment must be refused");
         assert_eq!(res["reason"], "OUT_OF_BOUNDS");
         assert!(res["warning"].as_str().unwrap().contains("irreversible"));
@@ -931,8 +1058,16 @@ mod tests {
         let built = build_road(
             &c,
             BuildRoadArgs {
-                from: Position { x: 0.0, y: 0.0, z: 0.0 },
-                to: Position { x: 50.0, y: 0.0, z: 0.0 },
+                from: Position {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                to: Position {
+                    x: 50.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
                 road_type: "road".into(),
                 snap: false,
                 from_elevation: 0.0,
@@ -942,9 +1077,15 @@ mod tests {
         .await
         .unwrap();
         let seg_id = built["created_segments"][0].as_u64().unwrap() as u32;
-        let res = bulldoze(&c, BulldozeArgs { target_type: "segment".into(), id: seg_id })
-            .await
-            .unwrap();
+        let res = bulldoze(
+            &c,
+            BulldozeArgs {
+                target_type: "segment".into(),
+                id: seg_id,
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(res["ok"], true, "in-bounds segment must be bulldozable");
     }
 
@@ -1001,7 +1142,9 @@ mod tests {
         )
         .await
         .unwrap();
-        let obs = observe_area(&c, ObserveAreaArgs { bounds: None }).await.unwrap();
+        let obs = observe_area(&c, ObserveAreaArgs { bounds: None })
+            .await
+            .unwrap();
         assert_eq!(obs["network"]["segments"].as_array().unwrap().len(), 0);
     }
 
@@ -1041,8 +1184,16 @@ mod tests {
         let built = build_road(
             &c,
             BuildRoadArgs {
-                from: Position { x: 0.0, y: 0.0, z: 0.0 },
-                to: Position { x: 50.0, y: 0.0, z: 0.0 },
+                from: Position {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                to: Position {
+                    x: 50.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
                 road_type: "road".into(),
                 snap: true,
                 from_elevation: 0.0,
@@ -1054,7 +1205,10 @@ mod tests {
         let seg_id = built["created_segments"][0].as_u64().unwrap();
         let res = upgrade_road(
             &c,
-            UpgradeRoadArgs { segment: seg_id as u32, road_type: "highway".into() },
+            UpgradeRoadArgs {
+                segment: seg_id as u32,
+                road_type: "highway".into(),
+            },
         )
         .await
         .unwrap();
@@ -1098,7 +1252,9 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(res["ok"], true);
-        let obs = observe_area(&c, ObserveAreaArgs { bounds: None }).await.unwrap();
+        let obs = observe_area(&c, ObserveAreaArgs { bounds: None })
+            .await
+            .unwrap();
         assert_eq!(obs["network"]["segments"][0]["prefab"], "highway");
     }
 
@@ -1120,7 +1276,9 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(res["ok"], true);
-        let obs = observe_area(&c, ObserveAreaArgs { bounds: None }).await.unwrap();
+        let obs = observe_area(&c, ObserveAreaArgs { bounds: None })
+            .await
+            .unwrap();
         assert_eq!(obs["zones"].as_array().unwrap().len(), 1);
     }
 
@@ -1131,8 +1289,16 @@ mod tests {
             build_road(
                 c,
                 BuildRoadArgs {
-                    from: Position { x: x0, y: 0.0, z: 0.0 },
-                    to: Position { x: x1, y: 0.0, z: 0.0 },
+                    from: Position {
+                        x: x0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    to: Position {
+                        x: x1,
+                        y: 0.0,
+                        z: 0.0,
+                    },
                     road_type: "road".into(),
                     snap: true,
                     from_elevation: 0.0,
@@ -1150,7 +1316,13 @@ mod tests {
         build_three_roads(&c).await;
         let v = query_segments(
             &c,
-            QuerySegmentsArgs { sort_by: None, limit: Some(2), min_density: None, bounds: None, prefab_contains: None },
+            QuerySegmentsArgs {
+                sort_by: None,
+                limit: Some(2),
+                min_density: None,
+                bounds: None,
+                prefab_contains: None,
+            },
         )
         .await
         .unwrap();
@@ -1174,7 +1346,12 @@ mod tests {
                 sort_by: None,
                 limit: None,
                 min_density: None,
-                bounds: Some(crate::contract::Bounds { min_x: -10.0, min_z: -10.0, max_x: 100.0, max_z: 10.0 }),
+                bounds: Some(crate::contract::Bounds {
+                    min_x: -10.0,
+                    min_z: -10.0,
+                    max_x: 100.0,
+                    max_z: 10.0,
+                }),
                 prefab_contains: None,
             },
         )
@@ -1184,7 +1361,13 @@ mod tests {
 
         let none = query_segments(
             &c,
-            QuerySegmentsArgs { sort_by: None, limit: None, min_density: Some(0.95), bounds: None, prefab_contains: None },
+            QuerySegmentsArgs {
+                sort_by: None,
+                limit: None,
+                min_density: Some(0.95),
+                bounds: None,
+                prefab_contains: None,
+            },
         )
         .await
         .unwrap();
@@ -1199,8 +1382,16 @@ mod tests {
             build_road(
                 &c,
                 BuildRoadArgs {
-                    from: Position { x: 0.0, y: 0.0, z: 0.0 },
-                    to: Position { x: x1, y: 0.0, z: 0.0 },
+                    from: Position {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    to: Position {
+                        x: x1,
+                        y: 0.0,
+                        z: 0.0,
+                    },
                     road_type: road_type.into(),
                     snap: false,
                     from_elevation: 0.0,
@@ -1212,7 +1403,13 @@ mod tests {
         }
         let by_length = query_segments(
             &c,
-            QuerySegmentsArgs { sort_by: Some("length".into()), limit: None, min_density: None, bounds: None, prefab_contains: None },
+            QuerySegmentsArgs {
+                sort_by: Some("length".into()),
+                limit: None,
+                min_density: None,
+                bounds: None,
+                prefab_contains: None,
+            },
         )
         .await
         .unwrap();
@@ -1227,7 +1424,13 @@ mod tests {
 
         let by_speed = query_segments(
             &c,
-            QuerySegmentsArgs { sort_by: Some("speed_limit".into()), limit: None, min_density: None, bounds: None, prefab_contains: None },
+            QuerySegmentsArgs {
+                sort_by: Some("speed_limit".into()),
+                limit: None,
+                min_density: None,
+                bounds: None,
+                prefab_contains: None,
+            },
         )
         .await
         .unwrap();
@@ -1249,8 +1452,16 @@ mod tests {
             build_road(
                 &c,
                 BuildRoadArgs {
-                    from: Position { x: x0, y: 0.0, z: 0.0 },
-                    to: Position { x: x1, y: 0.0, z: 0.0 },
+                    from: Position {
+                        x: x0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    to: Position {
+                        x: x1,
+                        y: 0.0,
+                        z: 0.0,
+                    },
                     road_type: "road".into(),
                     snap: true,
                     from_elevation: 0.0,
@@ -1263,8 +1474,16 @@ mod tests {
         let v = trace_route(
             &c,
             TraceRouteArgs {
-                from: Position { x: 2.0, y: 0.0, z: 0.0 },
-                to: Position { x: 99.0, y: 0.0, z: 0.0 },
+                from: Position {
+                    x: 2.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                to: Position {
+                    x: 99.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
             },
         )
         .await
@@ -1283,8 +1502,16 @@ mod tests {
             build_road(
                 &c,
                 BuildRoadArgs {
-                    from: Position { x: x0, y: 0.0, z: 0.0 },
-                    to: Position { x: x1, y: 0.0, z: 0.0 },
+                    from: Position {
+                        x: x0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    to: Position {
+                        x: x1,
+                        y: 0.0,
+                        z: 0.0,
+                    },
                     road_type: "road".into(),
                     snap: true,
                     from_elevation: 0.0,
@@ -1297,8 +1524,16 @@ mod tests {
         let v = trace_route(
             &c,
             TraceRouteArgs {
-                from: Position { x: 0.0, y: 0.0, z: 0.0 },
-                to: Position { x: 5050.0, y: 0.0, z: 0.0 },
+                from: Position {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                to: Position {
+                    x: 5050.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
             },
         )
         .await
@@ -1311,8 +1546,18 @@ mod tests {
     fn overview_shot_frames_the_network_with_margin() {
         let net = crate::contract::Network {
             nodes: vec![
-                crate::contract::NetNode { id: 1, x: -1000.0, y: 0.0, z: -500.0 },
-                crate::contract::NetNode { id: 2, x: 1000.0, y: 0.0, z: 500.0 },
+                crate::contract::NetNode {
+                    id: 1,
+                    x: -1000.0,
+                    y: 0.0,
+                    z: -500.0,
+                },
+                crate::contract::NetNode {
+                    id: 2,
+                    x: 1000.0,
+                    y: 0.0,
+                    z: 500.0,
+                },
             ],
             segments: vec![],
         };
@@ -1326,14 +1571,20 @@ mod tests {
         // rotated = size_for(dx=2000, dz=1000) = max(2000, 1000/1.777…) * 0.54
         //         = max(2000, 562.5) * 0.54 = 2000 * 0.54 = 1080.
         // north(607.5) < rotated(1080) → yaw=0, size=607.5.
-        assert_eq!(shot.yaw, 0.0, "wider network stays north-up; x already fills the wide frame");
+        assert_eq!(
+            shot.yaw, 0.0,
+            "wider network stays north-up; x already fills the wide frame"
+        );
         assert_eq!(shot.size, 607.5);
         assert!(matches!(shot.info_view, InfoView::Traffic));
     }
 
     #[test]
     fn overview_shot_of_empty_network_uses_default_frame() {
-        let net = crate::contract::Network { nodes: vec![], segments: vec![] };
+        let net = crate::contract::Network {
+            nodes: vec![],
+            segments: vec![],
+        };
         let shot = overview_shot(&net);
         assert_eq!((shot.x, shot.z), (0.0, 0.0));
         assert_eq!(shot.size, 2000.0);
@@ -1358,12 +1609,23 @@ mod tests {
         let outliers = [(100, -8000.0, -8000.0), (101, 8000.0, 8000.0)]
             .into_iter()
             .map(|(id, x, z)| crate::contract::NetNode { id, x, y: 0.0, z });
-        let net = crate::contract::Network { nodes: cluster.chain(outliers).collect(), segments: vec![] };
+        let net = crate::contract::Network {
+            nodes: cluster.chain(outliers).collect(),
+            segments: vec![],
+        };
         let shot = overview_shot(&net);
         // Trimming drops the two map-edge nodes: centred on the 700×400 city
         // grid, not the 16 km outlier span, and at the minimum height floor.
-        assert!((shot.x - 350.0).abs() < 100.0, "x {} should be near the cluster centre", shot.x);
-        assert!((shot.z - 200.0).abs() < 100.0, "z {} should be near the cluster centre", shot.z);
+        assert!(
+            (shot.x - 350.0).abs() < 100.0,
+            "x {} should be near the cluster centre",
+            shot.x
+        );
+        assert!(
+            (shot.z - 200.0).abs() < 100.0,
+            "z {} should be near the cluster centre",
+            shot.z
+        );
         assert_eq!(shot.size, 600.0);
     }
 
@@ -1376,15 +1638,31 @@ mod tests {
         use crate::contract::{NetNode, Network};
         let net = Network {
             nodes: vec![
-                NetNode { id: 0, x: -1000.0, y: 0.0, z: -100.0 },
-                NetNode { id: 1, x: 1000.0, y: 0.0, z: 100.0 },
+                NetNode {
+                    id: 0,
+                    x: -1000.0,
+                    y: 0.0,
+                    z: -100.0,
+                },
+                NetNode {
+                    id: 1,
+                    x: 1000.0,
+                    y: 0.0,
+                    z: 100.0,
+                },
             ],
             segments: vec![],
         };
         let ov = overview_shot(&net);
-        assert_eq!(ov.yaw, 0.0, "wide city stays north-up; its long axis already fills the wide frame");
+        assert_eq!(
+            ov.yaw, 0.0,
+            "wide city stays north-up; its long axis already fills the wide frame"
+        );
         assert_eq!(ov.pitch, 90.0, "overview stays top-down");
-        assert!(matches!(ov.info_view, InfoView::Traffic), "overview carries the traffic layer");
+        assert!(
+            matches!(ov.info_view, InfoView::Traffic),
+            "overview carries the traffic layer"
+        );
     }
 
     #[test]
@@ -1396,12 +1674,26 @@ mod tests {
         use crate::contract::{NetNode, Network};
         let net = Network {
             nodes: vec![
-                NetNode { id: 0, x: -100.0, y: 0.0, z: -1000.0 },
-                NetNode { id: 1, x: 100.0, y: 0.0, z: 1000.0 },
+                NetNode {
+                    id: 0,
+                    x: -100.0,
+                    y: 0.0,
+                    z: -1000.0,
+                },
+                NetNode {
+                    id: 1,
+                    x: 100.0,
+                    y: 0.0,
+                    z: 1000.0,
+                },
             ],
             segments: vec![],
         };
-        assert_eq!(overview_shot(&net).yaw, 90.0, "tall city rotates so its long z-axis fills the wide frame");
+        assert_eq!(
+            overview_shot(&net).yaw,
+            90.0,
+            "tall city rotates so its long z-axis fills the wide frame"
+        );
     }
 
     #[test]
@@ -1426,18 +1718,36 @@ mod tests {
         use crate::contract::{NetNode, NetSegment, Network};
         let node = |id: u32, x: f32, z: f32| NetNode { id, x, y: 0.0, z };
         let seg = |id: u32, a: u32, b: u32| NetSegment {
-            id, start_node: a, end_node: b, prefab: "Highway".into(),
-            lanes: 4, length: 100.0, one_way: false, travel_direction: "both".into(), speed_limit: 2.0,
+            id,
+            start_node: a,
+            end_node: b,
+            prefab: "Highway".into(),
+            lanes: 4,
+            length: 100.0,
+            one_way: false,
+            travel_direction: "both".into(),
+            speed_limit: 2.0,
         };
         let net = Network {
-            nodes: vec![node(0, 0.0, -500.0), node(1, 10.0, 0.0), node(2, -10.0, 500.0),
-                        node(3, -500.0, 5.0), node(4, 500.0, -5.0)],
+            nodes: vec![
+                node(0, 0.0, -500.0),
+                node(1, 10.0, 0.0),
+                node(2, -10.0, 500.0),
+                node(3, -500.0, 5.0),
+                node(4, 500.0, -5.0),
+            ],
             segments: vec![seg(0, 0, 1), seg(1, 1, 2), seg(2, 3, 4)],
         };
         let path = highway_flyby_path(&net);
         assert!(!path.ns.is_empty() && !path.we.is_empty());
-        assert!(path.ns.windows(2).all(|w| w[0].z <= w[1].z), "ns ascends south->north");
-        assert!(path.we.windows(2).all(|w| w[0].x <= w[1].x), "we ascends west->east");
+        assert!(
+            path.ns.windows(2).all(|w| w[0].z <= w[1].z),
+            "ns ascends south->north"
+        );
+        assert!(
+            path.we.windows(2).all(|w| w[0].x <= w[1].x),
+            "we ascends west->east"
+        );
         assert_eq!(path.ns[0].yaw, 0.0);
         assert_eq!(path.we[0].yaw, 90.0);
         assert_eq!(path.ns[0].pitch, FLYBY_PITCH_DEG);
@@ -1448,19 +1758,52 @@ mod tests {
     fn highway_flyby_path_falls_back_to_all_segments_without_highways() {
         use crate::contract::{NetNode, NetSegment, Network};
         let net = Network {
-            nodes: vec![NetNode { id: 0, x: 0.0, y: 0.0, z: 0.0 }, NetNode { id: 1, x: 100.0, y: 0.0, z: 100.0 }],
+            nodes: vec![
+                NetNode {
+                    id: 0,
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                NetNode {
+                    id: 1,
+                    x: 100.0,
+                    y: 0.0,
+                    z: 100.0,
+                },
+            ],
             segments: vec![NetSegment {
-                id: 0, start_node: 0, end_node: 1, prefab: "Basic Road".into(),
-                lanes: 2, length: 100.0, one_way: false, travel_direction: "both".into(), speed_limit: 1.0,
+                id: 0,
+                start_node: 0,
+                end_node: 1,
+                prefab: "Basic Road".into(),
+                lanes: 2,
+                length: 100.0,
+                one_way: false,
+                travel_direction: "both".into(),
+                speed_limit: 1.0,
             }],
         };
-        assert!(!highway_flyby_path(&net).ns.is_empty(), "falls back to all segments");
+        assert!(
+            !highway_flyby_path(&net).ns.is_empty(),
+            "falls back to all segments"
+        );
     }
 
     #[tokio::test]
     async fn view_3d_returns_png() {
         let c = client().await;
-        let png = view_3d(&c, ViewArgs { x: 0.0, z: 0.0, size: None, top_down: None }).await.unwrap();
+        let png = view_3d(
+            &c,
+            ViewArgs {
+                x: 0.0,
+                z: 0.0,
+                size: None,
+                top_down: None,
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(&png[1..4], b"PNG");
     }
 
@@ -1471,8 +1814,16 @@ mod tests {
             build_road(
                 &c,
                 BuildRoadArgs {
-                    from: Position { x: x0, y: 0.0, z: 0.0 },
-                    to: Position { x: x1, y: 0.0, z: 0.0 },
+                    from: Position {
+                        x: x0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    to: Position {
+                        x: x1,
+                        y: 0.0,
+                        z: 0.0,
+                    },
                     road_type: "road".into(),
                     snap: true,
                     from_elevation: 0.0,
@@ -1482,13 +1833,20 @@ mod tests {
             .await
             .unwrap();
         }
-        let all = observe_area(&c, ObserveAreaArgs { bounds: None }).await.unwrap();
+        let all = observe_area(&c, ObserveAreaArgs { bounds: None })
+            .await
+            .unwrap();
         assert_eq!(all["network"]["segments"].as_array().unwrap().len(), 2);
 
         let near = observe_area(
             &c,
             ObserveAreaArgs {
-                bounds: Some(crate::contract::Bounds { min_x: -10.0, min_z: -10.0, max_x: 100.0, max_z: 10.0 }),
+                bounds: Some(crate::contract::Bounds {
+                    min_x: -10.0,
+                    min_z: -10.0,
+                    max_x: 100.0,
+                    max_z: 10.0,
+                }),
             },
         )
         .await
@@ -1500,8 +1858,16 @@ mod tests {
         build_road(
             &c,
             BuildRoadArgs {
-                from: Position { x: 50.0, y: 0.0, z: 0.0 },
-                to: Position { x: 200.0, y: 0.0, z: 0.0 },
+                from: Position {
+                    x: 50.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                to: Position {
+                    x: 200.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
                 road_type: "road".into(),
                 snap: true,
                 from_elevation: 0.0,
@@ -1513,7 +1879,12 @@ mod tests {
         let crossing = observe_area(
             &c,
             ObserveAreaArgs {
-                bounds: Some(crate::contract::Bounds { min_x: -10.0, min_z: -10.0, max_x: 100.0, max_z: 10.0 }),
+                bounds: Some(crate::contract::Bounds {
+                    min_x: -10.0,
+                    min_z: -10.0,
+                    max_x: 100.0,
+                    max_z: 10.0,
+                }),
             },
         )
         .await

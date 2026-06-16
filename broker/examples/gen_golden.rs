@@ -10,9 +10,24 @@ use skylinebench::render::{render_network, RenderOptions};
 fn main() {
     let network = Network {
         nodes: vec![
-            NetNode { id: 1, x: -50.0, y: 0.0, z: -50.0 },
-            NetNode { id: 2, x: 50.0, y: 0.0, z: -50.0 },
-            NetNode { id: 3, x: 50.0, y: 0.0, z: 50.0 },
+            NetNode {
+                id: 1,
+                x: -50.0,
+                y: 0.0,
+                z: -50.0,
+            },
+            NetNode {
+                id: 2,
+                x: 50.0,
+                y: 0.0,
+                z: -50.0,
+            },
+            NetNode {
+                id: 3,
+                x: 50.0,
+                y: 0.0,
+                z: 50.0,
+            },
         ],
         segments: vec![
             NetSegment {
@@ -41,7 +56,12 @@ fn main() {
     };
     let loads = HashMap::from([(10u32, 0.15f32), (11, 0.9)]);
     let opts = RenderOptions {
-        bounds: Bounds { min_x: -100.0, min_z: -100.0, max_x: 100.0, max_z: 100.0 },
+        bounds: Bounds {
+            min_x: -100.0,
+            min_z: -100.0,
+            max_x: 100.0,
+            max_z: 100.0,
+        },
         width_px: 128,
         height_px: 128,
         grid_spacing_m: 50.0,

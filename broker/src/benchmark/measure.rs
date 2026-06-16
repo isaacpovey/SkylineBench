@@ -94,7 +94,11 @@ pub async fn finalize(client: &BridgeClient, end: EndState, out_dir: &Path) -> a
          check that the mod emits segment lengths and the save actually has congestion"
     );
 
-    let settle_cfg = BenchConfig { window_ticks: cfg.settle_ticks, window_samples: 1, ..cfg.clone() };
+    let settle_cfg = BenchConfig {
+        window_ticks: cfg.settle_ticks,
+        window_samples: 1,
+        ..cfg.clone()
+    };
     let _ = measure_window(client, &settle_cfg).await?;
     let final_m = measure_window(client, &cfg).await?;
 
@@ -107,7 +111,10 @@ pub async fn finalize(client: &BridgeClient, end: EndState, out_dir: &Path) -> a
         end_reason: end.end_reason,
         baseline,
         final_stats: final_m.stats,
-        flow_samples: FlowSamples { baseline: baseline_flow_samples, final_samples: final_m.samples },
+        flow_samples: FlowSamples {
+            baseline: baseline_flow_samples,
+            final_samples: final_m.samples,
+        },
         tally: end.tally,
         actions: end.actions,
     };
@@ -115,8 +122,14 @@ pub async fn finalize(client: &BridgeClient, end: EndState, out_dir: &Path) -> a
 
     // Blocking I/O is acceptable here — finalize runs once at end of run.
     std::fs::create_dir_all(out_dir)?;
-    std::fs::write(out_dir.join("run-record.json"), serde_json::to_string_pretty(&record)?)?;
-    std::fs::write(out_dir.join("score.json"), serde_json::to_string_pretty(&score)?)?;
+    std::fs::write(
+        out_dir.join("run-record.json"),
+        serde_json::to_string_pretty(&record)?,
+    )?;
+    std::fs::write(
+        out_dir.join("score.json"),
+        serde_json::to_string_pretty(&score)?,
+    )?;
     Ok(())
 }
 
@@ -147,34 +160,55 @@ mod tests {
 
     #[tokio::test]
     async fn finalize_writes_record_and_score_from_end_state() {
-        use crate::benchmark::record::{ActionEntry, EndReason, EndState, MapInfo, Tally, WindowStats};
+        use crate::benchmark::record::{
+            ActionEntry, EndReason, EndState, MapInfo, Tally, WindowStats,
+        };
 
         let c = client().await;
         let end = EndState {
             schema_version: SCHEMA_VERSION,
             config: BenchConfig::default(),
-            map: MapInfo { id: "gridlock-v1".into(), source: "test".into(), game_version: "1.21.1-f9".into() },
+            map: MapInfo {
+                id: "gridlock-v1".into(),
+                source: "test".into(),
+                game_version: "1.21.1-f9".into(),
+            },
             started_at: "t0".into(),
             ended_at: "t1".into(),
             end_reason: EndReason::Submit,
-            baseline: Some(WindowStats { flow_mean: 80.0, active_vehicles_mean: 0.0, population: 0, congested_meters: 500.0, congested_junctions: 0 }),
+            baseline: Some(WindowStats {
+                flow_mean: 80.0,
+                active_vehicles_mean: 0.0,
+                population: 0,
+                congested_meters: 500.0,
+                congested_junctions: 0,
+            }),
             baseline_flow_samples: vec![80.0],
-            tally: Tally { num_changes: 2, money_spent: 5_000 },
-            actions: vec![ActionEntry { seq: 1, tool: "build_road".into(), cost: 5_000 }],
+            tally: Tally {
+                num_changes: 2,
+                money_spent: 5_000,
+            },
+            actions: vec![ActionEntry {
+                seq: 1,
+                tool: "build_road".into(),
+                cost: 5_000,
+            }],
         };
 
         let dir = std::env::temp_dir().join(format!("sb-finalize-{}", std::process::id()));
         finalize(&c, end, &dir).await.unwrap();
 
         let rec: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(dir.join("run-record.json")).unwrap()).unwrap();
+            serde_json::from_str(&std::fs::read_to_string(dir.join("run-record.json")).unwrap())
+                .unwrap();
         assert_eq!(rec["end_reason"], "submit");
         assert_eq!(rec["started_at"], "t0");
         assert_eq!(rec["ended_at"], "t1");
         assert_eq!(rec["tally"]["num_changes"], 2);
         assert_eq!(rec["baseline"]["congested_meters"], 500.0);
         let score: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(dir.join("score.json")).unwrap()).unwrap();
+            serde_json::from_str(&std::fs::read_to_string(dir.join("score.json")).unwrap())
+                .unwrap();
         assert!(score["score"].is_number());
         assert!(score["flow_gain"].is_number());
         std::fs::remove_dir_all(&dir).ok();
@@ -186,13 +220,20 @@ mod tests {
         EndState {
             schema_version: SCHEMA_VERSION,
             config: BenchConfig::default(),
-            map: MapInfo { id: "m".into(), source: "test".into(), game_version: "v".into() },
+            map: MapInfo {
+                id: "m".into(),
+                source: "test".into(),
+                game_version: "v".into(),
+            },
             started_at: "t0".into(),
             ended_at: "t1".into(),
             end_reason: EndReason::Disconnect,
             baseline: None,
             baseline_flow_samples: vec![],
-            tally: Tally { num_changes: 0, money_spent: 0 },
+            tally: Tally {
+                num_changes: 0,
+                money_spent: 0,
+            },
             actions: vec![],
         }
     }
@@ -204,8 +245,16 @@ mod tests {
         // only the third (50 m) counts as congested at the 0.7 threshold.
         for (x0, x1) in [(0.0_f32, 50.0_f32), (1000.0, 1050.0), (2000.0, 2050.0)] {
             c.build_road(
-                crate::contract::Position { x: x0, y: 0.0, z: 0.0 },
-                crate::contract::Position { x: x1, y: 0.0, z: 0.0 },
+                crate::contract::Position {
+                    x: x0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                crate::contract::Position {
+                    x: x1,
+                    y: 0.0,
+                    z: 0.0,
+                },
                 "road",
                 true,
             )
@@ -214,10 +263,13 @@ mod tests {
         }
 
         let dir = std::env::temp_dir().join(format!("sb-finalize-nb-{}", std::process::id()));
-        finalize(&c, disconnect_end_state_without_baseline(), &dir).await.unwrap();
+        finalize(&c, disconnect_end_state_without_baseline(), &dir)
+            .await
+            .unwrap();
 
         let rec: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(dir.join("run-record.json")).unwrap()).unwrap();
+            serde_json::from_str(&std::fs::read_to_string(dir.join("run-record.json")).unwrap())
+                .unwrap();
         // The measured fallback baseline must be present.
         assert_eq!(rec["baseline"]["congested_meters"], 50.0);
         assert_eq!(rec["end_reason"], "disconnect");
@@ -227,7 +279,10 @@ mod tests {
     #[tokio::test]
     async fn finalize_bails_on_mismatched_schema_version() {
         let c = client().await;
-        let end = EndState { schema_version: SCHEMA_VERSION + 1, ..disconnect_end_state_without_baseline() };
+        let end = EndState {
+            schema_version: SCHEMA_VERSION + 1,
+            ..disconnect_end_state_without_baseline()
+        };
         let dir = std::env::temp_dir().join(format!("sb-finalize-sv-{}", std::process::id()));
         let err = finalize(&c, end, &dir).await.unwrap_err();
         assert!(err.to_string().contains("schema_version"), "got: {err}");
@@ -238,7 +293,9 @@ mod tests {
     async fn finalize_bails_when_baseline_has_no_congestion() {
         let c = client().await;
         let dir = std::env::temp_dir().join(format!("sb-finalize-nc-{}", std::process::id()));
-        assert!(finalize(&c, disconnect_end_state_without_baseline(), &dir).await.is_err());
+        assert!(finalize(&c, disconnect_end_state_without_baseline(), &dir)
+            .await
+            .is_err());
         std::fs::remove_dir_all(&dir).ok();
     }
 }

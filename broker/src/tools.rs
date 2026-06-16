@@ -90,8 +90,10 @@ impl Skyline {
         }
     }
 
-    #[tool(description = "Render the road network to a PNG image: congestion colours, lane widths, \
-        one-way arrows, coordinate grid. Returns the image plus a JSON legend.")]
+    #[tool(
+        description = "Render the road network to a PNG image: congestion colours, lane widths, \
+        one-way arrows, coordinate grid. Returns the image plus a JSON legend."
+    )]
     async fn render_map(
         &self,
         Parameters(args): Parameters<RenderMapArgs>,
@@ -175,11 +177,13 @@ impl Skyline {
         }
     }
 
-    #[tool(description = "Change an existing road segment's type. The segment is re-created \
+    #[tool(
+        description = "Change an existing road segment's type. The segment is re-created \
         under a NEW id — `replaced` in the response maps old_segment_id to new_segment_id; \
         refresh any cached ids. The original travel direction is preserved: an `end_to_start` \
         segment stays `end_to_start` after upgrade. Always call `observe_area` or \
-        `query_segments` after upgrading one-way segments to confirm direction is correct.")]
+        `query_segments` after upgrading one-way segments to confirm direction is correct."
+    )]
     async fn upgrade_road(
         &self,
         Parameters(args): Parameters<UpgradeRoadArgs>,
@@ -201,9 +205,11 @@ impl Skyline {
         }
     }
 
-    #[tool(description = "Estimate the route traffic would take between two positions \
+    #[tool(
+        description = "Estimate the route traffic would take between two positions \
         (snapped to nearest road nodes), honoring one-way directions and speed limits. \
-        Free read — use it to check whether a new link will actually attract traffic.")]
+        Free read — use it to check whether a new link will actually attract traffic."
+    )]
     async fn trace_route(
         &self,
         Parameters(args): Parameters<TraceRouteArgs>,
@@ -225,14 +231,22 @@ impl Skyline {
         }
     }
 
-    #[tool(description = "Angled 3-D screenshot of a location: a 45° game render showing road height, \
+    #[tool(
+        description = "Angled 3-D screenshot of a location: a 45° game render showing road height, \
         bridges, pillars and overpass clearance — use it to SEE elevation that render_map (top-down) cannot. \
-        Args: x, z (world metres), optional size (default 350; larger zooms out), top_down (default false).")]
-    async fn view_3d(&self, Parameters(args): Parameters<ViewArgs>) -> Result<CallToolResult, ErrorData> {
+        Args: x, z (world metres), optional size (default 350; larger zooms out), top_down (default false)."
+    )]
+    async fn view_3d(
+        &self,
+        Parameters(args): Parameters<ViewArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
         match service::view_3d(&self.client, args).await {
             Ok(png) => {
                 let data = base64::engine::general_purpose::STANDARD.encode(png);
-                Ok(CallToolResult::success(vec![Content::image(data, "image/png".to_string())]))
+                Ok(CallToolResult::success(vec![Content::image(
+                    data,
+                    "image/png".to_string(),
+                )]))
             }
             Err(e) => Ok(tool_error(e)),
         }

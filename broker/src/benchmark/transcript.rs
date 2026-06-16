@@ -6,9 +6,14 @@ use crate::benchmark::harness::Harness;
 pub enum Block {
     Thinking(String),
     Text(String),
-    ToolUse { name: String, input: Value },
+    ToolUse {
+        name: String,
+        input: Value,
+    },
     /// A tool result's inner text parts (one harness "tool_result" block).
-    ToolResult { parts: Vec<String> },
+    ToolResult {
+        parts: Vec<String>,
+    },
 }
 
 /// A normalized transcript event, harness-independent.
@@ -43,11 +48,19 @@ fn parse_claude(v: &Value) -> Vec<Event> {
         }
         "assistant" => {
             let blocks = claude_blocks(v, false);
-            if blocks.is_empty() { vec![] } else { vec![Event::Assistant(blocks)] }
+            if blocks.is_empty() {
+                vec![]
+            } else {
+                vec![Event::Assistant(blocks)]
+            }
         }
         "user" => {
             let blocks = claude_blocks(v, true);
-            if blocks.is_empty() { vec![] } else { vec![Event::Results(blocks)] }
+            if blocks.is_empty() {
+                vec![]
+            } else {
+                vec![Event::Results(blocks)]
+            }
         }
         "result" => v
             .get("result")
@@ -61,7 +74,11 @@ fn parse_claude(v: &Value) -> Vec<Event> {
 /// Collect blocks from a claude message. `results` selects tool_result blocks
 /// (user turn) vs thinking/text/tool_use blocks (assistant turn).
 fn claude_blocks(v: &Value, results: bool) -> Vec<Block> {
-    let content = match v.get("message").and_then(|m| m.get("content")).and_then(|c| c.as_array()) {
+    let content = match v
+        .get("message")
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_array())
+    {
         Some(c) => c,
         None => return vec![],
     };
@@ -70,7 +87,9 @@ fn claude_blocks(v: &Value, results: bool) -> Vec<Block> {
         .filter_map(|b| {
             let t = b.get("type")?.as_str()?;
             match (results, t) {
-                (false, "thinking") => Some(Block::Thinking(b.get("thinking")?.as_str()?.to_string())),
+                (false, "thinking") => {
+                    Some(Block::Thinking(b.get("thinking")?.as_str()?.to_string()))
+                }
                 (false, "text") => Some(Block::Text(b.get("text")?.as_str()?.to_string())),
                 (false, "tool_use") => Some(Block::ToolUse {
                     name: b.get("name")?.as_str()?.to_string(),
@@ -116,27 +135,42 @@ fn parse_codex(v: &Value) -> Vec<Event> {
     let text = |key: &str| item.get(key).and_then(|t| t.as_str()).map(String::from);
 
     match item_type {
-        "agent_message" | "assistant_message" => {
-            text("text").map(|t| vec![Event::Assistant(vec![Block::Text(t)])]).unwrap_or_default()
-        }
-        "reasoning" => {
-            text("text").map(|t| vec![Event::Assistant(vec![Block::Thinking(t)])]).unwrap_or_default()
-        }
+        "agent_message" | "assistant_message" => text("text")
+            .map(|t| vec![Event::Assistant(vec![Block::Text(t)])])
+            .unwrap_or_default(),
+        "reasoning" => text("text")
+            .map(|t| vec![Event::Assistant(vec![Block::Thinking(t)])])
+            .unwrap_or_default(),
         "mcp_tool_call" => {
-            let name = item.get("tool").and_then(|t| t.as_str()).unwrap_or("tool").to_string();
+            let name = item
+                .get("tool")
+                .and_then(|t| t.as_str())
+                .unwrap_or("tool")
+                .to_string();
             let input = item.get("arguments").cloned().unwrap_or(Value::Null);
             let mut events = vec![Event::Assistant(vec![Block::ToolUse { name, input }])];
             if let Some(result) = item.get("result") {
-                events.push(Event::Results(vec![Block::ToolResult { parts: result_parts(result) }]));
+                events.push(Event::Results(vec![Block::ToolResult {
+                    parts: result_parts(result),
+                }]));
             }
             events
         }
         "command_execution" => {
-            let command = item.get("command").and_then(|c| c.as_str()).unwrap_or("").to_string();
+            let command = item
+                .get("command")
+                .and_then(|c| c.as_str())
+                .unwrap_or("")
+                .to_string();
             let input = serde_json::json!({ "command": command });
-            let mut events = vec![Event::Assistant(vec![Block::ToolUse { name: "bash".to_string(), input }])];
+            let mut events = vec![Event::Assistant(vec![Block::ToolUse {
+                name: "bash".to_string(),
+                input,
+            }])];
             if let Some(out) = item.get("aggregated_output").and_then(|o| o.as_str()) {
-                events.push(Event::Results(vec![Block::ToolResult { parts: vec![out.to_string()] }]));
+                events.push(Event::Results(vec![Block::ToolResult {
+                    parts: vec![out.to_string()],
+                }]));
             }
             events
         }
@@ -199,7 +233,11 @@ fn parse_gemini(v: &Value) -> Vec<Event> {
             }
         }
         "tool_use" => {
-            let name = v.get("tool_name").and_then(|n| n.as_str()).unwrap_or("tool").to_string();
+            let name = v
+                .get("tool_name")
+                .and_then(|n| n.as_str())
+                .unwrap_or("tool")
+                .to_string();
             let input = v.get("parameters").cloned().unwrap_or(Value::Null);
             vec![Event::Assistant(vec![Block::ToolUse { name, input }])]
         }
@@ -209,7 +247,9 @@ fn parse_gemini(v: &Value) -> Vec<Event> {
                 .map(value_to_text)
                 .or_else(|| v.get("error").map(value_to_text))
                 .unwrap_or_default();
-            vec![Event::Results(vec![Block::ToolResult { parts: vec![part] }])]
+            vec![Event::Results(vec![Block::ToolResult {
+                parts: vec![part],
+            }])]
         }
         _ => vec![],
     }
@@ -265,7 +305,9 @@ fn parse_opencode(v: &Value) -> Vec<Event> {
                 .unwrap_or(Value::Null);
             let mut events = vec![Event::Assistant(vec![Block::ToolUse { name, input }])];
             if let Some(output) = state.and_then(|s| s.get("output")) {
-                events.push(Event::Results(vec![Block::ToolResult { parts: vec![value_to_text(output)] }]));
+                events.push(Event::Results(vec![Block::ToolResult {
+                    parts: vec![value_to_text(output)],
+                }]));
             }
             events
         }
@@ -303,9 +345,9 @@ fn render_md_event(event: &Event) -> Option<String> {
 
 fn render_md_block(block: &Block) -> Option<String> {
     match block {
-        Block::Thinking(t) => {
-            Some(format!("<details><summary>Thinking</summary>\n\n{t}\n\n</details>"))
-        }
+        Block::Thinking(t) => Some(format!(
+            "<details><summary>Thinking</summary>\n\n{t}\n\n</details>"
+        )),
         Block::Text(t) => Some(t.clone()),
         Block::ToolUse { name, input } => {
             let pretty = serde_json::to_string_pretty(input).unwrap_or_else(|_| input.to_string());
@@ -318,7 +360,10 @@ fn render_md_block(block: &Block) -> Option<String> {
 /// Format one JSONL line (already deserialized) into a compact live console
 /// string. Returns None when there is nothing useful to show.
 pub fn format_event_live(harness: Harness, v: &Value) -> Option<String> {
-    let lines: Vec<String> = parse_line(harness, v).iter().filter_map(render_live_event).collect();
+    let lines: Vec<String> = parse_line(harness, v)
+        .iter()
+        .filter_map(render_live_event)
+        .collect();
     (!lines.is_empty()).then(|| lines.join("\n"))
 }
 
@@ -345,7 +390,11 @@ fn render_live_event(event: &Event) -> Option<String> {
 
 fn truncate(s: &str, max: usize) -> String {
     let out: String = s.chars().take(max).collect();
-    if s.chars().count() > max { format!("{out}…") } else { out }
+    if s.chars().count() > max {
+        format!("{out}…")
+    } else {
+        out
+    }
 }
 
 fn render_live_block(block: &Block) -> Option<String> {
@@ -353,7 +402,11 @@ fn render_live_block(block: &Block) -> Option<String> {
         Block::Thinking(t) => {
             let t = t.trim();
             (!t.is_empty()).then(|| {
-                let indented = t.lines().map(|l| format!("  {l}")).collect::<Vec<_>>().join("\n");
+                let indented = t
+                    .lines()
+                    .map(|l| format!("  {l}"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
                 format!("  [thinking]\n{indented}")
             })
         }
@@ -380,7 +433,10 @@ fn render_live_result(parts: &[String]) -> Option<String> {
                     .map_or("?".to_string(), |n| format!("{n:.prec$}"))
             };
             let getu = |new: &str, old: &str| {
-                p.get(new).or_else(|| p.get(old)).and_then(|x| x.as_u64()).unwrap_or(0)
+                p.get(new)
+                    .or_else(|| p.get(old))
+                    .and_then(|x| x.as_u64())
+                    .unwrap_or(0)
             };
             let rejected = v.get("ok").and_then(|x| x.as_bool()) == Some(false);
             let junctions = p
@@ -425,7 +481,10 @@ mod tests {
     #[test]
     fn skips_malformed_lines() {
         let md = render_transcript(Harness::Claude, "not json\n{}\n");
-        assert!(md.is_empty(), "malformed-only input should render nothing, got: {md}");
+        assert!(
+            md.is_empty(),
+            "malformed-only input should render nothing, got: {md}"
+        );
     }
 
     #[test]
@@ -472,7 +531,10 @@ mod tests {
         )
         .unwrap();
         let line = format_event_live(Harness::Claude, &event).unwrap();
-        assert!(line.contains("congested ?m"), "null current renders ?: {line}");
+        assert!(
+            line.contains("congested ?m"),
+            "null current renders ?: {line}"
+        );
         assert!(line.contains("flow ?"), "null flow renders ?: {line}");
     }
 
@@ -544,7 +606,10 @@ mod tests {
     #[test]
     fn gemini_init_is_session_start_live() {
         let line: Value = serde_json::from_str(r#"{"type":"init","session_id":"s1"}"#).unwrap();
-        assert_eq!(format_event_live(Harness::Gemini, &line).as_deref(), Some("● session started"));
+        assert_eq!(
+            format_event_live(Harness::Gemini, &line).as_deref(),
+            Some("● session started")
+        );
     }
 
     #[test]
@@ -555,7 +620,10 @@ mod tests {
         .unwrap();
         let md = render_transcript(Harness::Gemini, &line.to_string());
         assert!(md.contains("timeout"), "error text present: {md}");
-        assert!(!md.contains("\"timeout\""), "no literal JSON quotes around error: {md}");
+        assert!(
+            !md.contains("\"timeout\""),
+            "no literal JSON quotes around error: {md}"
+        );
     }
 
     #[test]
@@ -565,17 +633,22 @@ mod tests {
         )
         .unwrap();
         let md = render_transcript(Harness::Gemini, &line.to_string());
-        assert!(md.contains("flow"), "object output serialized, not dropped: {md}");
+        assert!(
+            md.contains("flow"),
+            "object output serialized, not dropped: {md}"
+        );
     }
 
     #[test]
     fn gemini_accepts_model_role() {
-        let line: Value = serde_json::from_str(
-            r#"{"type":"message","role":"model","content":"Done planning."}"#,
-        )
-        .unwrap();
+        let line: Value =
+            serde_json::from_str(r#"{"type":"message","role":"model","content":"Done planning."}"#)
+                .unwrap();
         let md = render_transcript(Harness::Gemini, &line.to_string());
-        assert!(md.contains("Done planning."), "model role treated as assistant: {md}");
+        assert!(
+            md.contains("Done planning."),
+            "model role treated as assistant: {md}"
+        );
     }
 
     #[test]
@@ -597,7 +670,11 @@ mod tests {
 
     #[test]
     fn opencode_step_finish_stop_is_done_live() {
-        let line: Value = serde_json::from_str(r#"{"type":"step_finish","reason":"stop"}"#).unwrap();
-        assert_eq!(format_event_live(Harness::Opencode, &line).as_deref(), Some("● done: complete"));
+        let line: Value =
+            serde_json::from_str(r#"{"type":"step_finish","reason":"stop"}"#).unwrap();
+        assert_eq!(
+            format_event_live(Harness::Opencode, &line).as_deref(),
+            Some("● done: complete")
+        );
     }
 }

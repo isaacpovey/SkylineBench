@@ -41,9 +41,32 @@ impl MockState {
 
 fn road_types() -> Vec<RoadType> {
     vec![
-        RoadType { name: "road".into(), construction_cost: 1000, allows_zoning: true, lanes: 2, half_width: 8.0, ..Default::default() },
-        RoadType { name: "oneway".into(), construction_cost: 1500, allows_zoning: true, one_way: true, lanes: 3, half_width: 11.0, ..Default::default() },
-        RoadType { name: "highway".into(), construction_cost: 5000, allows_zoning: false, limited_access: true, lanes: 4, half_width: 16.0, ..Default::default() },
+        RoadType {
+            name: "road".into(),
+            construction_cost: 1000,
+            allows_zoning: true,
+            lanes: 2,
+            half_width: 8.0,
+            ..Default::default()
+        },
+        RoadType {
+            name: "oneway".into(),
+            construction_cost: 1500,
+            allows_zoning: true,
+            one_way: true,
+            lanes: 3,
+            half_width: 11.0,
+            ..Default::default()
+        },
+        RoadType {
+            name: "highway".into(),
+            construction_cost: 5000,
+            allows_zoning: false,
+            limited_access: true,
+            lanes: 4,
+            half_width: 16.0,
+            ..Default::default()
+        },
     ]
 }
 
@@ -120,12 +143,18 @@ async fn metrics(State(s): State<MockState>) -> Json<Metrics> {
             workplace_demand: 30,
             employed: 700,
         },
-        services: ServiceMetrics { happiness: 75, abandoned_buildings: 0, ..Default::default() },
+        services: ServiceMetrics {
+            happiness: 75,
+            abandoned_buildings: 0,
+            ..Default::default()
+        },
     })
 }
 
 async fn road_types_ep() -> Json<RoadTypes> {
-    Json(RoadTypes { road_types: road_types() })
+    Json(RoadTypes {
+        road_types: road_types(),
+    })
 }
 
 async fn zone_types_ep() -> Json<ZoneTypes> {
@@ -160,7 +189,12 @@ fn resolve_node(p: Position, elevation: f32, snap: bool, city: &mut City) -> (u3
     }
     let id = city.next_id;
     city.next_id += 1;
-    city.nodes.push(NetNode { id, x: p.x, y: elevation, z: p.z });
+    city.nodes.push(NetNode {
+        id,
+        x: p.x,
+        y: elevation,
+        z: p.z,
+    });
     (id, false)
 }
 
@@ -216,7 +250,11 @@ async fn build_road(
         lanes: 2,
         length,
         one_way,
-        travel_direction: if one_way { "start_to_end".into() } else { "both".into() },
+        travel_direction: if one_way {
+            "start_to_end".into()
+        } else {
+            "both".into()
+        },
         speed_limit,
     });
 
@@ -243,7 +281,11 @@ async fn validate_road(
         created_segments: vec![],
         snapped_nodes: vec![],
         destroyed: vec![],
-        reason: if known { None } else { Some(ActionError::InvalidPrefab) },
+        reason: if known {
+            None
+        } else {
+            Some(ActionError::InvalidPrefab)
+        },
         zoned_buildings_fronting: if known { Some(0) } else { None },
         colliding_buildings: vec![],
     })
@@ -398,10 +440,7 @@ fn mock_saves() -> Vec<crate::contract::SaveInfo> {
     }]
 }
 
-async fn load_save(
-    State(s): State<MockState>,
-    Json(body): Json<LoadSaveBody>,
-) -> Json<LoadResult> {
+async fn load_save(State(s): State<MockState>, Json(body): Json<LoadSaveBody>) -> Json<LoadResult> {
     let saves = mock_saves();
     let resolved = saves.iter().find(|s| s.name == body.save_name).cloned();
     match resolved {
@@ -429,7 +468,9 @@ async fn load_save(
 }
 
 async fn saves() -> Json<crate::contract::Saves> {
-    Json(crate::contract::Saves { saves: mock_saves() })
+    Json(crate::contract::Saves {
+        saves: mock_saves(),
+    })
 }
 
 #[derive(Deserialize)]
@@ -449,8 +490,7 @@ const FORCED_PAUSE_SENTINEL_TICKS: u32 = 424;
 
 async fn clock(State(s): State<MockState>, Json(body): Json<ClockBody>) -> Json<ClockState> {
     let mut c = s.city.lock().unwrap();
-    let forced_paused =
-        body.op == "step" && body.ticks == Some(FORCED_PAUSE_SENTINEL_TICKS);
+    let forced_paused = body.op == "step" && body.ticks == Some(FORCED_PAUSE_SENTINEL_TICKS);
     match body.op.as_str() {
         "pause" => c.paused = true,
         "resume" => c.paused = false,
@@ -473,7 +513,10 @@ async fn screenshot(
 ) -> impl axum::response::IntoResponse {
     let net = {
         let c = s.city.lock().unwrap();
-        Network { nodes: c.nodes.clone(), segments: c.segments.clone() }
+        Network {
+            nodes: c.nodes.clone(),
+            segments: c.segments.clone(),
+        }
     };
     let opts = crate::render::RenderOptions {
         bounds: crate::geometry::playable_bounds(),
@@ -496,7 +539,10 @@ async fn flyby(Json(body): Json<serde_json::Value>) -> impl axum::response::Into
             grid_spacing_m: 0.0,
         };
         let png = crate::render::render_network(
-            &Network { nodes: vec![], segments: vec![] },
+            &Network {
+                nodes: vec![],
+                segments: vec![],
+            },
             &std::collections::HashMap::new(),
             &opts,
         );
@@ -507,11 +553,17 @@ async fn flyby(Json(body): Json<serde_json::Value>) -> impl axum::response::Into
     axum::http::StatusCode::OK
 }
 
-async fn preview(State(_s): State<MockState>, Json(_body): Json<serde_json::Value>) -> Json<serde_json::Value> {
+async fn preview(
+    State(_s): State<MockState>,
+    Json(_body): Json<serde_json::Value>,
+) -> Json<serde_json::Value> {
     Json(serde_json::json!({ "ok": true, "active": true }))
 }
 
-async fn preview_clear(State(_s): State<MockState>, Json(_body): Json<serde_json::Value>) -> Json<serde_json::Value> {
+async fn preview_clear(
+    State(_s): State<MockState>,
+    Json(_body): Json<serde_json::Value>,
+) -> Json<serde_json::Value> {
     Json(serde_json::json!({ "ok": true, "active": false }))
 }
 
@@ -608,11 +660,25 @@ mod tests {
         let (addr, server) = bind("127.0.0.1:0".parse().unwrap()).await;
         tokio::spawn(server);
         let client = reqwest::Client::new();
-        let set: serde_json::Value = client.post(format!("http://{addr}/preview"))
-            .json(&serde_json::json!({"ops": []})).send().await.unwrap().json().await.unwrap();
+        let set: serde_json::Value = client
+            .post(format!("http://{addr}/preview"))
+            .json(&serde_json::json!({"ops": []}))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
         assert_eq!(set["ok"], true);
-        let clear: serde_json::Value = client.post(format!("http://{addr}/preview-clear"))
-            .json(&serde_json::json!({})).send().await.unwrap().json().await.unwrap();
+        let clear: serde_json::Value = client
+            .post(format!("http://{addr}/preview-clear"))
+            .json(&serde_json::json!({}))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
         assert_eq!(clear["active"], false);
     }
 
@@ -630,7 +696,11 @@ mod tests {
             .unwrap();
         let road = body.road_types.iter().find(|r| r.name == "road").unwrap();
         assert!(road.construction_cost > 0);
-        let highway = body.road_types.iter().find(|r| r.name == "highway").unwrap();
+        let highway = body
+            .road_types
+            .iter()
+            .find(|r| r.name == "highway")
+            .unwrap();
         assert!(highway.construction_cost > road.construction_cost);
     }
 

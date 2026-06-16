@@ -59,7 +59,17 @@ impl ScreenshotSink {
         if self.disabled() {
             return None;
         }
-        match client.screenshot(shot.x, shot.z, shot.size, shot.yaw, shot.pitch, shot.info_view.as_str()).await {
+        match client
+            .screenshot(
+                shot.x,
+                shot.z,
+                shot.size,
+                shot.yaw,
+                shot.pitch,
+                shot.info_view.as_str(),
+            )
+            .await
+        {
             Ok(png) => Some(png),
             Err(e) => {
                 eprintln!("benchmark: screenshot capture failed ({e}); disabling screenshots for this run");
@@ -79,7 +89,8 @@ impl ScreenshotSink {
         caption: Option<String>,
     ) {
         if let Some(png) = self.grab(client, shot).await {
-            self.persist(client, state, &png, stream, trigger, caption).await;
+            self.persist(client, state, &png, stream, trigger, caption)
+                .await;
         }
     }
 
@@ -102,7 +113,11 @@ impl ScreenshotSink {
         };
         let (changes, flow, congested) = {
             let s = state.lock().await;
-            (s.num_changes, s.flow.mean(), (!s.congestion.is_empty()).then(|| s.congestion.mean()))
+            (
+                s.num_changes,
+                s.flow.mean(),
+                (!s.congestion.is_empty()).then(|| s.congestion.mean()),
+            )
         };
         let dir = self.dir.join(stream.subdir());
         let name = format!("{seq:05}-tick{tick}.png");
@@ -123,7 +138,9 @@ impl ScreenshotSink {
                 writeln!(f, "{line}")
             });
         if let Err(e) = written {
-            eprintln!("benchmark: screenshot persist failed ({e}); disabling screenshots for this run");
+            eprintln!(
+                "benchmark: screenshot persist failed ({e}); disabling screenshots for this run"
+            );
             self.disabled.store(true, Ordering::Relaxed);
         }
     }
@@ -140,11 +157,16 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::Mutex;
 
-    async fn sink_with_mock(dir: &std::path::Path) -> (ScreenshotSink, Arc<BridgeClient>, Arc<Mutex<RunState>>) {
+    async fn sink_with_mock(
+        dir: &std::path::Path,
+    ) -> (ScreenshotSink, Arc<BridgeClient>, Arc<Mutex<RunState>>) {
         let (addr, server) = mock::bind("127.0.0.1:0".parse().unwrap()).await;
         tokio::spawn(server);
         let client = Arc::new(BridgeClient::new(format!("http://{addr}")));
-        let state = Arc::new(Mutex::new(RunState::new(BenchConfig::default(), HashMap::new())));
+        let state = Arc::new(Mutex::new(RunState::new(
+            BenchConfig::default(),
+            HashMap::new(),
+        )));
         (ScreenshotSink::new(dir.to_path_buf()), client, state)
     }
 
@@ -154,20 +176,36 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
         let (sink, client, state) = sink_with_mock(&dir).await;
 
-        let shot = crate::service::overview_shot(&crate::contract::Network { nodes: vec![], segments: vec![] });
-        sink.capture(&client, &state, shot, Stream::Overview, "step", None).await;
-        sink.capture(&client, &state, crate::service::closeup_shot(10.0, 20.0), Stream::Action, "build_road",
-            Some("build_road: road".into())).await;
+        let shot = crate::service::overview_shot(&crate::contract::Network {
+            nodes: vec![],
+            segments: vec![],
+        });
+        sink.capture(&client, &state, shot, Stream::Overview, "step", None)
+            .await;
+        sink.capture(
+            &client,
+            &state,
+            crate::service::closeup_shot(10.0, 20.0),
+            Stream::Action,
+            "build_road",
+            Some("build_road: road".into()),
+        )
+        .await;
 
         let overview = std::fs::read_to_string(dir.join("overview/index.jsonl")).unwrap();
-        let entry: serde_json::Value = serde_json::from_str(overview.lines().next().unwrap()).unwrap();
+        let entry: serde_json::Value =
+            serde_json::from_str(overview.lines().next().unwrap()).unwrap();
         assert_eq!(entry["seq"], 1);
         assert_eq!(entry["trigger"], "step");
         assert!(entry["tick"].is_u64());
-        assert!(dir.join("overview").join(entry["file"].as_str().unwrap()).exists());
+        assert!(dir
+            .join("overview")
+            .join(entry["file"].as_str().unwrap())
+            .exists());
 
         let actions = std::fs::read_to_string(dir.join("actions/index.jsonl")).unwrap();
-        let entry: serde_json::Value = serde_json::from_str(actions.lines().next().unwrap()).unwrap();
+        let entry: serde_json::Value =
+            serde_json::from_str(actions.lines().next().unwrap()).unwrap();
         assert_eq!(entry["action"], "build_road");
         assert_eq!(entry["caption"], "build_road: road");
         std::fs::remove_dir_all(&dir).ok();
@@ -179,13 +217,35 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
         // Point at a dead address: every capture errors.
         let client = Arc::new(BridgeClient::new("http://127.0.0.1:1"));
-        let state = Arc::new(Mutex::new(RunState::new(BenchConfig::default(), HashMap::new())));
+        let state = Arc::new(Mutex::new(RunState::new(
+            BenchConfig::default(),
+            HashMap::new(),
+        )));
         let sink = ScreenshotSink::new(dir.clone());
 
-        sink.capture(&client, &state, crate::service::closeup_shot(0.0, 0.0), Stream::Action, "bulldoze", None).await;
+        sink.capture(
+            &client,
+            &state,
+            crate::service::closeup_shot(0.0, 0.0),
+            Stream::Action,
+            "bulldoze",
+            None,
+        )
+        .await;
         assert!(sink.disabled(), "first failure disables the sink");
-        sink.capture(&client, &state, crate::service::closeup_shot(0.0, 0.0), Stream::Action, "bulldoze", None).await;
-        assert!(!dir.join("actions/index.jsonl").exists(), "no frames after disable");
+        sink.capture(
+            &client,
+            &state,
+            crate::service::closeup_shot(0.0, 0.0),
+            Stream::Action,
+            "bulldoze",
+            None,
+        )
+        .await;
+        assert!(
+            !dir.join("actions/index.jsonl").exists(),
+            "no frames after disable"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 }

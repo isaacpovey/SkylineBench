@@ -54,15 +54,23 @@ mod tests {
 
         let persister = EndStatePersister {
             out_dir: dir.clone(),
-            map: MapInfo { id: "m".into(), source: "test".into(), game_version: "v".into() },
+            map: MapInfo {
+                id: "m".into(),
+                source: "test".into(),
+                game_version: "v".into(),
+            },
             started_at: "t0".into(),
         };
         persister.write(&state).unwrap();
 
         let end: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(dir.join("end-state.json")).unwrap()).unwrap();
+            serde_json::from_str(&std::fs::read_to_string(dir.join("end-state.json")).unwrap())
+                .unwrap();
         assert_eq!(end["end_reason"], "submit");
-        assert!(!dir.join("end-state.json.tmp").exists(), "tmp file must be renamed away");
+        assert!(
+            !dir.join("end-state.json.tmp").exists(),
+            "tmp file must be renamed away"
+        );
 
         std::fs::remove_dir_all(&dir).ok();
     }

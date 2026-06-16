@@ -65,10 +65,19 @@ pub fn merge_frames(overview: Vec<Frame>, actions: Vec<Frame>) -> Vec<Frame> {
 }
 
 fn hud_line(f: &Frame) -> String {
-    let flow = f.flow.map(|v| format!("{v:.1}%")).unwrap_or_else(|| "—".into());
-    let congested = f.congested.map(|v| format!("{v:.0}m")).unwrap_or_else(|| "—".into());
+    let flow = f
+        .flow
+        .map(|v| format!("{v:.1}%"))
+        .unwrap_or_else(|| "—".into());
+    let congested = f
+        .congested
+        .map(|v| format!("{v:.0}m"))
+        .unwrap_or_else(|| "—".into());
     let caption = f.caption.as_deref().unwrap_or("");
-    format!("tick {}  flow {}  congested {}  changes {}  {}", f.tick, flow, congested, f.changes, caption)
+    format!(
+        "tick {}  flow {}  congested {}  changes {}  {}",
+        f.tick, flow, congested, f.changes, caption
+    )
 }
 
 fn draw_text(pixmap: &mut tiny_skia::Pixmap, x: f32, baseline_y: f32, px: f32, text: &str) {
@@ -117,8 +126,15 @@ pub fn annotate(png: &[u8], frame: &Frame) -> Result<Vec<u8>, anyhow::Error> {
         None,
     );
     let baseline = src.height() as f32 + HUD_HEIGHT_PX as f32 * 0.7;
-    draw_text(&mut out, 8.0, baseline, HUD_HEIGHT_PX as f32 * 0.55, &hud_line(frame));
-    out.encode_png().map_err(|e| anyhow::anyhow!("frame encode failed: {e}"))
+    draw_text(
+        &mut out,
+        8.0,
+        baseline,
+        HUD_HEIGHT_PX as f32 * 0.55,
+        &hud_line(frame),
+    );
+    out.encode_png()
+        .map_err(|e| anyhow::anyhow!("frame encode failed: {e}"))
 }
 
 /// Select the frames to assemble for `run_dir`. Prefers real screenshots when
@@ -141,7 +157,11 @@ pub fn select_frames(run_dir: &Path) -> Vec<Frame> {
 /// back to synthetic renders for runs captured before screenshots existed.
 pub fn assemble(run_dir: &Path, fps: u32, out: &Path) -> Result<(), anyhow::Error> {
     let frames = select_frames(run_dir);
-    anyhow::ensure!(!frames.is_empty(), "no frames found under {}", run_dir.display());
+    anyhow::ensure!(
+        !frames.is_empty(),
+        "no frames found under {}",
+        run_dir.display()
+    );
 
     let staging = run_dir.join("timelapse-frames");
     std::fs::create_dir_all(&staging)?;
@@ -162,7 +182,9 @@ pub fn assemble(run_dir: &Path, fps: u32, out: &Path) -> Result<(), anyhow::Erro
         .args(["-pix_fmt", "yuv420p"])
         .arg(&core)
         .status()
-        .map_err(|e| anyhow::anyhow!("could not run ffmpeg ({e}) — install it with `brew install ffmpeg`"))?;
+        .map_err(|e| {
+            anyhow::anyhow!("could not run ffmpeg ({e}) — install it with `brew install ffmpeg`")
+        })?;
     anyhow::ensure!(status.success(), "ffmpeg exited with {status}");
     std::fs::remove_dir_all(&staging).ok();
 
@@ -198,7 +220,9 @@ fn encode_png_dir(dir: &Path, fps: u32, out: &Path) -> Result<(), anyhow::Error>
         .args(["-pix_fmt", "yuv420p"])
         .arg(out)
         .status()
-        .map_err(|e| anyhow::anyhow!("could not run ffmpeg ({e}) — install it with `brew install ffmpeg`"))?;
+        .map_err(|e| {
+            anyhow::anyhow!("could not run ffmpeg ({e}) — install it with `brew install ffmpeg`")
+        })?;
     anyhow::ensure!(status.success(), "ffmpeg exited with {status}");
     Ok(())
 }
@@ -322,7 +346,11 @@ mod tests {
         )
         .unwrap();
         let frames = select_frames(&run_dir);
-        assert_eq!(frames.len(), 1, "should fall back to renders when screenshots are empty");
+        assert_eq!(
+            frames.len(),
+            1,
+            "should fall back to renders when screenshots are empty"
+        );
         assert_eq!(frames[0].tick, 10);
         assert_eq!(frames[0].path, renders.join("r1.png"));
         std::fs::remove_dir_all(&run_dir).ok();
@@ -348,8 +376,15 @@ mod tests {
         )
         .unwrap();
         let frames = select_frames(&run_dir);
-        assert_eq!(frames.len(), 1, "should use screenshots when they have frames");
-        assert_eq!(frames[0].tick, 5, "should be the screenshot frame, not the render");
+        assert_eq!(
+            frames.len(),
+            1,
+            "should use screenshots when they have frames"
+        );
+        assert_eq!(
+            frames[0].tick, 5,
+            "should be the screenshot frame, not the render"
+        );
         std::fs::remove_dir_all(&run_dir).ok();
     }
 
@@ -398,7 +433,10 @@ mod tests {
 
     #[test]
     fn annotate_adds_a_hud_strip() {
-        let net = crate::contract::Network { nodes: vec![], segments: vec![] };
+        let net = crate::contract::Network {
+            nodes: vec![],
+            segments: vec![],
+        };
         let opts = crate::render::RenderOptions {
             bounds: crate::geometry::playable_bounds(),
             width_px: 320,

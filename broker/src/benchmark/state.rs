@@ -117,8 +117,10 @@ impl RunState {
 
     pub fn observe_metrics(&mut self, m: &Metrics) {
         self.flow.push(m.traffic.flow_percent as f64);
-        self.congestion
-            .push(instant_congested_meters(&m.traffic.segment_loads, self.config.congestion_threshold));
+        self.congestion.push(instant_congested_meters(
+            &m.traffic.segment_loads,
+            self.config.congestion_threshold,
+        ));
         self.last_population = Some(m.population.total);
         self.last_abandoned_buildings = Some(m.services.abandoned_buildings);
         self.last_happiness = Some(m.services.happiness);
@@ -177,7 +179,10 @@ impl RunState {
             end_reason: self.end_reason.unwrap_or(EndReason::Disconnect),
             baseline: self.baseline.clone(),
             baseline_flow_samples: self.baseline_flow_samples.clone(),
-            tally: Tally { num_changes: self.num_changes, money_spent: self.money_spent },
+            tally: Tally {
+                num_changes: self.num_changes,
+                money_spent: self.money_spent,
+            },
             actions: self.actions.clone(),
         }
     }
@@ -232,9 +237,18 @@ mod tests {
             traffic: TrafficMetrics {
                 flow_percent: 50.0,
                 active_vehicles: 100,
-                segment_loads: vec![SegmentLoad { segment_id: 1, density, length: 100.0 }],
+                segment_loads: vec![SegmentLoad {
+                    segment_id: 1,
+                    density,
+                    length: 100.0,
+                }],
             },
-            economy: EconomyMetrics { balance: 0, weekly_income: 0, weekly_expenses: 0, funds: 0 },
+            economy: EconomyMetrics {
+                balance: 0,
+                weekly_income: 0,
+                weekly_expenses: 0,
+                funds: 0,
+            },
             population: PopulationMetrics {
                 total: 1000,
                 residential_demand: 0,
@@ -242,7 +256,11 @@ mod tests {
                 workplace_demand: 0,
                 employed: 0,
             },
-            services: ServiceMetrics { happiness: 80, abandoned_buildings: 2, ..Default::default() },
+            services: ServiceMetrics {
+                happiness: 80,
+                abandoned_buildings: 2,
+                ..Default::default()
+            },
         }
     }
 
@@ -268,22 +286,37 @@ mod tests {
         let p = s.progress();
         assert!(p["congested_road_meters"].is_null(), "no samples yet");
         assert!(p["traffic_flow"].is_null(), "no samples yet");
-        assert!(p["congested_road_meters_at_start"].is_null(), "no baseline yet");
+        assert!(
+            p["congested_road_meters_at_start"].is_null(),
+            "no baseline yet"
+        );
         assert!(p["time_remaining"].as_u64().unwrap() <= 10_800);
         assert!(p.get("score").is_none());
         assert!(p.get("composite_score").is_none());
         assert!(p.get("weights").is_none());
-        assert!(p.get("congested_meters_target").is_none(), "scoring target must not leak");
+        assert!(
+            p.get("congested_meters_target").is_none(),
+            "scoring target must not leak"
+        );
         assert!(p["happiness"].is_null(), "no happiness before first sample");
 
         // service_problems is null until the first metrics sample.
-        assert!(p.get("service_problems").map_or(true, Value::is_null), "no service_problems before first sample");
+        assert!(
+            p.get("service_problems").map_or(true, Value::is_null),
+            "no service_problems before first sample"
+        );
 
         s.observe_metrics(&sample_metrics(0.9));
         let p = s.progress();
-        assert!(p["congested_road_meters"].is_number(), "current appears after first sample");
+        assert!(
+            p["congested_road_meters"].is_number(),
+            "current appears after first sample"
+        );
         assert!(p["traffic_flow"].is_number());
-        assert_eq!(p["happiness"], 80, "happiness surfaced from the latest sample");
+        assert_eq!(
+            p["happiness"], 80,
+            "happiness surfaced from the latest sample"
+        );
     }
 
     #[test]
@@ -296,7 +329,10 @@ mod tests {
         s.observe_metrics(&m);
         let p = s.progress();
         let sp = &p["service_problems"];
-        assert_eq!(sp["road_not_connected"], 7, "stranded buildings must surface immediately");
+        assert_eq!(
+            sp["road_not_connected"], 7,
+            "stranded buildings must surface immediately"
+        );
         assert_eq!(sp["garbage_piling"], 12);
         assert_eq!(sp["no_fuel"], 1, "power-plant fuel starvation must surface");
         assert_eq!(sp["no_electricity"], 0);
@@ -308,12 +344,27 @@ mod tests {
         let mut s = state();
         // congested_junctions is null until topology has been observed.
         s.observe_metrics(&sample_metrics(0.9));
-        assert!(s.progress()["congested_junctions"].is_null(), "null before topology observed");
+        assert!(
+            s.progress()["congested_junctions"].is_null(),
+            "null before topology observed"
+        );
 
-        let node = |id| NetNode { id, x: 0.0, y: 0.0, z: 0.0 };
+        let node = |id| NetNode {
+            id,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        };
         let seg = |id, a, b| NetSegment {
-            id, start_node: a, end_node: b, prefab: "road".into(), lanes: 2,
-            length: 100.0, one_way: false, travel_direction: "both".into(), speed_limit: 1.0,
+            id,
+            start_node: a,
+            end_node: b,
+            prefab: "road".into(),
+            lanes: 2,
+            length: 100.0,
+            one_way: false,
+            travel_direction: "both".into(),
+            speed_limit: 1.0,
         };
         // Node 1 is a 3-way junction; segments 10 and 11 are congested, 12 is not.
         let net = Network {
@@ -329,17 +380,48 @@ mod tests {
                 flow_percent: 50.0,
                 active_vehicles: 100,
                 segment_loads: vec![
-                    SegmentLoad { segment_id: 10, density: 0.9, length: 100.0 },
-                    SegmentLoad { segment_id: 11, density: 0.9, length: 100.0 },
-                    SegmentLoad { segment_id: 12, density: 0.2, length: 100.0 },
+                    SegmentLoad {
+                        segment_id: 10,
+                        density: 0.9,
+                        length: 100.0,
+                    },
+                    SegmentLoad {
+                        segment_id: 11,
+                        density: 0.9,
+                        length: 100.0,
+                    },
+                    SegmentLoad {
+                        segment_id: 12,
+                        density: 0.2,
+                        length: 100.0,
+                    },
                 ],
             },
-            economy: EconomyMetrics { balance: 0, weekly_income: 0, weekly_expenses: 0, funds: 0 },
-            population: PopulationMetrics { total: 1000, residential_demand: 0, commercial_demand: 0, workplace_demand: 0, employed: 0 },
-            services: ServiceMetrics { happiness: 80, abandoned_buildings: 0, ..Default::default() },
+            economy: EconomyMetrics {
+                balance: 0,
+                weekly_income: 0,
+                weekly_expenses: 0,
+                funds: 0,
+            },
+            population: PopulationMetrics {
+                total: 1000,
+                residential_demand: 0,
+                commercial_demand: 0,
+                workplace_demand: 0,
+                employed: 0,
+            },
+            services: ServiceMetrics {
+                happiness: 80,
+                abandoned_buildings: 0,
+                ..Default::default()
+            },
         };
         s.observe_metrics(&m);
-        assert_eq!(s.progress()["congested_junctions"], 1, "node 1 has 2 congested approaches");
+        assert_eq!(
+            s.progress()["congested_junctions"],
+            1,
+            "node 1 has 2 congested approaches"
+        );
     }
 
     #[test]
@@ -348,7 +430,11 @@ mod tests {
 
         let mut s = state();
         s.record_mutation("build_road", 12_000);
-        let map = MapInfo { id: "m".into(), source: "test".into(), game_version: "v".into() };
+        let map = MapInfo {
+            id: "m".into(),
+            source: "test".into(),
+            game_version: "v".into(),
+        };
         let e = s.end_state(map, "t0".into(), "t1".into());
         assert_eq!(e.end_reason, EndReason::Disconnect);
         assert_eq!(e.tally.num_changes, 1);
@@ -357,7 +443,11 @@ mod tests {
         assert!(e.baseline.is_none());
 
         s.end_reason = Some(EndReason::Submit);
-        let map = MapInfo { id: "m".into(), source: "test".into(), game_version: "v".into() };
+        let map = MapInfo {
+            id: "m".into(),
+            source: "test".into(),
+            game_version: "v".into(),
+        };
         let e = s.end_state(map, "t0".into(), "t1".into());
         assert_eq!(e.end_reason, EndReason::Submit);
     }

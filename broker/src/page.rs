@@ -65,7 +65,9 @@ fn pct(from: f64, to: f64) -> String {
 }
 
 fn esc(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 fn polyline(samples: &[f64], lo: f64, hi: f64, class: &str) -> String {
@@ -184,7 +186,10 @@ fn chart_cumulative_spend(r: &RunRecord) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ");
-    let line = format!(r#"<polyline points="{x0:.1},{base:.1} {pts}" class="c-line-final"/>"#, base = y0 + h);
+    let line = format!(
+        r#"<polyline points="{x0:.1},{base:.1} {pts}" class="c-line-final"/>"#,
+        base = y0 + h
+    );
     let label = format!(
         r#"<text x="{lx:.1}" y="{ly:.1}" class="c-val c-val-final">{money} · {count} changes</text>"#,
         lx = x0,
@@ -206,8 +211,16 @@ fn chart_before_after(r: &RunRecord) -> String {
     let rows: [(&str, f64, f64); 5] = [
         ("Flow", b.flow_mean, f.flow_mean),
         ("Congested m", b.congested_meters, f.congested_meters),
-        ("Jammed junctions", b.congested_junctions as f64, f.congested_junctions as f64),
-        ("Active vehicles", b.active_vehicles_mean, f.active_vehicles_mean),
+        (
+            "Jammed junctions",
+            b.congested_junctions as f64,
+            f.congested_junctions as f64,
+        ),
+        (
+            "Active vehicles",
+            b.active_vehicles_mean,
+            f.active_vehicles_mean,
+        ),
         ("Population", b.population as f64, f.population as f64),
     ];
     let (top, row_h, x0, w) = (8.0_f64, 40.0_f64, 112.0_f64, 200.0_f64);
@@ -289,10 +302,26 @@ pub fn render_page(narrative: &Narrative, record: &RunRecord, score: &Score) -> 
     let b = &record.baseline;
     let f = &record.final_stats;
     let chips = [
-        chip("flow", &format!("{} → {}", fmt_num(b.flow_mean), fmt_num(f.flow_mean))),
-        chip("congested metres", &pct(b.congested_meters, f.congested_meters)),
-        chip("jammed junctions", &format!("{} → {}", b.congested_junctions, f.congested_junctions)),
-        chip("population", &format!("{} → {}", fmt_num(b.population as f64), fmt_num(f.population as f64))),
+        chip(
+            "flow",
+            &format!("{} → {}", fmt_num(b.flow_mean), fmt_num(f.flow_mean)),
+        ),
+        chip(
+            "congested metres",
+            &pct(b.congested_meters, f.congested_meters),
+        ),
+        chip(
+            "jammed junctions",
+            &format!("{} → {}", b.congested_junctions, f.congested_junctions),
+        ),
+        chip(
+            "population",
+            &format!(
+                "{} → {}",
+                fmt_num(b.population as f64),
+                fmt_num(f.population as f64)
+            ),
+        ),
         chip("changes", &record.tally.num_changes.to_string()),
         chip("spent", &fmt_money(record.tally.money_spent)),
     ]
@@ -398,15 +427,17 @@ pub fn build(
     let narrative: Narrative = toml::from_str(&std::fs::read_to_string(narrative_path)?)?;
     anyhow::ensure!(
         !narrative.slug.is_empty()
-            && narrative.slug.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'),
+            && narrative
+                .slug
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'),
         "slug must be non-empty and contain only lowercase letters, digits, and hyphens (got {:?})",
         narrative.slug
     );
     let run_dir = Path::new(&narrative.run_dir);
     let record: RunRecord =
         serde_json::from_str(&std::fs::read_to_string(run_dir.join("run-record.json"))?)?;
-    let score: Score =
-        serde_json::from_str(&std::fs::read_to_string(run_dir.join("score.json"))?)?;
+    let score: Score = serde_json::from_str(&std::fs::read_to_string(run_dir.join("score.json"))?)?;
 
     let html = render_page(&narrative, &record, &score);
     let out = out.unwrap_or_else(|| PathBuf::from(format!("website/runs/{}.html", narrative.slug)));
@@ -418,7 +449,10 @@ pub fn build(
     let timelapse = run_dir.join("timelapse.mp4");
     if timelapse.exists() {
         std::fs::create_dir_all(assets_dir)?;
-        std::fs::copy(&timelapse, assets_dir.join(format!("{}.mp4", narrative.slug)))?;
+        std::fs::copy(
+            &timelapse,
+            assets_dir.join(format!("{}.mp4", narrative.slug)),
+        )?;
     }
     Ok(out)
 }
@@ -455,27 +489,56 @@ mod tests {
 
     fn sample_record() -> RunRecord {
         use crate::benchmark::config::BenchConfig;
-        use crate::benchmark::record::{
-            EndReason, FlowSamples, MapInfo, Tally, WindowStats,
-        };
+        use crate::benchmark::record::{EndReason, FlowSamples, MapInfo, Tally, WindowStats};
         RunRecord {
             schema_version: 3,
             config: BenchConfig::default(),
-            map: MapInfo { id: "gridlock-v1".into(), source: "test".into(), game_version: "1.21.1-f9".into() },
+            map: MapInfo {
+                id: "gridlock-v1".into(),
+                source: "test".into(),
+                game_version: "1.21.1-f9".into(),
+            },
             started_at: "1781291539".into(),
             ended_at: "1781296316".into(),
             end_reason: EndReason::Submit,
-            baseline: WindowStats { flow_mean: 57.375, active_vehicles_mean: 2112.125, population: 31640, congested_meters: 5121.721, congested_junctions: 35 },
-            final_stats: WindowStats { flow_mean: 70.625, active_vehicles_mean: 1708.625, population: 31174, congested_meters: 1853.891, congested_junctions: 12 },
+            baseline: WindowStats {
+                flow_mean: 57.375,
+                active_vehicles_mean: 2112.125,
+                population: 31640,
+                congested_meters: 5121.721,
+                congested_junctions: 35,
+            },
+            final_stats: WindowStats {
+                flow_mean: 70.625,
+                active_vehicles_mean: 1708.625,
+                population: 31174,
+                congested_meters: 1853.891,
+                congested_junctions: 12,
+            },
             flow_samples: FlowSamples {
                 baseline: vec![67.0, 62.0, 57.0, 57.0, 54.0, 54.0, 53.0, 55.0],
                 final_samples: vec![67.0, 67.0, 70.0, 70.0, 71.0, 72.0, 73.0, 75.0],
             },
-            tally: Tally { num_changes: 197, money_spent: 1_239_118 },
+            tally: Tally {
+                num_changes: 197,
+                money_spent: 1_239_118,
+            },
             actions: vec![
-                ActionEntry { seq: 1, tool: "bulldoze".into(), cost: 0 },
-                ActionEntry { seq: 2, tool: "build_road".into(), cost: 57_790 },
-                ActionEntry { seq: 3, tool: "upgrade_road".into(), cost: 1_181_328 },
+                ActionEntry {
+                    seq: 1,
+                    tool: "bulldoze".into(),
+                    cost: 0,
+                },
+                ActionEntry {
+                    seq: 2,
+                    tool: "build_road".into(),
+                    cost: 57_790,
+                },
+                ActionEntry {
+                    seq: 3,
+                    tool: "upgrade_road".into(),
+                    cost: 1_181_328,
+                },
             ],
         }
     }
@@ -483,8 +546,16 @@ mod tests {
     fn sample_score() -> Score {
         use crate::benchmark::record::ScoreNorms;
         Score {
-            norm: ScoreNorms { congestion: 0.6476, money: 0.1239, changes: 0.6567 },
-            weighted: ScoreNorms { congestion: 0.3886, money: 0.1752, changes: 0.0687 },
+            norm: ScoreNorms {
+                congestion: 0.6476,
+                money: 0.1239,
+                changes: 0.6567,
+            },
+            weighted: ScoreNorms {
+                congestion: 0.3886,
+                money: 0.1752,
+                changes: 0.0687,
+            },
             invalid: false,
             flow_gain: 13.25,
             meters_reduction: 0.6380,
@@ -502,8 +573,14 @@ mod tests {
             run_dir: "benchmark/runs/20260612-121219".into(),
             verdict: "Cut jammed road by two-thirds with surgical upgrades.".into(),
             beat: vec![
-                Beat { title: "Survey".into(), body: "Read the city before touching it.".into() },
-                Beat { title: "Submit".into(), body: "Stepped the sim and submitted.".into() },
+                Beat {
+                    title: "Survey".into(),
+                    body: "Read the city before touching it.".into(),
+                },
+                Beat {
+                    title: "Submit".into(),
+                    body: "Stepped the sim and submitted.".into(),
+                },
             ],
         }
     }
@@ -513,14 +590,14 @@ mod tests {
         let html = render_page(&sample_narrative(), &sample_record(), &sample_score());
         assert!(html.starts_with("<!DOCTYPE html>"));
         assert!(html.contains("Claude Fable 5"));
-        assert!(html.contains("0.63"));                       // composite score
+        assert!(html.contains("0.63")); // composite score
         assert!(html.contains("Cut jammed road by two-thirds"));
-        assert!(html.contains("assets/runs/fable-5.mp4"));    // hero video src
+        assert!(html.contains("assets/runs/fable-5.mp4")); // hero video src
         assert!(html.contains("runs.css"));
-        assert!(html.contains(">Survey<"));                   // beat title
+        assert!(html.contains(">Survey<")); // beat title
         assert!(html.contains("Read the city before touching it."));
-        assert!(html.contains("index.html#results"));         // back link
-        // all four charts present
+        assert!(html.contains("index.html#results")); // back link
+                                                      // all four charts present
         assert_eq!(html.matches("class=\"chart-svg\"").count(), 4);
     }
 
@@ -559,8 +636,8 @@ mod tests {
         let svg = chart_before_after(&sample_record());
         assert!(svg.starts_with("<svg"));
         assert!(svg.contains("Population"));
-        assert!(svg.contains("31,640"));   // baseline population
-        assert!(svg.contains("71"));        // final flow, rounded
+        assert!(svg.contains("31,640")); // baseline population
+        assert!(svg.contains("71")); // final flow, rounded
         assert!(svg.contains("class=\"c-final\""));
         assert!(svg.contains("class=\"c-base\""));
     }

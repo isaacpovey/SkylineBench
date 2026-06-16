@@ -67,7 +67,10 @@ mod tests {
         assert_eq!(spec.argv[0], "claude");
         assert!(spec.argv.contains(&"-p".to_string()));
         assert!(spec.argv.contains(&"improve traffic".to_string()));
-        assert!(spec.argv.windows(2).any(|w| w == ["--model", "claude-opus-4-8"]));
+        assert!(spec
+            .argv
+            .windows(2)
+            .any(|w| w == ["--model", "claude-opus-4-8"]));
         assert!(spec.argv.contains(&"stream-json".to_string()));
         assert!(spec.argv.contains(&"bypassPermissions".to_string()));
         assert!(spec.required_env.is_empty());

@@ -12,7 +12,10 @@ pub struct RollingWindow {
 
 impl RollingWindow {
     pub fn new(capacity: usize) -> Self {
-        Self { capacity: capacity.max(1), samples: VecDeque::new() }
+        Self {
+            capacity: capacity.max(1),
+            samples: VecDeque::new(),
+        }
     }
 
     pub fn push(&mut self, sample: f64) {

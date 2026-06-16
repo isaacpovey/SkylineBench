@@ -13,7 +13,11 @@ pub fn spec(inputs: &LaunchInputs) -> LaunchSpec {
             "enabled_tools = [{}]\n",
         ),
         toml_string(&inputs.mcp_shell),
-        TOOL_ALLOWLIST.iter().map(|t| toml_string(t)).collect::<Vec<_>>().join(", "),
+        TOOL_ALLOWLIST
+            .iter()
+            .map(|t| toml_string(t))
+            .collect::<Vec<_>>()
+            .join(", "),
     );
 
     let model_args = inputs
@@ -106,7 +110,9 @@ mod tests {
         assert!(cf.contents.contains("[mcp_servers.skylinebench]"));
         assert!(cf.contents.contains("benchmark --map m"));
         assert!(cf.contents.contains("required = true"));
-        assert!(cf.contents.contains("default_tools_approval_mode = \"approve\""));
+        assert!(cf
+            .contents
+            .contains("default_tools_approval_mode = \"approve\""));
         assert!(cf.contents.contains("\"get_city_overview\""));
         assert!(cf.contents.contains("\"submit_solution\""));
     }

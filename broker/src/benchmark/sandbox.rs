@@ -126,7 +126,9 @@ mod tests {
         assert_eq!(plan.backend, Backend::Seatbelt);
         assert_eq!(plan.wrapper_argv[0], "sandbox-exec");
         let profile = plan.profile_file.unwrap();
-        assert!(profile.contents.contains("(deny file-read* (subpath \"/repo\"))"));
+        assert!(profile
+            .contents
+            .contains("(deny file-read* (subpath \"/repo\"))"));
     }
 
     #[test]

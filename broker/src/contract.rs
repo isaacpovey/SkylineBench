@@ -197,18 +197,16 @@ pub struct ZoneTypes {
     pub zone_types: Vec<String>,
 }
 
-/// Normalised failure reasons for actions. Extends spec §5's mod-side set
-/// (`COLLISION`, `INSUFFICIENT_FUNDS`, `OUT_OF_BOUNDS`, `INVALID_PREFAB`,
-/// `SEGMENT_TOO_LONG`, `UNKNOWN`) with broker-side pre-validation reasons
-/// (`DEGENERATE_SEGMENT`, `INVALID_ARGS`). The placement-validation codes
+/// Normalised failure reasons for actions. Mod-side placement codes
 /// (`OBJECT_COLLISION`, `SLOPE_TOO_STEEP`, `OUT_OF_AREA`, `TOO_MANY_CONNECTIONS`,
-/// `NET_BUFFER_FULL`) come from the mod's BuildValidator. The elevation placement
-/// codes (`CANNOT_BUILD_ON_WATER`, `HEIGHT_TOO_HIGH`) come from NetTool.
+/// `NET_BUFFER_FULL`, `TOO_SHORT`, `INVALID_SHAPE`) come from the mod's RoadErrors;
+/// the elevation codes (`CANNOT_BUILD_ON_WATER`, `HEIGHT_TOO_HIGH`) come from NetTool;
+/// broker-side pre-validation adds `OUT_OF_BOUNDS`, `SEGMENT_TOO_LONG`,
+/// `INVALID_PREFAB`, `DEGENERATE_SEGMENT`, `INVALID_ARGS`. Building costs are not
+/// enforced, so no funds-related reason exists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ActionError {
-    Collision,
-    InsufficientFunds,
     OutOfBounds,
     InvalidPrefab,
     SegmentTooLong,
@@ -386,12 +384,12 @@ mod tests {
             created_segments: vec![],
             snapped_nodes: vec![],
             destroyed: vec![],
-            reason: Some(ActionError::Collision),
+            reason: Some(ActionError::ObjectCollision),
             zoned_buildings_fronting: None,
             colliding_buildings: vec![],
         };
         let json = serde_json::to_string(&err).unwrap();
-        assert!(json.contains("\"reason\":\"COLLISION\""), "got {json}");
+        assert!(json.contains("\"reason\":\"OBJECT_COLLISION\""), "got {json}");
         let parsed: ActionResult = serde_json::from_str(&json).unwrap();
         assert_eq!(err, parsed);
     }

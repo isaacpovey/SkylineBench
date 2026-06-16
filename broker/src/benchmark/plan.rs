@@ -277,7 +277,14 @@ mod tests {
                 construction_cost: 1000,
                 ..Default::default()
             }],
-            zone_types: vec!["residential".into()],
+            zone_types: vec![
+                "residential_low".into(),
+                "residential_high".into(),
+                "commercial_low".into(),
+                "commercial_high".into(),
+                "industrial".into(),
+                "office".into(),
+            ],
             segment_ids: HashSet::from([10]),
             node_ids: HashSet::from([1, 2]),
             building_ids: HashSet::new(),

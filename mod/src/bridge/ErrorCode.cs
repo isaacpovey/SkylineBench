@@ -16,5 +16,7 @@ namespace SkylineBench.Bridge
         public const string NetBufferFull = "NET_BUFFER_FULL";
         public const string CannotBuildOnWater = "CANNOT_BUILD_ON_WATER";
         public const string HeightTooHigh = "HEIGHT_TOO_HIGH";
+        public const string TooShort = "TOO_SHORT";
+        public const string InvalidShape = "INVALID_SHAPE";
     }
 }

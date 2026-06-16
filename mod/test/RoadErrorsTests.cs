@@ -28,7 +28,9 @@ namespace SkylineBench.Tests
             Assert.Equal("HEIGHT_TOO_HIGH", RoadErrors.Reason(0x800UL));
             Assert.Equal("OUT_OF_AREA", RoadErrors.Reason(0x20UL));
             Assert.Equal("TOO_MANY_CONNECTIONS", RoadErrors.Reason(0x40000UL));
-            Assert.Equal("UNKNOWN", RoadErrors.Reason(0x10000000UL)); // Collapsed -> unmapped tail
+            Assert.Equal("TOO_SHORT", RoadErrors.Reason(0x100UL));
+            Assert.Equal("INVALID_SHAPE", RoadErrors.Reason(0x80UL));
+            Assert.Equal("UNKNOWN", RoadErrors.Reason(0x10000000UL)); // Unmapped tail
         }
     }
 }

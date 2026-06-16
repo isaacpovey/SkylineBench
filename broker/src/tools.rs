@@ -134,6 +134,19 @@ impl Skyline {
         }
     }
 
+    #[tool(description = "Dry-run a road build: test placement (collisions, slope, water, height, bounds) \
+        WITHOUT committing or creating any segment. Same args as build_road. Use it to check a placement \
+        before build_road commits it.")]
+    async fn validate_road(
+        &self,
+        Parameters(args): Parameters<BuildRoadArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match service::validate_road(&self.client, args).await {
+            Ok(v) => json_result(v),
+            Err(e) => Ok(tool_error(e)),
+        }
+    }
+
     #[tool(description = "List the available road types (with construction cost).")]
     async fn list_road_types(&self) -> Result<CallToolResult, ErrorData> {
         match service::list_road_types(&self.client).await {
@@ -288,6 +301,7 @@ mod tests {
                 "set_zoning",
                 "trace_route",
                 "upgrade_road",
+                "validate_road",
                 "view_3d",
             ]
         );

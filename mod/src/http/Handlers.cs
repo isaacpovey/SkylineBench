@@ -52,7 +52,7 @@ namespace SkylineBench.Http
         public static HttpReply ZoneTypes()
         {
             var w = new JsonWriter(); w.BeginObject().Name("zone_types").BeginArray();
-            foreach (var z in new string[] { "residential", "residential_high", "commercial", "commercial_high", "industrial", "office" }) w.Value(z);
+            foreach (var z in new string[] { "residential_low", "residential_high", "commercial_low", "commercial_high", "industrial", "office" }) w.Value(z);
             w.EndArray().EndObject(); return HttpReply.Json(200, w.ToString());
         }
 

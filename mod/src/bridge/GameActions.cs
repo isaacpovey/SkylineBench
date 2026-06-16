@@ -30,9 +30,11 @@ namespace SkylineBench.Bridge
                     case "segment":
                     {
                         var nm = Singleton<NetManager>.instance;
+                        if (req.Id >= nm.m_segments.m_buffer.Length) return ActionResultDto.Fail(ErrorCode.InvalidArgs);
                         var seg = nm.m_segments.m_buffer[req.Id];
+                        if ((seg.m_flags & NetSegment.Flags.Created) == NetSegment.Flags.None) return ActionResultDto.Fail(ErrorCode.InvalidArgs);
                         int fronting = -1;
-                        if ((seg.m_flags & NetSegment.Flags.Created) != NetSegment.Flags.None && seg.Info != null)
+                        if (seg.Info != null)
                         {
                             Vector3 aPos = nm.m_nodes.m_buffer[seg.m_startNode].m_position;
                             Vector3 bPos = nm.m_nodes.m_buffer[seg.m_endNode].m_position;
@@ -43,8 +45,22 @@ namespace SkylineBench.Bridge
                         res.Destroyed.Add(req.Id);
                         return res;
                     }
-                    case "node": Singleton<NetManager>.instance.ReleaseNode((ushort)req.Id); break;
-                    case "building": Singleton<BuildingManager>.instance.ReleaseBuilding((ushort)req.Id); break;
+                    case "node":
+                    {
+                        var nm = Singleton<NetManager>.instance;
+                        if (req.Id >= nm.m_nodes.m_buffer.Length) return ActionResultDto.Fail(ErrorCode.InvalidArgs);
+                        if ((nm.m_nodes.m_buffer[req.Id].m_flags & NetNode.Flags.Created) == NetNode.Flags.None) return ActionResultDto.Fail(ErrorCode.InvalidArgs);
+                        nm.ReleaseNode((ushort)req.Id);
+                        break;
+                    }
+                    case "building":
+                    {
+                        var bm = Singleton<BuildingManager>.instance;
+                        if (req.Id >= bm.m_buildings.m_buffer.Length) return ActionResultDto.Fail(ErrorCode.InvalidArgs);
+                        if ((bm.m_buildings.m_buffer[req.Id].m_flags & Building.Flags.Created) == Building.Flags.None) return ActionResultDto.Fail(ErrorCode.InvalidArgs);
+                        bm.ReleaseBuilding((ushort)req.Id);
+                        break;
+                    }
                     default: return ActionResultDto.Fail(ErrorCode.InvalidArgs);
                 }
                 var r = new ActionResultDto { Ok = true }; r.Destroyed.Add(req.Id); return r;

@@ -819,7 +819,7 @@ impl BenchmarkServer {
         build ops are also checked against the game's placement rules (collision/slope/area) and report \
         `zoned_buildings_fronting`. \
         Each executed op counts as one change, identical to the single-op tools. The game can still \
-        reject an op at execution time (e.g. COLLISION); stop_on_error (default true) then skips the rest; \
+        reject an op at execution time (e.g. OBJECT_COLLISION); stop_on_error (default true) then skips the rest; \
         with stop_on_error=false execution continues and `first_failed_at` reports the earliest failing op. \
         Set `preview:true` with `validate_only` to also get a non-mutating angled 3-D screenshot of the proposed roads (builds nothing)."
     )]

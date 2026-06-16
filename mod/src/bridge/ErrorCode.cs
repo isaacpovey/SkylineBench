@@ -4,8 +4,6 @@ namespace SkylineBench.Bridge
     /// at HTTP 200 with {ok:false,reason}.</summary>
     public static class ErrorCode
     {
-        public const string Collision = "COLLISION";
-        public const string InsufficientFunds = "INSUFFICIENT_FUNDS";
         public const string OutOfBounds = "OUT_OF_BOUNDS";
         public const string InvalidPrefab = "INVALID_PREFAB";
         public const string SegmentTooLong = "SEGMENT_TOO_LONG";

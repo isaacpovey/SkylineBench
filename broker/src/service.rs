@@ -1270,7 +1270,7 @@ mod tests {
                     max_x: 16.0,
                     max_z: 16.0,
                 },
-                zone_type: "residential".into(),
+                zone_type: "residential_low".into(),
             },
         )
         .await

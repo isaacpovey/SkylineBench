@@ -72,8 +72,10 @@ fn road_types() -> Vec<RoadType> {
 
 fn zone_types() -> Vec<String> {
     vec![
-        "residential".into(),
-        "commercial".into(),
+        "residential_low".into(),
+        "residential_high".into(),
+        "commercial_low".into(),
+        "commercial_high".into(),
         "industrial".into(),
         "office".into(),
     ]

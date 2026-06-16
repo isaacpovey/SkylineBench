@@ -59,7 +59,7 @@ namespace SkylineBench.Json
                 .Name("weekly_expenses").Value(m.WeeklyExpenses).Name("funds").Value(m.Funds).EndObject();
             w.Name("population").BeginObject().Name("total").Value((long)m.Population).Name("residential_demand").Value((long)m.ResidentialDemand)
                 .Name("commercial_demand").Value((long)m.CommercialDemand).Name("workplace_demand").Value((long)m.WorkplaceDemand)
-                .Name("employed").Value((long)m.Employed).EndObject();
+                .EndObject();
             w.Name("services").BeginObject().Name("happiness").Value((long)m.Happiness).Name("abandoned_buildings").Value((long)m.AbandonedBuildings)
                 .Name("road_not_connected").Value((long)m.RoadNotConnected)
                 .Name("no_electricity").Value((long)m.NoElectricity)

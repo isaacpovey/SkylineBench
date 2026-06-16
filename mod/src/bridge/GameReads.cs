@@ -127,8 +127,6 @@ namespace SkylineBench.Bridge
                 dto.WorkplaceDemand = (byte)Mathf.Clamp(zm.m_actualWorkplaceDemand, 0, 100);
                 var dm = Singleton<DistrictManager>.instance;
                 dto.Population = dm.m_districts.m_buffer[0].m_populationData.m_finalCount;
-                // Employment isn't cleanly exposed by a single manager field; left at 0.
-                dto.Employed = 0;
                 dto.Happiness = (byte)Mathf.Clamp((int)dm.m_districts.m_buffer[0].m_finalHappiness, 0, 100);
                 var bm = Singleton<BuildingManager>.instance;
                 uint abandoned = 0, roadNotConnected = 0, noElec = 0, noWater = 0, noSewage = 0, garbage = 0, noFuel = 0;

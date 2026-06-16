@@ -38,13 +38,13 @@ namespace SkylineBench.Tests
 
         static void Metrics()
         {
-            var m = new MetricsDto { Tick = 42, FlowPercent = 73.5f, ActiveVehicles = 120, Balance = 0, WeeklyIncome = 500, WeeklyExpenses = 400, Funds = 50000, Population = 2000, ResidentialDemand = 50, CommercialDemand = 40, WorkplaceDemand = 30, Employed = 1500, Happiness = 80 };
+            var m = new MetricsDto { Tick = 42, FlowPercent = 73.5f, ActiveVehicles = 120, Balance = 0, WeeklyIncome = 500, WeeklyExpenses = 400, Funds = 50000, Population = 2000, ResidentialDemand = 50, CommercialDemand = 40, WorkplaceDemand = 30, Happiness = 80 };
             m.SegmentLoads.Add(new SegmentLoadDto { SegmentId = 7, Density = 0.5f });
             string json = Serialize.Metrics(m);
             Assert.True(json.StartsWith("{\"tick\":42,"), "starts with tick");
             Assert.True(json.Contains("\"traffic\":{\"flow_percent\":73.5,\"active_vehicles\":120,\"segment_loads\":[{\"segment_id\":7,\"density\":0.5,\"length\":0}]}"), "traffic group: " + json);
             Assert.True(json.Contains("\"economy\":{\"balance\":0,\"weekly_income\":500,\"weekly_expenses\":400,\"funds\":50000}"), "economy group");
-            Assert.True(json.Contains("\"population\":{\"total\":2000,\"residential_demand\":50,\"commercial_demand\":40,\"workplace_demand\":30,\"employed\":1500}"), "population group");
+            Assert.True(json.Contains("\"population\":{\"total\":2000,\"residential_demand\":50,\"commercial_demand\":40,\"workplace_demand\":30}"), "population group");
             Assert.True(json.Contains("\"services\":{\"happiness\":80,\"abandoned_buildings\":0,\"road_not_connected\":0,\"no_electricity\":0,\"no_water\":0,\"no_sewage\":0,\"garbage_piling\":0,\"no_fuel\":0}"), "services group: " + json);
         }
 

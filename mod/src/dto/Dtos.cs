@@ -18,7 +18,7 @@ namespace SkylineBench.Dto
         public ulong Tick;
         public float FlowPercent; public uint ActiveVehicles; public List<SegmentLoadDto> SegmentLoads = new List<SegmentLoadDto>();
         public long Balance; public long WeeklyIncome; public long WeeklyExpenses; public long Funds;
-        public uint Population; public byte ResidentialDemand; public byte CommercialDemand; public byte WorkplaceDemand; public uint Employed;
+        public uint Population; public byte ResidentialDemand; public byte CommercialDemand; public byte WorkplaceDemand;
         public byte Happiness;
         public uint AbandonedBuildings;
         // Per-building problem flags — leading (non-lagging) signals that a

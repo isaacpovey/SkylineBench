@@ -213,7 +213,7 @@ pub fn expand(ops: &[PlanOp]) -> Vec<(usize, ExecOp)> {
 }
 
 /// Structural pre-validation against the snapshot. The game can still reject
-/// an op at execution time (COLLISION, INSUFFICIENT_FUNDS) — only it knows.
+/// an op at execution time (OBJECT_COLLISION) — only it knows.
 pub fn validate(op: &ExecOp, ctx: &ExecCtx) -> Result<(), ActionError> {
     match op {
         ExecOp::Build {

@@ -4,7 +4,7 @@ use crate::geometry::{horizontal_distance, in_bounds, playable_bounds, MAX_SEGME
 /// Validate a proposed straight road segment. `known_road_types` is the set the
 /// mod reported via `GET /road-types`. Returns the first failing reason, or
 /// `Ok(())` if the build is structurally acceptable (the game may still reject
-/// it for COLLISION / INSUFFICIENT_FUNDS, which only the mod can know).
+/// it for OBJECT_COLLISION, which only the mod can know).
 pub fn validate_build_road(
     start: Position,
     end: Position,

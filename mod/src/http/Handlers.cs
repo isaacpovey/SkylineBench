@@ -30,6 +30,7 @@ namespace SkylineBench.Http
         public static HttpReply Buildings() { return HttpReply.Json(200, Serialize.Buildings(GameReads.Buildings())); }
         public static HttpReply Zones() { return HttpReply.Json(200, Serialize.Zones(GameReads.Zones())); }
         public static HttpReply Metrics() { return HttpReply.Json(200, Serialize.Metrics(GameReads.Metrics())); }
+        public static HttpReply Problems() { return HttpReply.Json(200, Serialize.Problems(GameReads.Problems())); }
 
         public static HttpReply RoadTypes()
         {

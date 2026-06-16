@@ -45,30 +45,19 @@ Confirmed findings:
 
 ## Work items
 
-### A. Populate `colliding_buildings` on collision
+### A. Populate `colliding_buildings` on collision — DEFERRED
 
-When `RoadBuilder.Run` gets a native `ToolErrors` value whose bits map to
-`ObjectCollision`, compute a **best-effort** set of colliding building ids before
-returning `Fail`:
+**Deferred to a follow-up** (tracked in
+`docs/superpowers/research/2026-06-16-collision-locality-investigation.md`).
 
-- Build the proposed segment's swept corridor: the start→end line expanded laterally by
-  `prefab.m_halfWidth`.
-- Scan created buildings; include a building when its footprint (half of
-  `m_cellWidth*8` / `m_cellLength*8`, as already used in `GameReads.Buildings`) overlaps
-  the corridor. Reuse the geometry helpers in `Frontage` (it already does
-  near-segment building scanning) — extract/share a corridor-overlap test rather than
-  duplicating.
-- Put the ids in `ActionResultDto.CollidingBuildings`. Serialization already emits the
-  field when non-empty (`Serialize.cs:90`); the broker contract already carries
-  `colliding_buildings` (`contract.rs:248`).
-
-This is a **heuristic**: `NetTool.CreateNode` does not return the exact quad-collision
-set, so the corridor overlap may occasionally over- or under-report. It is intended to
-give the agent positions to react to, not a guarantee. This is documented in the tool
-behaviour and cannot be exactly verified against the mock (which has no buildings).
-
-Only computed for the `ObjectCollision` case — other failures (slope, water, height)
-are not building collisions and leave the list empty.
+A flat 2-D corridor-overlap was considered and **rejected**: CS1 roads are 3-D, so an
+elevated span can clear a building (a 2-D test would false-positive) while its bridge
+**pillars** touch down at ground points the centreline never approaches (a 2-D test would
+miss them). An engine-accurate id set requires disassembling how `NetTool.CreateNode`
+flags `ObjectCollision` (clearance comparison + pillar footprints) — see the investigation
+doc for the research checklist and candidate strategies. The wire contract already carries
+`colliding_buildings` (`contract.rs:248`, `Serialize.cs:90`), so the follow-up is a
+mod-side computation only and does not block items B–H.
 
 ### B. New `query_problems` MCP tool
 
@@ -162,9 +151,10 @@ In `GameActions.Bulldoze` (`GameActions.cs:24-52`):
 - **Mod (C# TestRunner):** items D (ParseZone / zone-list vocabulary), G (bulldoze
   existence — as far as the pure logic is unit-testable), and H (`RoadErrorsTests`
   bit→code mapping) are covered by the existing `mod/test` runner.
-- **Live-game only (documented limits):** the collision-overlap heuristic (A) and the
-  `query_problems` read (B) depend on a loaded city and real building problem flags;
-  they can be shape-tested against the mock but their correctness needs a live run.
+- **Live-game only (documented limits):** the `query_problems` read (B) depends on a
+  loaded city and real building problem flags; it can be shape-tested against the mock
+  but its correctness needs a live run. (Item A's engine-accurate collision is deferred —
+  see the investigation doc.)
 
 ## Out of scope
 

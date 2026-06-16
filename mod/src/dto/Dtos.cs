@@ -12,7 +12,7 @@ namespace SkylineBench.Dto
     public struct ZoneCellDto { public float X; public float Z; public string ZoneType; }
     public sealed class ZonesDto { public List<ZoneCellDto> Cells = new List<ZoneCellDto>(); }
 
-    public struct ProblemBuildingDto { public uint Id; public float X; public float Z; public string Category; public List<string> Problems; }
+    public sealed class ProblemBuildingDto { public uint Id; public float X; public float Z; public string Category; public List<string> Problems = new List<string>(); }
     public sealed class ProblemsDto { public List<ProblemBuildingDto> Buildings = new List<ProblemBuildingDto>(); }
 
     public struct SegmentLoadDto { public uint SegmentId; public float Density; public float Length; }

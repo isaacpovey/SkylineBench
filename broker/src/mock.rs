@@ -141,7 +141,6 @@ async fn metrics(State(s): State<MockState>) -> Json<Metrics> {
             residential_demand: 50,
             commercial_demand: 40,
             workplace_demand: 30,
-            employed: 700,
         },
         services: ServiceMetrics {
             happiness: 75,

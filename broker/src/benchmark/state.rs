@@ -254,7 +254,6 @@ mod tests {
                 residential_demand: 0,
                 commercial_demand: 0,
                 workplace_demand: 0,
-                employed: 0,
             },
             services: ServiceMetrics {
                 happiness: 80,
@@ -408,7 +407,6 @@ mod tests {
                 residential_demand: 0,
                 commercial_demand: 0,
                 workplace_demand: 0,
-                employed: 0,
             },
             services: ServiceMetrics {
                 happiness: 80,

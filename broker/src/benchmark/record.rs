@@ -124,9 +124,18 @@ mod tests {
 
     #[test]
     fn end_reason_serializes_snake() {
-        assert_eq!(serde_json::to_string(&EndReason::CongestionTarget).unwrap(), "\"congestion_target\"");
-        assert_eq!(serde_json::to_string(&EndReason::Submit).unwrap(), "\"submit\"");
-        assert_eq!(serde_json::to_string(&EndReason::Timeout).unwrap(), "\"timeout\"");
+        assert_eq!(
+            serde_json::to_string(&EndReason::CongestionTarget).unwrap(),
+            "\"congestion_target\""
+        );
+        assert_eq!(
+            serde_json::to_string(&EndReason::Submit).unwrap(),
+            "\"submit\""
+        );
+        assert_eq!(
+            serde_json::to_string(&EndReason::Timeout).unwrap(),
+            "\"timeout\""
+        );
         assert_eq!(
             serde_json::to_string(&EndReason::UnscorableBaseline).unwrap(),
             "\"unscorable_baseline\""
@@ -135,7 +144,10 @@ mod tests {
 
     #[test]
     fn end_reason_disconnect_serializes_snake() {
-        assert_eq!(serde_json::to_string(&EndReason::Disconnect).unwrap(), "\"disconnect\"");
+        assert_eq!(
+            serde_json::to_string(&EndReason::Disconnect).unwrap(),
+            "\"disconnect\""
+        );
     }
 
     #[test]
@@ -143,14 +155,31 @@ mod tests {
         let e = EndState {
             schema_version: SCHEMA_VERSION,
             config: crate::benchmark::config::BenchConfig::default(),
-            map: MapInfo { id: "gridlock-v1".into(), source: "test".into(), game_version: "1.21.1-f9".into() },
+            map: MapInfo {
+                id: "gridlock-v1".into(),
+                source: "test".into(),
+                game_version: "1.21.1-f9".into(),
+            },
             started_at: "t0".into(),
             ended_at: "t1".into(),
             end_reason: EndReason::Submit,
-            baseline: Some(WindowStats { flow_mean: 61.0, active_vehicles_mean: 6291.0, population: 102_839, congested_meters: 500.0, congested_junctions: 12 }),
+            baseline: Some(WindowStats {
+                flow_mean: 61.0,
+                active_vehicles_mean: 6291.0,
+                population: 102_839,
+                congested_meters: 500.0,
+                congested_junctions: 12,
+            }),
             baseline_flow_samples: vec![61.0, 60.8],
-            tally: Tally { num_changes: 10, money_spent: 98_834 },
-            actions: vec![ActionEntry { seq: 1, tool: "upgrade_road".into(), cost: 17_081 }],
+            tally: Tally {
+                num_changes: 10,
+                money_spent: 98_834,
+            },
+            actions: vec![ActionEntry {
+                seq: 1,
+                tool: "upgrade_road".into(),
+                cost: 17_081,
+            }],
         };
         let json = serde_json::to_string(&e).unwrap();
         let back: EndState = serde_json::from_str(&json).unwrap();
@@ -162,15 +191,41 @@ mod tests {
         let r = RunRecord {
             schema_version: SCHEMA_VERSION,
             config: crate::benchmark::config::BenchConfig::default(),
-            map: MapInfo { id: "gridlock-v1".into(), source: "workshop:123".into(), game_version: "1.21.1-f9".into() },
+            map: MapInfo {
+                id: "gridlock-v1".into(),
+                source: "workshop:123".into(),
+                game_version: "1.21.1-f9".into(),
+            },
             started_at: "2026-06-09T00:00:00Z".into(),
             ended_at: "2026-06-09T01:00:00Z".into(),
             end_reason: EndReason::Submit,
-            baseline: WindowStats { flow_mean: 6.0, active_vehicles_mean: 240.0, population: 3380, congested_meters: 500.0, congested_junctions: 8 },
-            final_stats: WindowStats { flow_mean: 41.0, active_vehicles_mean: 230.0, population: 3375, congested_meters: 100.0, congested_junctions: 2 },
-            flow_samples: FlowSamples { baseline: vec![6.0], final_samples: vec![41.0] },
-            tally: Tally { num_changes: 12, money_spent: 250_000 },
-            actions: vec![ActionEntry { seq: 1, tool: "build_road".into(), cost: 12000 }],
+            baseline: WindowStats {
+                flow_mean: 6.0,
+                active_vehicles_mean: 240.0,
+                population: 3380,
+                congested_meters: 500.0,
+                congested_junctions: 8,
+            },
+            final_stats: WindowStats {
+                flow_mean: 41.0,
+                active_vehicles_mean: 230.0,
+                population: 3375,
+                congested_meters: 100.0,
+                congested_junctions: 2,
+            },
+            flow_samples: FlowSamples {
+                baseline: vec![6.0],
+                final_samples: vec![41.0],
+            },
+            tally: Tally {
+                num_changes: 12,
+                money_spent: 250_000,
+            },
+            actions: vec![ActionEntry {
+                seq: 1,
+                tool: "build_road".into(),
+                cost: 12000,
+            }],
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: RunRecord = serde_json::from_str(&json).unwrap();

@@ -45,9 +45,18 @@ pub enum PlanOp {
         #[serde(default)]
         elevations: Vec<f32>,
     },
-    UpgradeRoad { segment: u32, road_type: String },
-    Bulldoze { target_type: String, id: u32 },
-    SetZoning { area: Bounds, zone_type: String },
+    UpgradeRoad {
+        segment: u32,
+        road_type: String,
+    },
+    Bulldoze {
+        target_type: String,
+        id: u32,
+    },
+    SetZoning {
+        area: Bounds,
+        zone_type: String,
+    },
 }
 
 fn default_true() -> bool {
@@ -57,10 +66,26 @@ fn default_true() -> bool {
 /// A primitive, directly executable op (post-expansion).
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExecOp {
-    Build { from: Position, to: Position, road_type: String, snap: bool, from_elevation: f32, to_elevation: f32 },
-    Upgrade { segment: u32, road_type: String },
-    Bulldoze { target_type: String, id: u32 },
-    Zone { area: Bounds, zone_type: String },
+    Build {
+        from: Position,
+        to: Position,
+        road_type: String,
+        snap: bool,
+        from_elevation: f32,
+        to_elevation: f32,
+    },
+    Upgrade {
+        segment: u32,
+        road_type: String,
+    },
+    Bulldoze {
+        target_type: String,
+        id: u32,
+    },
+    Zone {
+        area: Bounds,
+        zone_type: String,
+    },
     /// Placeholder for a source op that cannot expand (e.g. a 1-point
     /// polyline); always fails validation with INVALID_ARGS.
     Invalid,
@@ -91,11 +116,20 @@ fn chunk_fractions(from: Position, to: Position) -> Vec<f32> {
     (0..=n).map(|i| i as f32 / n as f32).collect()
 }
 
-fn lerp(a: f32, b: f32, t: f32) -> f32 { a + (b - a) * t }
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
+}
 
 /// Split `from..to` into elevation-aware Build ops; endpoint elevations
 /// interpolate linearly between `from_elev` and `to_elev`.
-fn build_chunks(from: Position, to: Position, road_type: &str, snap: bool, from_elev: f32, to_elev: f32) -> Vec<ExecOp> {
+fn build_chunks(
+    from: Position,
+    to: Position,
+    road_type: &str,
+    snap: bool,
+    from_elev: f32,
+    to_elev: f32,
+) -> Vec<ExecOp> {
     let fr = chunk_fractions(from, to);
     fr.windows(2)
         .map(|w| ExecOp::Build {
@@ -115,25 +149,63 @@ pub fn expand(ops: &[PlanOp]) -> Vec<(usize, ExecOp)> {
         .enumerate()
         .flat_map(|(i, op)| -> Vec<(usize, ExecOp)> {
             match op {
-                PlanOp::BuildRoad { from, to, road_type, snap, from_elevation, to_elevation } =>
-                    build_chunks(*from, *to, road_type, *snap, *from_elevation, *to_elevation)
-                        .into_iter().map(|op| (i, op)).collect(),
-                PlanOp::BuildPolyline { points, road_type, snap, elevations } => {
-                    if points.len() < 2 { return vec![(i, ExecOp::Invalid)]; }
-                    points.windows(2).enumerate().flat_map(|(leg, w)| {
-                        let e0 = elevations.get(leg).copied().unwrap_or(0.0);
-                        let e1 = elevations.get(leg + 1).copied().unwrap_or(0.0);
-                        build_chunks(w[0], w[1], road_type, *snap, e0, e1)
-                    }).map(|op| (i, op)).collect()
+                PlanOp::BuildRoad {
+                    from,
+                    to,
+                    road_type,
+                    snap,
+                    from_elevation,
+                    to_elevation,
+                } => build_chunks(*from, *to, road_type, *snap, *from_elevation, *to_elevation)
+                    .into_iter()
+                    .map(|op| (i, op))
+                    .collect(),
+                PlanOp::BuildPolyline {
+                    points,
+                    road_type,
+                    snap,
+                    elevations,
+                } => {
+                    if points.len() < 2 {
+                        return vec![(i, ExecOp::Invalid)];
+                    }
+                    points
+                        .windows(2)
+                        .enumerate()
+                        .flat_map(|(leg, w)| {
+                            let e0 = elevations.get(leg).copied().unwrap_or(0.0);
+                            let e1 = elevations.get(leg + 1).copied().unwrap_or(0.0);
+                            build_chunks(w[0], w[1], road_type, *snap, e0, e1)
+                        })
+                        .map(|op| (i, op))
+                        .collect()
                 }
                 PlanOp::UpgradeRoad { segment, road_type } => {
-                    vec![(i, ExecOp::Upgrade { segment: *segment, road_type: road_type.clone() })]
+                    vec![(
+                        i,
+                        ExecOp::Upgrade {
+                            segment: *segment,
+                            road_type: road_type.clone(),
+                        },
+                    )]
                 }
                 PlanOp::Bulldoze { target_type, id } => {
-                    vec![(i, ExecOp::Bulldoze { target_type: target_type.clone(), id: *id })]
+                    vec![(
+                        i,
+                        ExecOp::Bulldoze {
+                            target_type: target_type.clone(),
+                            id: *id,
+                        },
+                    )]
                 }
                 PlanOp::SetZoning { area, zone_type } => {
-                    vec![(i, ExecOp::Zone { area: *area, zone_type: zone_type.clone() })]
+                    vec![(
+                        i,
+                        ExecOp::Zone {
+                            area: *area,
+                            zone_type: zone_type.clone(),
+                        },
+                    )]
                 }
             }
         })
@@ -141,17 +213,23 @@ pub fn expand(ops: &[PlanOp]) -> Vec<(usize, ExecOp)> {
 }
 
 /// Structural pre-validation against the snapshot. The game can still reject
-/// an op at execution time (COLLISION, INSUFFICIENT_FUNDS) — only it knows.
+/// an op at execution time (OBJECT_COLLISION) — only it knows.
 pub fn validate(op: &ExecOp, ctx: &ExecCtx) -> Result<(), ActionError> {
     match op {
-        ExecOp::Build { from, to, road_type, .. } => {
-            validate_build_road(*from, *to, road_type, &ctx.road_types)
-        }
+        ExecOp::Build {
+            from,
+            to,
+            road_type,
+            ..
+        } => validate_build_road(*from, *to, road_type, &ctx.road_types),
         ExecOp::Upgrade { segment, road_type } => {
             if !ctx.road_types.iter().any(|t| t.name == *road_type) {
                 return Err(ActionError::InvalidPrefab);
             }
-            ctx.segment_ids.contains(segment).then_some(()).ok_or(ActionError::InvalidArgs)
+            ctx.segment_ids
+                .contains(segment)
+                .then_some(())
+                .ok_or(ActionError::InvalidArgs)
         }
         ExecOp::Bulldoze { target_type, id } => {
             let known = match target_type.as_str() {
@@ -194,8 +272,19 @@ mod tests {
 
     fn ctx() -> ExecCtx {
         ExecCtx {
-            road_types: vec![RoadType { name: "road".into(), construction_cost: 1000, ..Default::default() }],
-            zone_types: vec!["residential".into()],
+            road_types: vec![RoadType {
+                name: "road".into(),
+                construction_cost: 1000,
+                ..Default::default()
+            }],
+            zone_types: vec![
+                "residential_low".into(),
+                "residential_high".into(),
+                "commercial_low".into(),
+                "commercial_high".into(),
+                "industrial".into(),
+                "office".into(),
+            ],
             segment_ids: HashSet::from([10]),
             node_ids: HashSet::from([1, 2]),
             building_ids: HashSet::new(),
@@ -206,14 +295,21 @@ mod tests {
     #[test]
     fn build_road_carries_elevation_into_exec() {
         let ops = vec![PlanOp::BuildRoad {
-            from: pos(0.0, 0.0), to: pos(50.0, 0.0),
-            road_type: "road".into(), snap: true,
-            from_elevation: 0.0, to_elevation: 12.0,
+            from: pos(0.0, 0.0),
+            to: pos(50.0, 0.0),
+            road_type: "road".into(),
+            snap: true,
+            from_elevation: 0.0,
+            to_elevation: 12.0,
         }];
         let exec = expand(&ops);
         assert_eq!(exec.len(), 1);
         match &exec[0].1 {
-            ExecOp::Build { from_elevation, to_elevation, .. } => {
+            ExecOp::Build {
+                from_elevation,
+                to_elevation,
+                ..
+            } => {
                 assert_eq!(*from_elevation, 0.0);
                 assert_eq!(*to_elevation, 12.0);
             }
@@ -226,15 +322,23 @@ mod tests {
         // 360 m line split at 180 m => 2 chunks; elevations 0 -> 12 over the line.
         let ops = vec![PlanOp::BuildPolyline {
             points: vec![pos(0.0, 0.0), pos(360.0, 0.0)],
-            road_type: "road".into(), snap: true,
+            road_type: "road".into(),
+            snap: true,
             elevations: vec![0.0, 12.0],
         }];
         let exec = expand(&ops);
         assert_eq!(exec.len(), 2);
-        let elevs: Vec<(f32, f32)> = exec.iter().map(|(_, op)| match op {
-            ExecOp::Build { from_elevation, to_elevation, .. } => (*from_elevation, *to_elevation),
-            _ => panic!(),
-        }).collect();
+        let elevs: Vec<(f32, f32)> = exec
+            .iter()
+            .map(|(_, op)| match op {
+                ExecOp::Build {
+                    from_elevation,
+                    to_elevation,
+                    ..
+                } => (*from_elevation, *to_elevation),
+                _ => panic!(),
+            })
+            .collect();
         assert_eq!(elevs, vec![(0.0, 6.0), (6.0, 12.0)]);
     }
 
@@ -264,7 +368,10 @@ mod tests {
 
     #[test]
     fn short_span_is_one_chunk() {
-        assert_eq!(build_chunks(pos(0.0, 0.0), pos(50.0, 0.0), "road", true, 0.0, 0.0).len(), 1);
+        assert_eq!(
+            build_chunks(pos(0.0, 0.0), pos(50.0, 0.0), "road", true, 0.0, 0.0).len(),
+            1
+        );
     }
 
     #[test]
@@ -304,28 +411,60 @@ mod tests {
     #[test]
     fn validate_catches_each_failure_mode() {
         let c = ctx();
-        let bad_prefab = ExecOp::Build { from: pos(0.0, 0.0), to: pos(50.0, 0.0), road_type: "monorail".into(), snap: true, from_elevation: 0.0, to_elevation: 0.0 };
+        let bad_prefab = ExecOp::Build {
+            from: pos(0.0, 0.0),
+            to: pos(50.0, 0.0),
+            road_type: "monorail".into(),
+            snap: true,
+            from_elevation: 0.0,
+            to_elevation: 0.0,
+        };
         assert_eq!(validate(&bad_prefab, &c), Err(ActionError::InvalidPrefab));
 
-        let missing_segment = ExecOp::Upgrade { segment: 99, road_type: "road".into() };
-        assert_eq!(validate(&missing_segment, &c), Err(ActionError::InvalidArgs));
+        let missing_segment = ExecOp::Upgrade {
+            segment: 99,
+            road_type: "road".into(),
+        };
+        assert_eq!(
+            validate(&missing_segment, &c),
+            Err(ActionError::InvalidArgs)
+        );
 
-        let missing_bulldoze = ExecOp::Bulldoze { target_type: "segment".into(), id: 99 };
-        assert_eq!(validate(&missing_bulldoze, &c), Err(ActionError::InvalidArgs));
+        let missing_bulldoze = ExecOp::Bulldoze {
+            target_type: "segment".into(),
+            id: 99,
+        };
+        assert_eq!(
+            validate(&missing_bulldoze, &c),
+            Err(ActionError::InvalidArgs)
+        );
 
         let bad_zone = ExecOp::Zone {
-            area: crate::contract::Bounds { min_x: 0.0, min_z: 0.0, max_x: 8.0, max_z: 8.0 },
+            area: crate::contract::Bounds {
+                min_x: 0.0,
+                min_z: 0.0,
+                max_x: 8.0,
+                max_z: 8.0,
+            },
             zone_type: "spaceport".into(),
         };
         assert_eq!(validate(&bad_zone, &c), Err(ActionError::InvalidArgs));
 
-        let good = ExecOp::Upgrade { segment: 10, road_type: "road".into() };
+        let good = ExecOp::Upgrade {
+            segment: 10,
+            road_type: "road".into(),
+        };
         assert_eq!(validate(&good, &c), Ok(()));
     }
 
     #[test]
     fn degenerate_polyline_is_invalid() {
-        let ops = vec![PlanOp::BuildPolyline { points: vec![pos(0.0, 0.0)], road_type: "road".into(), snap: true, elevations: vec![] }];
+        let ops = vec![PlanOp::BuildPolyline {
+            points: vec![pos(0.0, 0.0)],
+            road_type: "road".into(),
+            snap: true,
+            elevations: vec![],
+        }];
         let exec = expand(&ops);
         assert_eq!(exec.len(), 1);
         assert_eq!(validate(&exec[0].1, &ctx()), Err(ActionError::InvalidArgs));

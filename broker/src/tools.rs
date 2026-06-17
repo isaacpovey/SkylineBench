@@ -19,8 +19,8 @@ use serde_json::Value;
 use crate::bridge_client::BridgeClient;
 use crate::service::{
     self, BuildRoadArgs, BulldozeArgs, ControlTimeArgs, GetMetricsArgs, ObserveAreaArgs,
-    QuerySegmentsArgs, RenderMapArgs, ResetScenarioArgs, ServiceError, SetZoningArgs,
-    TraceRouteArgs, UpgradeRoadArgs, ViewArgs,
+    QueryProblemsArgs, QuerySegmentsArgs, RenderMapArgs, ResetScenarioArgs, ServiceError,
+    SetZoningArgs, TraceRouteArgs, UpgradeRoadArgs, ViewArgs,
 };
 
 #[derive(Clone)]
@@ -76,6 +76,22 @@ impl Skyline {
     }
 
     #[tool(
+        description = "Locate the specific buildings behind a problem-count spike (the leading \
+            death-spiral signal in get_metrics `services`): which buildings lost road access or a \
+            utility, and where (id + position + problem list). Optional `filter` (a single problem \
+            name like \"road_not_connected\") and `bounds`."
+    )]
+    async fn query_problems(
+        &self,
+        Parameters(args): Parameters<QueryProblemsArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match service::query_problems(&self.client, args).await {
+            Ok(v) => json_result(v),
+            Err(e) => Ok(tool_error(e)),
+        }
+    }
+
+    #[tool(
         description = "Query road segments sorted by congestion (default) — the 'worst N segments' \
             search. Optional filters: min_density, bounds, prefab_contains; sort_by length or \
             speed_limit instead. Returns density, direction, lanes, and midpoint per segment."
@@ -90,8 +106,10 @@ impl Skyline {
         }
     }
 
-    #[tool(description = "Render the road network to a PNG image: congestion colours, lane widths, \
-        one-way arrows, coordinate grid. Returns the image plus a JSON legend.")]
+    #[tool(
+        description = "Render the road network to a PNG image: congestion colours, lane widths, \
+        one-way arrows, coordinate grid. Returns the image plus a JSON legend."
+    )]
     async fn render_map(
         &self,
         Parameters(args): Parameters<RenderMapArgs>,
@@ -127,6 +145,20 @@ impl Skyline {
         Parameters(args): Parameters<BuildRoadArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         match service::build_road(&self.client, args).await {
+            Ok(v) => json_result(v),
+            Err(e) => Ok(tool_error(e)),
+        }
+    }
+
+    #[tool(description = "Dry-run a road build: test placement (collisions, slope, water, height, bounds) \
+        WITHOUT committing or creating any segment. Same args as build_road. Use it to check a placement \
+        before build_road commits it. Note: connectivity warnings (isolated island) are surfaced only by \
+        build_road, not here.")]
+    async fn validate_road(
+        &self,
+        Parameters(args): Parameters<BuildRoadArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match service::validate_road(&self.client, args).await {
             Ok(v) => json_result(v),
             Err(e) => Ok(tool_error(e)),
         }
@@ -175,11 +207,13 @@ impl Skyline {
         }
     }
 
-    #[tool(description = "Change an existing road segment's type. The segment is re-created \
+    #[tool(
+        description = "Change an existing road segment's type. The segment is re-created \
         under a NEW id — `replaced` in the response maps old_segment_id to new_segment_id; \
         refresh any cached ids. The original travel direction is preserved: an `end_to_start` \
         segment stays `end_to_start` after upgrade. Always call `observe_area` or \
-        `query_segments` after upgrading one-way segments to confirm direction is correct.")]
+        `query_segments` after upgrading one-way segments to confirm direction is correct."
+    )]
     async fn upgrade_road(
         &self,
         Parameters(args): Parameters<UpgradeRoadArgs>,
@@ -201,9 +235,11 @@ impl Skyline {
         }
     }
 
-    #[tool(description = "Estimate the route traffic would take between two positions \
+    #[tool(
+        description = "Estimate the route traffic would take between two positions \
         (snapped to nearest road nodes), honoring one-way directions and speed limits. \
-        Free read — use it to check whether a new link will actually attract traffic.")]
+        Free read — use it to check whether a new link will actually attract traffic."
+    )]
     async fn trace_route(
         &self,
         Parameters(args): Parameters<TraceRouteArgs>,
@@ -225,14 +261,22 @@ impl Skyline {
         }
     }
 
-    #[tool(description = "Angled 3-D screenshot of a location: a 45° game render showing road height, \
+    #[tool(
+        description = "Angled 3-D screenshot of a location: a 45° game render showing road height, \
         bridges, pillars and overpass clearance — use it to SEE elevation that render_map (top-down) cannot. \
-        Args: x, z (world metres), optional size (default 350; larger zooms out), top_down (default false).")]
-    async fn view_3d(&self, Parameters(args): Parameters<ViewArgs>) -> Result<CallToolResult, ErrorData> {
+        Args: x, z (world metres), optional size (default 350; larger zooms out), top_down (default false)."
+    )]
+    async fn view_3d(
+        &self,
+        Parameters(args): Parameters<ViewArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
         match service::view_3d(&self.client, args).await {
             Ok(png) => {
                 let data = base64::engine::general_purpose::STANDARD.encode(png);
-                Ok(CallToolResult::success(vec![Content::image(data, "image/png".to_string())]))
+                Ok(CallToolResult::success(vec![Content::image(
+                    data,
+                    "image/png".to_string(),
+                )]))
             }
             Err(e) => Ok(tool_error(e)),
         }
@@ -268,12 +312,14 @@ mod tests {
                 "list_road_types",
                 "list_zone_types",
                 "observe_area",
+                "query_problems",
                 "query_segments",
                 "render_map",
                 "reset_scenario",
                 "set_zoning",
                 "trace_route",
                 "upgrade_road",
+                "validate_road",
                 "view_3d",
             ]
         );

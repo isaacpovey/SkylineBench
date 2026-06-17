@@ -13,7 +13,11 @@ pub fn spec(inputs: &LaunchInputs) -> LaunchSpec {
             "enabled_tools = [{}]\n",
         ),
         toml_string(&inputs.mcp_shell),
-        TOOL_ALLOWLIST.iter().map(|t| toml_string(t)).collect::<Vec<_>>().join(", "),
+        TOOL_ALLOWLIST
+            .iter()
+            .map(|t| toml_string(t))
+            .collect::<Vec<_>>()
+            .join(", "),
     );
 
     let model_args = inputs
@@ -58,9 +62,11 @@ const TOOL_ALLOWLIST: &[&str] = &[
     "list_zone_types",
     "render_map",
     "submit_solution",
+    "query_problems",
     "query_segments",
     "apply_plan",
     "trace_route",
+    "validate_road",
 ];
 
 /// Minimal TOML basic-string encoder (escape backslash and quote).
@@ -106,8 +112,12 @@ mod tests {
         assert!(cf.contents.contains("[mcp_servers.skylinebench]"));
         assert!(cf.contents.contains("benchmark --map m"));
         assert!(cf.contents.contains("required = true"));
-        assert!(cf.contents.contains("default_tools_approval_mode = \"approve\""));
+        assert!(cf
+            .contents
+            .contains("default_tools_approval_mode = \"approve\""));
         assert!(cf.contents.contains("\"get_city_overview\""));
+        assert!(cf.contents.contains("\"query_problems\""));
         assert!(cf.contents.contains("\"submit_solution\""));
+        assert!(cf.contents.contains("\"validate_road\""));
     }
 }

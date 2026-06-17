@@ -77,6 +77,10 @@ impl BridgeClient {
         self.get_json("/zones").await
     }
 
+    pub async fn problems(&self) -> Result<Problems, BridgeError> {
+        self.get_json("/problems").await
+    }
+
     pub async fn metrics(&self) -> Result<Metrics, BridgeError> {
         self.get_json("/metrics").await
     }
@@ -96,7 +100,8 @@ impl BridgeClient {
         prefab: &str,
         snap: bool,
     ) -> Result<ActionResult, BridgeError> {
-        self.build_road_elevated(start, end, prefab, snap, 0.0, 0.0).await
+        self.build_road_elevated(start, end, prefab, snap, 0.0, 0.0)
+            .await
     }
 
     pub async fn build_road_elevated(
@@ -109,10 +114,22 @@ impl BridgeClient {
         to_elevation: f32,
     ) -> Result<ActionResult, BridgeError> {
         let body = BuildRoadBody {
-            start, end, prefab, snap_to_existing_nodes: snap, from_elevation, to_elevation,
+            start,
+            end,
+            prefab,
+            snap_to_existing_nodes: snap,
+            from_elevation,
+            to_elevation,
         };
-        Ok(self.http.post(format!("{}/action/build-road", self.base))
-            .json(&body).send().await?.error_for_status()?.json().await?)
+        Ok(self
+            .http
+            .post(format!("{}/action/build-road", self.base))
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
     }
 
     pub async fn validate_road(
@@ -121,7 +138,8 @@ impl BridgeClient {
         end: Position,
         prefab: &str,
     ) -> Result<ActionResult, BridgeError> {
-        self.validate_road_elevated(start, end, prefab, true, 0.0, 0.0).await
+        self.validate_road_elevated(start, end, prefab, true, 0.0, 0.0)
+            .await
     }
 
     pub async fn validate_road_elevated(
@@ -134,10 +152,22 @@ impl BridgeClient {
         to_elevation: f32,
     ) -> Result<ActionResult, BridgeError> {
         let body = BuildRoadBody {
-            start, end, prefab, snap_to_existing_nodes: snap, from_elevation, to_elevation,
+            start,
+            end,
+            prefab,
+            snap_to_existing_nodes: snap,
+            from_elevation,
+            to_elevation,
         };
-        Ok(self.http.post(format!("{}/action/validate-road", self.base))
-            .json(&body).send().await?.error_for_status()?.json().await?)
+        Ok(self
+            .http
+            .post(format!("{}/action/validate-road", self.base))
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
     }
 
     pub async fn bulldoze(&self, target_type: &str, id: u32) -> Result<ActionResult, BridgeError> {
@@ -207,21 +237,28 @@ impl BridgeClient {
     /// Set the non-mutating ghost preview to these build ops
     /// (from, to, prefab, from_elevation, to_elevation). Builds nothing.
     pub async fn preview(
-        &self, ops: &[(Position, Position, String, f32, f32)],
+        &self,
+        ops: &[(Position, Position, String, f32, f32)],
     ) -> Result<(), BridgeError> {
         let ops_json: Vec<serde_json::Value> = ops.iter().map(|(from, to, prefab, fe, te)| {
             serde_json::json!({ "start": from, "end": to, "prefab": prefab, "from_elevation": fe, "to_elevation": te })
         }).collect();
-        self.http.post(format!("{}/preview", self.base))
+        self.http
+            .post(format!("{}/preview", self.base))
             .json(&serde_json::json!({ "ops": ops_json }))
-            .send().await?.error_for_status()?;
+            .send()
+            .await?
+            .error_for_status()?;
         Ok(())
     }
 
     pub async fn preview_clear(&self) -> Result<(), BridgeError> {
-        self.http.post(format!("{}/preview-clear", self.base))
+        self.http
+            .post(format!("{}/preview-clear", self.base))
             .json(&serde_json::json!({}))
-            .send().await?.error_for_status()?;
+            .send()
+            .await?
+            .error_for_status()?;
         Ok(())
     }
 
@@ -342,7 +379,10 @@ mod tests {
     #[tokio::test]
     async fn fetches_screenshot_png_bytes() {
         let client = BridgeClient::new(start_mock().await);
-        let png = client.screenshot(0.0, 0.0, 500.0, 0.0, 90.0, "none").await.unwrap();
+        let png = client
+            .screenshot(0.0, 0.0, 500.0, 0.0, 90.0, "none")
+            .await
+            .unwrap();
         assert_eq!(&png[1..4], b"PNG");
     }
 
@@ -357,7 +397,10 @@ mod tests {
             pitch: 32.0,
             size: 500.0,
         };
-        client.flyby(&[keyframe], 1.0, 12, tmp.to_str().unwrap()).await.unwrap();
+        client
+            .flyby(&[keyframe], 1.0, 12, tmp.to_str().unwrap())
+            .await
+            .unwrap();
         assert!(tmp.join("00001.png").exists());
     }
 
@@ -367,9 +410,20 @@ mod tests {
         let client = BridgeClient::new(start_mock().await);
         let res = client
             .build_road_elevated(
-                Position { x: 0.0, y: 0.0, z: 0.0 },
-                Position { x: 50.0, y: 0.0, z: 0.0 },
-                "road", true, 12.0, 12.0,
+                Position {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Position {
+                    x: 50.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                "road",
+                true,
+                12.0,
+                12.0,
             )
             .await
             .unwrap();
@@ -382,7 +436,24 @@ mod tests {
     #[tokio::test]
     async fn preview_set_and_clear() {
         let client = BridgeClient::new(start_mock().await);
-        client.preview(&[(Position { x: 0.0, y: 0.0, z: 0.0 }, Position { x: 50.0, y: 0.0, z: 0.0 }, "road".to_string(), 12.0, 12.0)]).await.unwrap();
+        client
+            .preview(&[(
+                Position {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Position {
+                    x: 50.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                "road".to_string(),
+                12.0,
+                12.0,
+            )])
+            .await
+            .unwrap();
         client.preview_clear().await.unwrap();
     }
 

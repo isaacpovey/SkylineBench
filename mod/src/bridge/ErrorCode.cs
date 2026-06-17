@@ -4,8 +4,6 @@ namespace SkylineBench.Bridge
     /// at HTTP 200 with {ok:false,reason}.</summary>
     public static class ErrorCode
     {
-        public const string Collision = "COLLISION";
-        public const string InsufficientFunds = "INSUFFICIENT_FUNDS";
         public const string OutOfBounds = "OUT_OF_BOUNDS";
         public const string InvalidPrefab = "INVALID_PREFAB";
         public const string SegmentTooLong = "SEGMENT_TOO_LONG";
@@ -18,5 +16,7 @@ namespace SkylineBench.Bridge
         public const string NetBufferFull = "NET_BUFFER_FULL";
         public const string CannotBuildOnWater = "CANNOT_BUILD_ON_WATER";
         public const string HeightTooHigh = "HEIGHT_TOO_HIGH";
+        public const string TooShort = "TOO_SHORT";
+        public const string InvalidShape = "INVALID_SHAPE";
     }
 }

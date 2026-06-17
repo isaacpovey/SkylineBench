@@ -30,6 +30,7 @@ namespace SkylineBench.Http
         public static HttpReply Buildings() { return HttpReply.Json(200, Serialize.Buildings(GameReads.Buildings())); }
         public static HttpReply Zones() { return HttpReply.Json(200, Serialize.Zones(GameReads.Zones())); }
         public static HttpReply Metrics() { return HttpReply.Json(200, Serialize.Metrics(GameReads.Metrics())); }
+        public static HttpReply Problems() { return HttpReply.Json(200, Serialize.Problems(GameReads.Problems())); }
 
         public static HttpReply RoadTypes()
         {
@@ -52,7 +53,7 @@ namespace SkylineBench.Http
         public static HttpReply ZoneTypes()
         {
             var w = new JsonWriter(); w.BeginObject().Name("zone_types").BeginArray();
-            foreach (var z in new string[] { "residential", "residential_high", "commercial", "commercial_high", "industrial", "office" }) w.Value(z);
+            foreach (var z in new string[] { "residential_low", "residential_high", "commercial_low", "commercial_high", "industrial", "office" }) w.Value(z);
             w.EndArray().EndObject(); return HttpReply.Json(200, w.ToString());
         }
 

@@ -1,7 +1,7 @@
 use super::{ConfigFile, LaunchInputs, LaunchSpec};
 
 /// The MCP tool allowlist Claude is given (the benchmark tools only).
-pub const ALLOWED: &str = "mcp__skylinebench__build_road,mcp__skylinebench__bulldoze,mcp__skylinebench__upgrade_road,mcp__skylinebench__set_zoning,mcp__skylinebench__control_time,mcp__skylinebench__get_city_overview,mcp__skylinebench__observe_area,mcp__skylinebench__get_metrics,mcp__skylinebench__list_road_types,mcp__skylinebench__list_zone_types,mcp__skylinebench__render_map,mcp__skylinebench__submit_solution,mcp__skylinebench__query_segments,mcp__skylinebench__apply_plan,mcp__skylinebench__trace_route";
+pub const ALLOWED: &str = "mcp__skylinebench__build_road,mcp__skylinebench__bulldoze,mcp__skylinebench__upgrade_road,mcp__skylinebench__set_zoning,mcp__skylinebench__control_time,mcp__skylinebench__get_city_overview,mcp__skylinebench__observe_area,mcp__skylinebench__get_metrics,mcp__skylinebench__list_road_types,mcp__skylinebench__list_zone_types,mcp__skylinebench__render_map,mcp__skylinebench__submit_solution,mcp__skylinebench__query_problems,mcp__skylinebench__query_segments,mcp__skylinebench__apply_plan,mcp__skylinebench__trace_route,mcp__skylinebench__validate_road";
 
 pub fn spec(inputs: &LaunchInputs) -> LaunchSpec {
     let mcp_config = inputs.session_dir.join("mcp.json");
@@ -67,9 +67,20 @@ mod tests {
         assert_eq!(spec.argv[0], "claude");
         assert!(spec.argv.contains(&"-p".to_string()));
         assert!(spec.argv.contains(&"improve traffic".to_string()));
-        assert!(spec.argv.windows(2).any(|w| w == ["--model", "claude-opus-4-8"]));
+        assert!(spec
+            .argv
+            .windows(2)
+            .any(|w| w == ["--model", "claude-opus-4-8"]));
         assert!(spec.argv.contains(&"stream-json".to_string()));
         assert!(spec.argv.contains(&"bypassPermissions".to_string()));
+        assert!(spec
+            .argv
+            .iter()
+            .any(|a| a.contains("mcp__skylinebench__query_problems")));
+        assert!(spec
+            .argv
+            .iter()
+            .any(|a| a.contains("mcp__skylinebench__validate_road")));
         assert!(spec.required_env.is_empty());
     }
 

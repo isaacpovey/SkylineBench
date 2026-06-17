@@ -12,13 +12,16 @@ namespace SkylineBench.Dto
     public struct ZoneCellDto { public float X; public float Z; public string ZoneType; }
     public sealed class ZonesDto { public List<ZoneCellDto> Cells = new List<ZoneCellDto>(); }
 
+    public sealed class ProblemBuildingDto { public uint Id; public float X; public float Z; public string Category; public List<string> Problems = new List<string>(); }
+    public sealed class ProblemsDto { public List<ProblemBuildingDto> Buildings = new List<ProblemBuildingDto>(); }
+
     public struct SegmentLoadDto { public uint SegmentId; public float Density; public float Length; }
     public sealed class MetricsDto
     {
         public ulong Tick;
         public float FlowPercent; public uint ActiveVehicles; public List<SegmentLoadDto> SegmentLoads = new List<SegmentLoadDto>();
         public long Balance; public long WeeklyIncome; public long WeeklyExpenses; public long Funds;
-        public uint Population; public byte ResidentialDemand; public byte CommercialDemand; public byte WorkplaceDemand; public uint Employed;
+        public uint Population; public byte ResidentialDemand; public byte CommercialDemand; public byte WorkplaceDemand;
         public byte Happiness;
         public uint AbandonedBuildings;
         // Per-building problem flags — leading (non-lagging) signals that a

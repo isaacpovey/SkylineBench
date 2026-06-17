@@ -25,7 +25,8 @@ use crate::bridge_client::BridgeClient;
 use crate::geometry::horizontal_distance;
 use crate::service::{
     self, BuildRoadArgs, BulldozeArgs, ControlTimeArgs, GetMetricsArgs, ObserveAreaArgs,
-    QuerySegmentsArgs, RenderMapArgs, ServiceError, SetZoningArgs, TraceRouteArgs, UpgradeRoadArgs,
+    QueryProblemsArgs, QuerySegmentsArgs, RenderMapArgs, ServiceError, SetZoningArgs,
+    TraceRouteArgs, UpgradeRoadArgs,
 };
 
 #[derive(Clone)]
@@ -102,23 +103,35 @@ impl BenchmarkServer {
     }
 
     pub fn with_persist(self, persist: Arc<EndStatePersister>) -> Self {
-        Self { persist: Some(persist), ..self }
+        Self {
+            persist: Some(persist),
+            ..self
+        }
     }
 
     pub fn with_renders_dir(self, dir: std::path::PathBuf) -> Self {
-        Self { renders_dir: Some(dir), ..self }
+        Self {
+            renders_dir: Some(dir),
+            ..self
+        }
     }
 
     pub fn with_screenshots_dir(self, dir: std::path::PathBuf) -> Self {
         Self {
-            screenshots: Some(Arc::new(crate::benchmark::screenshots::ScreenshotSink::new(dir))),
+            screenshots: Some(Arc::new(
+                crate::benchmark::screenshots::ScreenshotSink::new(dir),
+            )),
             ..self
         }
     }
 
     async fn shoot_overview(&self) {
-        let Some(sink) = &self.screenshots else { return };
-        let Ok(net) = self.client.network().await else { return };
+        let Some(sink) = &self.screenshots else {
+            return;
+        };
+        let Ok(net) = self.client.network().await else {
+            return;
+        };
         sink.capture(
             &self.client,
             &self.state,
@@ -133,11 +146,15 @@ impl BenchmarkServer {
     /// Record a begin/end highway flyby into `<screenshots>/flyby/<label>_{ns,we}`.
     /// Best-effort: a failure logs and never affects the run.
     async fn run_flyby(&self, label: &str) {
-        let Some(sink) = &self.screenshots else { return };
+        let Some(sink) = &self.screenshots else {
+            return;
+        };
         if sink.disabled() {
             return;
         }
-        let Ok(net) = self.client.network().await else { return };
+        let Ok(net) = self.client.network().await else {
+            return;
+        };
         let path = crate::service::highway_flyby_path(&net);
         let base = sink.dir().join("flyby");
         for (suffix, kfs) in [("ns", &path.ns), ("we", &path.we)] {
@@ -172,14 +189,30 @@ impl BenchmarkServer {
         action: &str,
         caption: String,
     ) {
-        let (Some(sink), Some(shot)) = (&self.screenshots, shot) else { return };
+        let (Some(sink), Some(shot)) = (&self.screenshots, shot) else {
+            return;
+        };
         let stream = crate::benchmark::screenshots::Stream::Action;
         if let Some(png) = before {
-            sink.persist(&self.client, &self.state, &png, stream, action, Some(format!("{caption} (before)")))
-                .await;
-        }
-        sink.capture(&self.client, &self.state, shot, stream, action, Some(format!("{caption} (after)")))
+            sink.persist(
+                &self.client,
+                &self.state,
+                &png,
+                stream,
+                action,
+                Some(format!("{caption} (before)")),
+            )
             .await;
+        }
+        sink.capture(
+            &self.client,
+            &self.state,
+            shot,
+            stream,
+            action,
+            Some(format!("{caption} (after)")),
+        )
+        .await;
     }
 
     /// Best-effort frame write: a failed render persist must never fail the
@@ -241,7 +274,9 @@ impl BenchmarkServer {
             }
         }
         let merged = with_progress(value, &s);
-        Ok(CallToolResult::success(vec![Content::text(merged.to_string())]))
+        Ok(CallToolResult::success(vec![Content::text(
+            merged.to_string(),
+        )]))
     }
 
     async fn run_ended(&self) -> bool {
@@ -298,7 +333,9 @@ impl BenchmarkServer {
 
 #[tool_router]
 impl BenchmarkServer {
-    #[tool(description = "Summarise the city: tick, population, funds, traffic flow, network size.")]
+    #[tool(
+        description = "Summarise the city: tick, population, funds, traffic flow, network size."
+    )]
     async fn get_city_overview(&self) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
         match service::get_city_overview(&self.client).await {
@@ -307,9 +344,14 @@ impl BenchmarkServer {
         }
     }
 
-    #[tool(description = "Observe the playable area: road network, buildings, zones, intersections, dead ends. \
-        Optional `bounds` restricts to a rectangle.")]
-    async fn observe_area(&self, Parameters(args): Parameters<ObserveAreaArgs>) -> Result<CallToolResult, ErrorData> {
+    #[tool(
+        description = "Observe the playable area: road network, buildings, zones, intersections, dead ends. \
+        Optional `bounds` restricts to a rectangle."
+    )]
+    async fn observe_area(
+        &self,
+        Parameters(args): Parameters<ObserveAreaArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
         match service::observe_area(&self.client, args).await {
             Ok(v) => self.finish(v).await,
@@ -317,10 +359,15 @@ impl BenchmarkServer {
         }
     }
 
-    #[tool(description = "Query road segments sorted by congestion (default) — the 'worst N segments' \
+    #[tool(
+        description = "Query road segments sorted by congestion (default) — the 'worst N segments' \
         search. Optional filters: min_density, bounds, prefab_contains; sort_by length or \
-        speed_limit instead. Returns density, direction, lanes, and midpoint per segment.")]
-    async fn query_segments(&self, Parameters(args): Parameters<QuerySegmentsArgs>) -> Result<CallToolResult, ErrorData> {
+        speed_limit instead. Returns density, direction, lanes, and midpoint per segment."
+    )]
+    async fn query_segments(
+        &self,
+        Parameters(args): Parameters<QuerySegmentsArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
         match service::query_segments(&self.client, args).await {
             Ok(v) => self.finish(v).await,
@@ -328,8 +375,29 @@ impl BenchmarkServer {
         }
     }
 
-    #[tool(description = "Get city metrics, optionally filtered to groups: traffic, economy, population, services.")]
-    async fn get_metrics(&self, Parameters(args): Parameters<GetMetricsArgs>) -> Result<CallToolResult, ErrorData> {
+    #[tool(
+        description = "Locate the specific buildings behind a problem-count spike: which buildings \
+        lost road access or a utility, and where (id + position + problem list). Optional `filter` \
+        (a single problem name like \"road_not_connected\") and `bounds`."
+    )]
+    async fn query_problems(
+        &self,
+        Parameters(args): Parameters<QueryProblemsArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.ensure_baseline().await;
+        match service::query_problems(&self.client, args).await {
+            Ok(v) => self.finish(v).await,
+            Err(e) => Ok(tool_err(e)),
+        }
+    }
+
+    #[tool(
+        description = "Get city metrics, optionally filtered to groups: traffic, economy, population, services."
+    )]
+    async fn get_metrics(
+        &self,
+        Parameters(args): Parameters<GetMetricsArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
         match self.client.metrics().await {
             Ok(m) => {
@@ -358,9 +426,14 @@ impl BenchmarkServer {
         }
     }
 
-    #[tool(description = "Render the road network to a PNG image: congestion colours, lane widths, \
-        one-way arrows, coordinate grid. Returns the image plus a JSON legend.")]
-    async fn render_map(&self, Parameters(args): Parameters<RenderMapArgs>) -> Result<CallToolResult, ErrorData> {
+    #[tool(
+        description = "Render the road network to a PNG image: congestion colours, lane widths, \
+        one-way arrows, coordinate grid. Returns the image plus a JSON legend."
+    )]
+    async fn render_map(
+        &self,
+        Parameters(args): Parameters<RenderMapArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
         match service::render_map(&self.client, args).await {
             Ok((png, legend)) => {
@@ -393,20 +466,31 @@ impl BenchmarkServer {
         }
     }
 
-    #[tool(description = "Control simulation time: pause, resume, step, or set speed. \
+    #[tool(
+        description = "Control simulation time: pause, resume, step, or set speed. \
         `step` defaults to 1 in-game day (585 ticks) when `ticks` is omitted; \
         the maximum step is 7 days (4095 ticks). Long steps are driven in chunks; \
         if the response has `partial: true`, call step again for the remainder of the ticks. \
         If a response carries `forced_paused: true`, a game dialog is blocking the simulation; \
-        steps cannot progress until it is dismissed.")]
-    async fn control_time(&self, Parameters(args): Parameters<ControlTimeArgs>) -> Result<CallToolResult, ErrorData> {
+        steps cannot progress until it is dismissed."
+    )]
+    async fn control_time(
+        &self,
+        Parameters(args): Parameters<ControlTimeArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
         if self.run_ended().await {
-            return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
+            return self
+                .finish(serde_json::json!({ "ok": false, "run_ended": true }))
+                .await;
         }
         let (day_ticks, max_ticks, max_step_days) = {
             let s = self.state.lock().await;
-            (s.config.day_ticks, s.config.max_step_ticks(), s.config.max_step_days)
+            (
+                s.config.day_ticks,
+                s.config.max_step_ticks(),
+                s.config.max_step_days,
+            )
         };
         let is_step = args.op == "step";
         if !is_step {
@@ -440,7 +524,11 @@ impl BenchmarkServer {
         // serves as the response for requested == 0.
         let pre = match service::control_time(
             &self.client,
-            ControlTimeArgs { op: "step".into(), ticks: Some(0), speed: None },
+            ControlTimeArgs {
+                op: "step".into(),
+                ticks: Some(0),
+                speed: None,
+            },
         )
         .await
         {
@@ -453,7 +541,11 @@ impl BenchmarkServer {
         for chunk in chunks {
             match service::control_time(
                 &self.client,
-                ControlTimeArgs { op: "step".into(), ticks: Some(chunk), speed: None },
+                ControlTimeArgs {
+                    op: "step".into(),
+                    ticks: Some(chunk),
+                    speed: None,
+                },
             )
             .await
             {
@@ -464,8 +556,10 @@ impl BenchmarkServer {
                     advanced = u32::try_from(tick.saturating_sub(start_tick))
                         .unwrap_or(u32::MAX)
                         .min(requested);
-                    let forced_paused =
-                        v.get("forced_paused").and_then(Value::as_bool).unwrap_or(false);
+                    let forced_paused = v
+                        .get("forced_paused")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false);
                     last = Some(v);
                     // Further chunks are pointless while a dialog blocks the sim.
                     if forced_paused {
@@ -539,14 +633,22 @@ impl BenchmarkServer {
     }
 
     #[tool(description = "Build a road between two positions of a given road type.")]
-    async fn build_road(&self, Parameters(args): Parameters<BuildRoadArgs>) -> Result<CallToolResult, ErrorData> {
+    async fn build_road(
+        &self,
+        Parameters(args): Parameters<BuildRoadArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
         if self.run_ended().await {
-            return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
+            return self
+                .finish(serde_json::json!({ "ok": false, "run_ended": true }))
+                .await;
         }
         let length = horizontal_distance(args.from, args.to);
         let road_type = args.road_type.clone();
-        let (mx, mz) = ((args.from.x + args.to.x) / 2.0, (args.from.z + args.to.z) / 2.0);
+        let (mx, mz) = (
+            (args.from.x + args.to.x) / 2.0,
+            (args.from.z + args.to.z) / 2.0,
+        );
         let shot = Some(crate::service::closeup_shot(mx, mz));
         let before = self.grab_before(shot).await;
         match service::build_road(&self.client, args).await {
@@ -557,7 +659,13 @@ impl BenchmarkServer {
                     s.record_mutation("build_road", cost);
                     drop(s);
                     self.refresh_topology().await;
-                    self.shoot_action_pair(shot, before, "build_road", format!("build_road: {road_type}")).await;
+                    self.shoot_action_pair(
+                        shot,
+                        before,
+                        "build_road",
+                        format!("build_road: {road_type}"),
+                    )
+                    .await;
                 }
                 self.finish(v).await
             }
@@ -565,20 +673,47 @@ impl BenchmarkServer {
         }
     }
 
-    #[tool(description = "Change an existing road segment's type. The segment is re-created \
+    #[tool(
+        description = "Dry-run a road build: test placement (collisions, slope, water, height, bounds) \
+        WITHOUT committing or creating any segment. Same args as build_road. Use it before build_road."
+    )]
+    async fn validate_road(
+        &self,
+        Parameters(args): Parameters<BuildRoadArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.ensure_baseline().await;
+        match service::validate_road(&self.client, args).await {
+            Ok(v) => self.finish(v).await,
+            Err(e) => Ok(tool_err(e)),
+        }
+    }
+
+    #[tool(
+        description = "Change an existing road segment's type. The segment is re-created \
         under a NEW id — `replaced` in the response maps old_segment_id to new_segment_id; \
-        refresh any cached ids.")]
-    async fn upgrade_road(&self, Parameters(args): Parameters<UpgradeRoadArgs>) -> Result<CallToolResult, ErrorData> {
+        refresh any cached ids."
+    )]
+    async fn upgrade_road(
+        &self,
+        Parameters(args): Parameters<UpgradeRoadArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
         if self.run_ended().await {
-            return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
+            return self
+                .finish(serde_json::json!({ "ok": false, "run_ended": true }))
+                .await;
         }
         let segment_id = args.segment;
         let road_type = args.road_type.clone();
         let net = self.client.network().await.ok();
         let length = net
             .as_ref()
-            .and_then(|n| n.segments.iter().find(|s| s.id == segment_id).map(|s| s.length))
+            .and_then(|n| {
+                n.segments
+                    .iter()
+                    .find(|s| s.id == segment_id)
+                    .map(|s| s.length)
+            })
             .unwrap_or(0.0);
         let midpoint = net.as_ref().and_then(|n| {
             let seg = n.segments.iter().find(|s| s.id == segment_id)?;
@@ -596,7 +731,13 @@ impl BenchmarkServer {
                     s.record_mutation("upgrade_road", cost);
                     drop(s);
                     self.refresh_topology().await;
-                    self.shoot_action_pair(shot, before, "upgrade_road", format!("upgrade_road: segment {segment_id} → {road_type}")).await;
+                    self.shoot_action_pair(
+                        shot,
+                        before,
+                        "upgrade_road",
+                        format!("upgrade_road: segment {segment_id} → {road_type}"),
+                    )
+                    .await;
                 }
                 self.finish(v).await
             }
@@ -604,11 +745,18 @@ impl BenchmarkServer {
         }
     }
 
-    #[tool(description = "Remove a network segment, node, or building. target_type = segment | node | building.")]
-    async fn bulldoze(&self, Parameters(args): Parameters<BulldozeArgs>) -> Result<CallToolResult, ErrorData> {
+    #[tool(
+        description = "Remove a network segment, node, or building. target_type = segment | node | building."
+    )]
+    async fn bulldoze(
+        &self,
+        Parameters(args): Parameters<BulldozeArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
         if self.run_ended().await {
-            return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
+            return self
+                .finish(serde_json::json!({ "ok": false, "run_ended": true }))
+                .await;
         }
         let target_type = args.target_type.clone();
         let id = args.id;
@@ -620,11 +768,17 @@ impl BenchmarkServer {
                     let end = n.nodes.iter().find(|nd| nd.id == seg.end_node)?;
                     Some(((start.x + end.x) / 2.0, (start.z + end.z) / 2.0))
                 }),
-                "node" => self.client.network().await.ok().and_then(|n| {
-                    n.nodes.iter().find(|nd| nd.id == id).map(|nd| (nd.x, nd.z))
-                }),
+                "node" => self
+                    .client
+                    .network()
+                    .await
+                    .ok()
+                    .and_then(|n| n.nodes.iter().find(|nd| nd.id == id).map(|nd| (nd.x, nd.z))),
                 "building" => self.client.buildings().await.ok().and_then(|b| {
-                    b.buildings.iter().find(|bd| bd.id == id).map(|bd| (bd.x, bd.z))
+                    b.buildings
+                        .iter()
+                        .find(|bd| bd.id == id)
+                        .map(|bd| (bd.x, bd.z))
                 }),
                 _ => None,
             }
@@ -638,7 +792,13 @@ impl BenchmarkServer {
                 if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
                     self.state.lock().await.record_mutation("bulldoze", 0);
                     self.refresh_topology().await;
-                    self.shoot_action_pair(shot, before, "bulldoze", format!("bulldoze: {target_type} {id}")).await;
+                    self.shoot_action_pair(
+                        shot,
+                        before,
+                        "bulldoze",
+                        format!("bulldoze: {target_type} {id}"),
+                    )
+                    .await;
                 }
                 self.finish(v).await
             }
@@ -647,10 +807,15 @@ impl BenchmarkServer {
     }
 
     #[tool(description = "Set zoning over a rectangular area. zone_type from list_zone_types.")]
-    async fn set_zoning(&self, Parameters(args): Parameters<SetZoningArgs>) -> Result<CallToolResult, ErrorData> {
+    async fn set_zoning(
+        &self,
+        Parameters(args): Parameters<SetZoningArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
         if self.run_ended().await {
-            return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
+            return self
+                .finish(serde_json::json!({ "ok": false, "run_ended": true }))
+                .await;
         }
         let zone_type = args.zone_type.clone();
         let (cx, cz) = (
@@ -664,7 +829,13 @@ impl BenchmarkServer {
                 if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
                     self.state.lock().await.record_mutation("set_zoning", 0);
                     self.refresh_topology().await;
-                    self.shoot_action_pair(shot, before, "set_zoning", format!("set_zoning: {zone_type}")).await;
+                    self.shoot_action_pair(
+                        shot,
+                        before,
+                        "set_zoning",
+                        format!("set_zoning: {zone_type}"),
+                    )
+                    .await;
                 }
                 self.finish(v).await
             }
@@ -672,26 +843,36 @@ impl BenchmarkServer {
         }
     }
 
-    #[tool(description = "Apply a batch of modifications in one call: build_road / build_polyline \
+    #[tool(
+        description = "Apply a batch of modifications in one call: build_road / build_polyline \
         (multi-point, auto-split under the 200 m segment cap) / upgrade_road / bulldoze / set_zoning. \
         Every op is validated and priced up front — any structurally invalid op rejects the WHOLE plan \
         before anything executes. Set validate_only=true for a free dry-run (no changes recorded) — \
         build ops are also checked against the game's placement rules (collision/slope/area) and report \
         `zoned_buildings_fronting`. \
         Each executed op counts as one change, identical to the single-op tools. The game can still \
-        reject an op at execution time (e.g. COLLISION); stop_on_error (default true) then skips the rest; \
+        reject an op at execution time (e.g. OBJECT_COLLISION); stop_on_error (default true) then skips the rest; \
         with stop_on_error=false execution continues and `first_failed_at` reports the earliest failing op. \
-        Set `preview:true` with `validate_only` to also get a non-mutating angled 3-D screenshot of the proposed roads (builds nothing).")]
-    async fn apply_plan(&self, Parameters(args): Parameters<ApplyPlanArgs>) -> Result<CallToolResult, ErrorData> {
-        use crate::benchmark::plan::{expand, tool_name, validate, ExecCtx, ExecOp, MAX_EXPANDED_OPS, MAX_OPS};
+        Set `preview:true` with `validate_only` to also get a non-mutating angled 3-D screenshot of the proposed roads (builds nothing)."
+    )]
+    async fn apply_plan(
+        &self,
+        Parameters(args): Parameters<ApplyPlanArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        use crate::benchmark::plan::{
+            expand, tool_name, validate, ExecCtx, ExecOp, MAX_EXPANDED_OPS, MAX_OPS,
+        };
 
         self.ensure_baseline().await;
         if self.run_ended().await {
-            return self.finish(serde_json::json!({ "ok": false, "run_ended": true })).await;
+            return self
+                .finish(serde_json::json!({ "ok": false, "run_ended": true }))
+                .await;
         }
         if args.ops.is_empty() || args.ops.len() > MAX_OPS {
             return Ok(CallToolResult::error(vec![Content::text(format!(
-                "plan must contain 1..={MAX_OPS} ops (got {})", args.ops.len()
+                "plan must contain 1..={MAX_OPS} ops (got {})",
+                args.ops.len()
             ))]));
         }
 
@@ -723,17 +904,26 @@ impl BenchmarkServer {
 
         let estimate = |op: &ExecOp, state: &crate::benchmark::state::RunState| -> i64 {
             match op {
-                ExecOp::Build { from, to, road_type, .. } => {
-                    state.build_cost(road_type, horizontal_distance(*from, *to))
-                }
-                ExecOp::Upgrade { segment, road_type } => {
-                    state.build_cost(road_type, ctx.segment_lengths.get(segment).copied().unwrap_or(0.0))
-                }
+                ExecOp::Build {
+                    from,
+                    to,
+                    road_type,
+                    ..
+                } => state.build_cost(road_type, horizontal_distance(*from, *to)),
+                ExecOp::Upgrade { segment, road_type } => state.build_cost(
+                    road_type,
+                    ctx.segment_lengths.get(segment).copied().unwrap_or(0.0),
+                ),
                 _ => 0,
             }
         };
 
-        let validations: Vec<(usize, &ExecOp, Result<(), crate::contract::ActionError>, i64)> = {
+        let validations: Vec<(
+            usize,
+            &ExecOp,
+            Result<(), crate::contract::ActionError>,
+            i64,
+        )> = {
             let state = self.state.lock().await;
             exec.iter()
                 .map(|(source, op)| (*source, op, validate(op, &ctx), estimate(op, &state)))
@@ -755,8 +945,27 @@ impl BenchmarkServer {
                     "executed": false,
                 });
                 if args.validate_only && all_valid && v.is_ok() {
-                    if let ExecOp::Build { from, to, road_type, snap, from_elevation, to_elevation } = op {
-                        match self.client.validate_road_elevated(*from, *to, road_type, *snap, *from_elevation, *to_elevation).await {
+                    if let ExecOp::Build {
+                        from,
+                        to,
+                        road_type,
+                        snap,
+                        from_elevation,
+                        to_elevation,
+                    } = op
+                    {
+                        match self
+                            .client
+                            .validate_road_elevated(
+                                *from,
+                                *to,
+                                road_type,
+                                *snap,
+                                *from_elevation,
+                                *to_elevation,
+                            )
+                            .await
+                        {
                             Ok(check) => {
                                 row["valid"] = serde_json::json!(check.ok);
                                 if let Some(r) = check.reason {
@@ -789,20 +998,45 @@ impl BenchmarkServer {
             // Only preview a plan that fully passes structural validation — a
             // ghost of roads that can't build would mislead the agent.
             if args.validate_only && args.preview && all_valid {
-                let builds: Vec<(crate::contract::Position, crate::contract::Position, String, f32, f32)> = exec.iter().filter_map(|(_, op)| match op {
-                    ExecOp::Build { from, to, road_type, from_elevation, to_elevation, .. } =>
-                        Some((*from, *to, road_type.clone(), *from_elevation, *to_elevation)),
-                    _ => None,
-                }).collect();
+                let builds: Vec<(
+                    crate::contract::Position,
+                    crate::contract::Position,
+                    String,
+                    f32,
+                    f32,
+                )> = exec
+                    .iter()
+                    .filter_map(|(_, op)| match op {
+                        ExecOp::Build {
+                            from,
+                            to,
+                            road_type,
+                            from_elevation,
+                            to_elevation,
+                            ..
+                        } => Some((
+                            *from,
+                            *to,
+                            road_type.clone(),
+                            *from_elevation,
+                            *to_elevation,
+                        )),
+                        _ => None,
+                    })
+                    .collect();
                 if !builds.is_empty() {
-                    let positions: Vec<(f32, f32)> = builds.iter()
-                        .map(|(f, t, ..)| ((f.x + t.x) / 2.0, (f.z + t.z) / 2.0)).collect();
+                    let positions: Vec<(f32, f32)> = builds
+                        .iter()
+                        .map(|(f, t, ..)| ((f.x + t.x) / 2.0, (f.z + t.z) / 2.0))
+                        .collect();
                     if let Err(e) = self.client.preview(&builds).await {
                         eprintln!("benchmark: preview set error: {e}");
                     }
                     let shot = crate::service::region_shot(&positions);
                     let png = match shot {
-                        Some(shot) => crate::service::capture_screenshot(&self.client, shot).await.ok(),
+                        Some(shot) => crate::service::capture_screenshot(&self.client, shot)
+                            .await
+                            .ok(),
                         None => None,
                     };
                     // Always clear the ghost, even if the screenshot failed, so it
@@ -843,17 +1077,27 @@ impl BenchmarkServer {
 
         let op_position = |op: &ExecOp| -> Option<(f32, f32)> {
             match op {
-                ExecOp::Build { from, to, .. } => Some(((from.x + to.x) / 2.0, (from.z + to.z) / 2.0)),
+                ExecOp::Build { from, to, .. } => {
+                    Some(((from.x + to.x) / 2.0, (from.z + to.z) / 2.0))
+                }
                 ExecOp::Upgrade { segment, .. } => seg_midpoint(*segment),
                 ExecOp::Bulldoze { target_type, id } => match target_type.as_str() {
                     "segment" => seg_midpoint(*id),
-                    "node" => net.nodes.iter().find(|nd| nd.id == *id).map(|nd| (nd.x, nd.z)),
-                    "building" => buildings.iter().find(|bd| bd.id == *id).map(|bd| (bd.x, bd.z)),
+                    "node" => net
+                        .nodes
+                        .iter()
+                        .find(|nd| nd.id == *id)
+                        .map(|nd| (nd.x, nd.z)),
+                    "building" => buildings
+                        .iter()
+                        .find(|bd| bd.id == *id)
+                        .map(|bd| (bd.x, bd.z)),
                     _ => None,
                 },
-                ExecOp::Zone { area, .. } => {
-                    Some(((area.min_x + area.max_x) / 2.0, (area.min_z + area.max_z) / 2.0))
-                }
+                ExecOp::Zone { area, .. } => Some((
+                    (area.min_x + area.max_x) / 2.0,
+                    (area.min_z + area.max_z) / 2.0,
+                )),
                 ExecOp::Invalid => None,
             }
         };
@@ -870,8 +1114,11 @@ impl BenchmarkServer {
         let mut op_before: std::collections::HashMap<usize, Option<Vec<u8>>> =
             std::collections::HashMap::new();
         for &src in &source_indices {
-            let positions: Vec<(f32, f32)> =
-                exec.iter().filter(|(s, _)| *s == src).filter_map(|(_, op)| op_position(op)).collect();
+            let positions: Vec<(f32, f32)> = exec
+                .iter()
+                .filter(|(s, _)| *s == src)
+                .filter_map(|(_, op)| op_position(op))
+                .collect();
             let shot = crate::service::region_shot(&positions);
             op_before.insert(src, self.grab_before(shot).await);
             if let Some(shot) = shot {
@@ -892,11 +1139,30 @@ impl BenchmarkServer {
                 continue;
             }
             let outcome = match (*op).clone() {
-                ExecOp::Build { from, to, road_type, snap, from_elevation, to_elevation } => {
-                    service::build_road(&self.client, BuildRoadArgs { from, to, road_type, snap, from_elevation, to_elevation }).await
+                ExecOp::Build {
+                    from,
+                    to,
+                    road_type,
+                    snap,
+                    from_elevation,
+                    to_elevation,
+                } => {
+                    service::build_road(
+                        &self.client,
+                        BuildRoadArgs {
+                            from,
+                            to,
+                            road_type,
+                            snap,
+                            from_elevation,
+                            to_elevation,
+                        },
+                    )
+                    .await
                 }
                 ExecOp::Upgrade { segment, road_type } => {
-                    service::upgrade_road(&self.client, UpgradeRoadArgs { segment, road_type }).await
+                    service::upgrade_road(&self.client, UpgradeRoadArgs { segment, road_type })
+                        .await
                 }
                 ExecOp::Bulldoze { target_type, id } => {
                     service::bulldoze(&self.client, BulldozeArgs { target_type, id }).await
@@ -912,7 +1178,10 @@ impl BenchmarkServer {
                     if ok {
                         n_all_ok += 1;
                         ok_sources.insert(*source);
-                        self.state.lock().await.record_mutation(tool_name(op), *cost);
+                        self.state
+                            .lock()
+                            .await
+                            .record_mutation(tool_name(op), *cost);
                     } else if first_failed_at.is_none() {
                         first_failed_at = Some(i);
                     }
@@ -950,7 +1219,11 @@ impl BenchmarkServer {
                 if !ok_sources.contains(&src) {
                     continue;
                 }
-                let tool = validations.iter().find(|v| v.0 == src).map(|v| tool_name(v.1)).unwrap_or("apply_plan");
+                let tool = validations
+                    .iter()
+                    .find(|v| v.0 == src)
+                    .map(|v| tool_name(v.1))
+                    .unwrap_or("apply_plan");
                 let caption = format!("apply_plan op {}/{}: {tool}", k + 1, n_sources);
                 self.shoot_action_pair(
                     op_shots.get(&src).copied(),
@@ -972,10 +1245,15 @@ impl BenchmarkServer {
         .await
     }
 
-    #[tool(description = "Estimate the route traffic would take between two positions \
+    #[tool(
+        description = "Estimate the route traffic would take between two positions \
         (snapped to nearest road nodes), honoring one-way directions and speed limits. \
-        Free read — use it to check whether a new link will actually attract traffic.")]
-    async fn trace_route(&self, Parameters(args): Parameters<TraceRouteArgs>) -> Result<CallToolResult, ErrorData> {
+        Free read — use it to check whether a new link will actually attract traffic."
+    )]
+    async fn trace_route(
+        &self,
+        Parameters(args): Parameters<TraceRouteArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
         match service::trace_route(&self.client, args).await {
             Ok(v) => self.finish(v).await,
@@ -983,10 +1261,15 @@ impl BenchmarkServer {
         }
     }
 
-    #[tool(description = "Angled 3-D screenshot of a location: a 45° game render showing road height, \
+    #[tool(
+        description = "Angled 3-D screenshot of a location: a 45° game render showing road height, \
         bridges, pillars and overpass clearance — use it to SEE elevation that render_map (top-down) cannot. \
-        Args: x, z (world metres), optional size (default 350; larger zooms out), top_down (default false).")]
-    async fn view_3d(&self, Parameters(args): Parameters<crate::service::ViewArgs>) -> Result<CallToolResult, ErrorData> {
+        Args: x, z (world metres), optional size (default 350; larger zooms out), top_down (default false)."
+    )]
+    async fn view_3d(
+        &self,
+        Parameters(args): Parameters<crate::service::ViewArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
         self.ensure_baseline().await;
         // Read-only observation: unlike render_map it is not persisted to the
         // render timelapse (renders_dir) — it's an agent-requested look, not a
@@ -1010,10 +1293,15 @@ impl BenchmarkServer {
         }
     }
 
-    #[tool(description = "Declare the run finished. Returns immediately; the harness settles and \
+    #[tool(
+        description = "Declare the run finished. Returns immediately; the harness settles and \
         scores the city after your session ends. Call when satisfied, then stop — further \
-        modifications will be rejected.")]
-    async fn submit_solution(&self, Parameters(_args): Parameters<SubmitArgs>) -> Result<CallToolResult, ErrorData> {
+        modifications will be rejected."
+    )]
+    async fn submit_solution(
+        &self,
+        Parameters(_args): Parameters<SubmitArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
         // Capture the baseline if the agent submits without any prior tool call,
         // so finalize has a "before" snapshot to score against.
         self.ensure_baseline().await;
@@ -1064,12 +1352,14 @@ mod tests {
                 "list_road_types",
                 "list_zone_types",
                 "observe_area",
+                "query_problems",
                 "query_segments",
                 "render_map",
                 "set_zoning",
                 "submit_solution",
                 "trace_route",
                 "upgrade_road",
+                "validate_road",
                 "view_3d",
             ]
         );
@@ -1118,8 +1408,10 @@ mod tests {
     /// Like bench_with_mock, but WITHOUT a preset baseline, so the first tool
     /// call drives ensure_baseline against the mock. Returns the state handle
     /// for asserting on end_reason.
-    async fn bench_with_mock_unmeasured(
-    ) -> (BenchmarkServer, std::sync::Arc<tokio::sync::Mutex<crate::benchmark::state::RunState>>) {
+    async fn bench_with_mock_unmeasured() -> (
+        BenchmarkServer,
+        std::sync::Arc<tokio::sync::Mutex<crate::benchmark::state::RunState>>,
+    ) {
         use crate::benchmark::config::BenchConfig;
         use crate::benchmark::state::RunState;
         use crate::bridge_client::BridgeClient;
@@ -1131,7 +1423,10 @@ mod tests {
         let (addr, server) = mock::bind("127.0.0.1:0".parse().unwrap()).await;
         tokio::spawn(server);
         let client = Arc::new(BridgeClient::new(format!("http://{addr}")));
-        let state = Arc::new(Mutex::new(RunState::new(BenchConfig::default(), HashMap::new())));
+        let state = Arc::new(Mutex::new(RunState::new(
+            BenchConfig::default(),
+            HashMap::new(),
+        )));
         (BenchmarkServer::new(client, state.clone()), state)
     }
 
@@ -1148,10 +1443,17 @@ mod tests {
         );
         // The abort behaves like any ended run: mutations are refused.
         let after = bench
-            .bulldoze(Parameters(crate::service::BulldozeArgs { target_type: "segment".into(), id: 0 }))
+            .bulldoze(Parameters(crate::service::BulldozeArgs {
+                target_type: "segment".into(),
+                id: 0,
+            }))
             .await
             .unwrap();
-        assert!(result_text(&after).contains("\"run_ended\":true"), "got: {}", result_text(&after));
+        assert!(
+            result_text(&after).contains("\"run_ended\":true"),
+            "got: {}",
+            result_text(&after)
+        );
     }
 
     fn result_text(res: &CallToolResult) -> String {
@@ -1171,8 +1473,14 @@ mod tests {
         // the agent was blind to decline while exploring. The readout must carry
         // the live mock values (population 1000, happiness 75) after any tool.
         let text = result_text(&bench.get_city_overview().await.unwrap());
-        assert!(text.contains("\"happiness\":75"), "city_status must carry live happiness, got: {text}");
-        assert!(text.contains("\"population\":1000"), "city_status must carry live population, got: {text}");
+        assert!(
+            text.contains("\"happiness\":75"),
+            "city_status must carry live happiness, got: {text}"
+        );
+        assert!(
+            text.contains("\"population\":1000"),
+            "city_status must carry live population, got: {text}"
+        );
     }
 
     #[tokio::test]
@@ -1206,7 +1514,10 @@ mod tests {
         let text = result_text(&res);
         assert!(text.contains("\"forced_paused\":true"), "got: {text}");
         assert!(text.contains("\"warning\""), "got: {text}");
-        assert!(text.contains("force-paused"), "warning should explain the dialog pause, got: {text}");
+        assert!(
+            text.contains("force-paused"),
+            "warning should explain the dialog pause, got: {text}"
+        );
         // The mod's Step bails immediately under a forced pause: the tick does
         // not move, so the accounting must report zero progress, not 424.
         assert!(text.contains("\"ticks_advanced\":0"), "got: {text}");
@@ -1226,7 +1537,10 @@ mod tests {
             .unwrap();
         assert_eq!(res.is_error, Some(true));
         let text = result_text(&res);
-        assert!(text.contains("4095"), "error should state the cap, got: {text}");
+        assert!(
+            text.contains("4095"),
+            "error should state the cap, got: {text}"
+        );
 
         // Rejected step must not have advanced the mock clock.
         let pause_res = bench
@@ -1238,7 +1552,10 @@ mod tests {
             .await
             .unwrap();
         let pause_text = result_text(&pause_res);
-        assert!(pause_text.contains("\"tick\":0"), "clock should still be at 0, got: {pause_text}");
+        assert!(
+            pause_text.contains("\"tick\":0"),
+            "clock should still be at 0, got: {pause_text}"
+        );
     }
 
     #[tokio::test]
@@ -1254,7 +1571,10 @@ mod tests {
             .unwrap();
         assert_ne!(res.is_error, Some(true), "exact-cap step should succeed");
         let text = result_text(&res);
-        assert!(text.contains("\"tick\":4095"), "clock should be at 4095, got: {text}");
+        assert!(
+            text.contains("\"tick\":4095"),
+            "clock should be at 4095, got: {text}"
+        );
     }
 
     #[tokio::test]
@@ -1272,7 +1592,10 @@ mod tests {
 
         // The run is over: subsequent mutations are rejected.
         let after = bench
-            .bulldoze(Parameters(crate::service::BulldozeArgs { target_type: "segment".into(), id: 0 }))
+            .bulldoze(Parameters(crate::service::BulldozeArgs {
+                target_type: "segment".into(),
+                id: 0,
+            }))
             .await
             .unwrap();
         assert!(result_text(&after).contains("\"run_ended\":true"));
@@ -1284,15 +1607,23 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
         let persister = std::sync::Arc::new(crate::benchmark::persist::EndStatePersister {
             out_dir: dir.clone(),
-            map: crate::benchmark::record::MapInfo { id: "m".into(), source: "test".into(), game_version: "v".into() },
+            map: crate::benchmark::record::MapInfo {
+                id: "m".into(),
+                source: "test".into(),
+                game_version: "v".into(),
+            },
             started_at: "t0".into(),
         });
         let bench = bench_with_mock().await.with_persist(persister);
-        let res = bench.submit_solution(Parameters(SubmitArgs { note: None })).await.unwrap();
+        let res = bench
+            .submit_solution(Parameters(SubmitArgs { note: None }))
+            .await
+            .unwrap();
         assert!(result_text(&res).contains("\"run_ended\":true"));
         // The snapshot must already be on disk when the response is built.
         let end: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(dir.join("end-state.json")).unwrap()).unwrap();
+            serde_json::from_str(&std::fs::read_to_string(dir.join("end-state.json")).unwrap())
+                .unwrap();
         assert_eq!(end["end_reason"], "submit");
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -1325,9 +1656,16 @@ mod tests {
             }))
             .await
             .unwrap();
-        assert_ne!(res.is_error, Some(true), "zero-tick step should not be an error");
+        assert_ne!(
+            res.is_error,
+            Some(true),
+            "zero-tick step should not be an error"
+        );
         let text = result_text(&res);
-        assert!(text.contains("\"tick\":0"), "clock should remain at 0, got: {text}");
+        assert!(
+            text.contains("\"tick\":0"),
+            "clock should remain at 0, got: {text}"
+        );
         assert!(text.contains("\"ticks_advanced\":0"), "got: {text}");
         assert!(text.contains("\"partial\":false"), "got: {text}");
     }
@@ -1371,18 +1709,26 @@ mod tests {
             .filter(|n| n.ends_with(".png"))
             .collect();
         frames.sort();
-        assert_eq!(frames.len(), 2, "one agent render + one auto step frame: {frames:?}");
+        assert_eq!(
+            frames.len(),
+            2,
+            "one agent render + one auto step frame: {frames:?}"
+        );
         assert!(frames[0].starts_with("00001"), "{frames:?}");
 
         let index = std::fs::read_to_string(dir.join("index.jsonl")).unwrap();
-        let lines: Vec<serde_json::Value> =
-            index.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        let lines: Vec<serde_json::Value> = index
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0]["trigger"], "render_map");
         assert_eq!(lines[1]["trigger"], "step");
         assert!(lines[1]["tick"].is_u64());
         assert!(
-            lines.iter().all(|l| l.as_object().unwrap().contains_key("congested")),
+            lines
+                .iter()
+                .all(|l| l.as_object().unwrap().contains_key("congested")),
             "index tracks the scored metric: {lines:?}"
         );
         std::fs::remove_dir_all(&dir).ok();
@@ -1403,8 +1749,10 @@ mod tests {
             .await
             .unwrap();
         let index = std::fs::read_to_string(dir.join("overview/index.jsonl")).unwrap();
-        let entries: Vec<serde_json::Value> =
-            index.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        let entries: Vec<serde_json::Value> = index
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
         assert_eq!(entries.len(), 2, "one frame per chunk: {entries:?}");
         assert!(entries.iter().all(|e| e["trigger"] == "step"));
         std::fs::remove_dir_all(&dir).ok();
@@ -1417,8 +1765,16 @@ mod tests {
         let bench = bench_with_mock().await.with_screenshots_dir(dir.clone());
         bench
             .build_road(Parameters(crate::service::BuildRoadArgs {
-                from: crate::contract::Position { x: 0.0, y: 0.0, z: 0.0 },
-                to: crate::contract::Position { x: 50.0, y: 0.0, z: 0.0 },
+                from: crate::contract::Position {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                to: crate::contract::Position {
+                    x: 50.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
                 road_type: "road".into(),
                 snap: true,
                 from_elevation: 0.0,
@@ -1427,8 +1783,10 @@ mod tests {
             .await
             .unwrap();
         let index = std::fs::read_to_string(dir.join("actions/index.jsonl")).unwrap();
-        let entries: Vec<serde_json::Value> =
-            index.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        let entries: Vec<serde_json::Value> = index
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
         assert_eq!(entries.len(), 2, "a before and an after frame: {entries:?}");
         assert_eq!(entries[0]["action"], "build_road");
         assert_eq!(entries[0]["caption"], "build_road: road (before)");
@@ -1452,13 +1810,27 @@ mod tests {
             .unwrap();
 
         let actions = std::fs::read_to_string(dir.join("actions/index.jsonl")).unwrap();
-        let entries: Vec<serde_json::Value> =
-            actions.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        let entries: Vec<serde_json::Value> = actions
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
         assert_eq!(entries.len(), 4, "two ops produce two before/after pairs");
-        assert_eq!(entries[0]["caption"], "apply_plan op 1/2: build_road (before)");
-        assert_eq!(entries[1]["caption"], "apply_plan op 1/2: build_road (after)");
-        assert_eq!(entries[2]["caption"], "apply_plan op 2/2: build_road (before)");
-        assert_eq!(entries[3]["caption"], "apply_plan op 2/2: build_road (after)");
+        assert_eq!(
+            entries[0]["caption"],
+            "apply_plan op 1/2: build_road (before)"
+        );
+        assert_eq!(
+            entries[1]["caption"],
+            "apply_plan op 1/2: build_road (after)"
+        );
+        assert_eq!(
+            entries[2]["caption"],
+            "apply_plan op 2/2: build_road (before)"
+        );
+        assert_eq!(
+            entries[3]["caption"],
+            "apply_plan op 2/2: build_road (after)"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -1468,7 +1840,10 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
         let bench = bench_with_mock().await.with_screenshots_dir(dir.clone());
         bench
-            .bulldoze(Parameters(crate::service::BulldozeArgs { target_type: "segment".into(), id: 9999 }))
+            .bulldoze(Parameters(crate::service::BulldozeArgs {
+                target_type: "segment".into(),
+                id: 9999,
+            }))
             .await
             .unwrap();
         assert!(!dir.join("actions/index.jsonl").exists());
@@ -1477,8 +1852,16 @@ mod tests {
 
     fn plan_build(x0: f32, x1: f32) -> crate::benchmark::plan::PlanOp {
         crate::benchmark::plan::PlanOp::BuildRoad {
-            from: crate::contract::Position { x: x0, y: 0.0, z: 0.0 },
-            to: crate::contract::Position { x: x1, y: 0.0, z: 0.0 },
+            from: crate::contract::Position {
+                x: x0,
+                y: 0.0,
+                z: 0.0,
+            },
+            to: crate::contract::Position {
+                x: x1,
+                y: 0.0,
+                z: 0.0,
+            },
             road_type: "road".into(),
             snap: true,
             from_elevation: 0.0,
@@ -1533,7 +1916,10 @@ mod tests {
         // 50m span = 1 op; 400m span = 3 chunks → 4 expanded ops priced.
         assert_eq!(v["results"].as_array().unwrap().len(), 4);
         assert!(v["total_estimated_cost"].as_i64().unwrap() > 0);
-        assert_eq!(v["city_status"]["changes_made"], 0, "dry-run must not record changes");
+        assert_eq!(
+            v["city_status"]["changes_made"], 0,
+            "dry-run must not record changes"
+        );
     }
 
     #[tokio::test]
@@ -1572,7 +1958,11 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&result_text(&res)).unwrap();
         assert_eq!(v["ok"], true);
         assert_eq!(v["city_status"]["changes_made"], 4);
-        assert!(v["results"].as_array().unwrap().iter().all(|r| r["executed"] == true && r["ok"] == true));
+        assert!(v["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["executed"] == true && r["ok"] == true));
     }
 
     #[tokio::test]
@@ -1582,7 +1972,10 @@ mod tests {
             .apply_plan(Parameters(ApplyPlanArgs {
                 ops: vec![
                     plan_build(0.0, 50.0),
-                    crate::benchmark::plan::PlanOp::UpgradeRoad { segment: 9999, road_type: "road".into() },
+                    crate::benchmark::plan::PlanOp::UpgradeRoad {
+                        segment: 9999,
+                        road_type: "road".into(),
+                    },
                 ],
                 validate_only: false,
                 stop_on_error: true,
@@ -1592,11 +1985,17 @@ mod tests {
             .unwrap();
         let v: serde_json::Value = serde_json::from_str(&result_text(&res)).unwrap();
         assert_eq!(v["ok"], false);
-        assert_eq!(v["city_status"]["changes_made"], 0, "nothing may execute when validation fails");
+        assert_eq!(
+            v["city_status"]["changes_made"], 0,
+            "nothing may execute when validation fails"
+        );
         let results = v["results"].as_array().unwrap();
         assert_eq!(results[1]["valid"], false);
         assert_eq!(results[1]["reason"], "INVALID_ARGS");
-        assert_eq!(v["first_failed_at"], 1, "must point at the earliest invalid row");
+        assert_eq!(
+            v["first_failed_at"], 1,
+            "must point at the earliest invalid row"
+        );
     }
 
     #[tokio::test]
@@ -1607,8 +2006,16 @@ mod tests {
         // fails at runtime — execution must stop there.
         let built = bench
             .build_road(Parameters(crate::service::BuildRoadArgs {
-                from: crate::contract::Position { x: 0.0, y: 0.0, z: 0.0 },
-                to: crate::contract::Position { x: 50.0, y: 0.0, z: 0.0 },
+                from: crate::contract::Position {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                to: crate::contract::Position {
+                    x: 50.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
                 road_type: "road".into(),
                 snap: true,
                 from_elevation: 0.0,
@@ -1622,8 +2029,14 @@ mod tests {
         let res = bench
             .apply_plan(Parameters(ApplyPlanArgs {
                 ops: vec![
-                    crate::benchmark::plan::PlanOp::Bulldoze { target_type: "segment".into(), id: seg },
-                    crate::benchmark::plan::PlanOp::Bulldoze { target_type: "segment".into(), id: seg },
+                    crate::benchmark::plan::PlanOp::Bulldoze {
+                        target_type: "segment".into(),
+                        id: seg,
+                    },
+                    crate::benchmark::plan::PlanOp::Bulldoze {
+                        target_type: "segment".into(),
+                        id: seg,
+                    },
                     plan_build(2000.0, 2050.0),
                 ],
                 validate_only: false,
@@ -1638,7 +2051,10 @@ mod tests {
         let results = v["results"].as_array().unwrap();
         assert_eq!(results[0]["ok"], true);
         assert_eq!(results[1]["ok"], false);
-        assert_eq!(results[2]["executed"], false, "ops after the failure are skipped");
+        assert_eq!(
+            results[2]["executed"], false,
+            "ops after the failure are skipped"
+        );
         // Only the setup build counts toward the change cap; the successful
         // bulldoze is recorded but does not consume it.
         assert_eq!(v["city_status"]["changes_made"], 1);
@@ -1649,8 +2065,16 @@ mod tests {
         let bench = bench_with_mock_costs().await;
         let built = bench
             .build_road(Parameters(crate::service::BuildRoadArgs {
-                from: crate::contract::Position { x: 0.0, y: 0.0, z: 0.0 },
-                to: crate::contract::Position { x: 50.0, y: 0.0, z: 0.0 },
+                from: crate::contract::Position {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                to: crate::contract::Position {
+                    x: 50.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
                 road_type: "road".into(),
                 snap: true,
                 from_elevation: 0.0,
@@ -1664,8 +2088,14 @@ mod tests {
         let res = bench
             .apply_plan(Parameters(ApplyPlanArgs {
                 ops: vec![
-                    crate::benchmark::plan::PlanOp::Bulldoze { target_type: "segment".into(), id: seg },
-                    crate::benchmark::plan::PlanOp::Bulldoze { target_type: "segment".into(), id: seg },
+                    crate::benchmark::plan::PlanOp::Bulldoze {
+                        target_type: "segment".into(),
+                        id: seg,
+                    },
+                    crate::benchmark::plan::PlanOp::Bulldoze {
+                        target_type: "segment".into(),
+                        id: seg,
+                    },
                     plan_build(2000.0, 2050.0),
                 ],
                 validate_only: false,
@@ -1679,7 +2109,10 @@ mod tests {
         assert_eq!(v["first_failed_at"], 1);
         let results = v["results"].as_array().unwrap();
         assert_eq!(results[1]["ok"], false);
-        assert_eq!(results[2]["executed"], true, "later ops still run when not stopping");
+        assert_eq!(
+            results[2]["executed"], true,
+            "later ops still run when not stopping"
+        );
         assert_eq!(results[2]["ok"], true);
         // setup build + final build count; the successful bulldoze is recorded
         // but doesn't consume the change cap, and the failed bulldoze isn't recorded.
@@ -1706,9 +2139,10 @@ mod tests {
         let bench = BenchmarkServer::new(client, state.clone());
 
         let res = bench
-            .bulldoze(Parameters(
-                crate::service::BulldozeArgs { target_type: "segment".into(), id: 0 },
-            ))
+            .bulldoze(Parameters(crate::service::BulldozeArgs {
+                target_type: "segment".into(),
+                id: 0,
+            }))
             .await
             .unwrap();
         // run_ended path returns ok:false, run_ended:true and records NO change.
@@ -1721,15 +2155,34 @@ mod tests {
         use crate::benchmark::plan::PlanOp;
 
         let bench = bench_with_mock().await;
-        let res = bench.apply_plan(Parameters(ApplyPlanArgs {
-            ops: vec![PlanOp::BuildRoad {
-                from: crate::contract::Position { x: 0.0, y: 0.0, z: 0.0 },
-                to: crate::contract::Position { x: 50.0, y: 0.0, z: 0.0 },
-                road_type: "road".into(), snap: true, from_elevation: 12.0, to_elevation: 12.0,
-            }],
-            validate_only: true, stop_on_error: true, preview: true,
-        })).await.unwrap();
+        let res = bench
+            .apply_plan(Parameters(ApplyPlanArgs {
+                ops: vec![PlanOp::BuildRoad {
+                    from: crate::contract::Position {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    to: crate::contract::Position {
+                        x: 50.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    road_type: "road".into(),
+                    snap: true,
+                    from_elevation: 12.0,
+                    to_elevation: 12.0,
+                }],
+                validate_only: true,
+                stop_on_error: true,
+                preview: true,
+            }))
+            .await
+            .unwrap();
         // One image content block (the ghost) plus the JSON text block.
-        assert!(res.content.iter().any(|c| c.as_image().is_some()), "expected a preview image");
+        assert!(
+            res.content.iter().any(|c| c.as_image().is_some()),
+            "expected a preview image"
+        );
     }
 }

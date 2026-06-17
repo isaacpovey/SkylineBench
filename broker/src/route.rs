@@ -30,18 +30,35 @@ fn arcs(network: &Network) -> HashMap<u32, Vec<Arc>> {
         .iter()
         .flat_map(|s| {
             let millicost = ((s.length / s.speed_limit.max(0.1)) * 1000.0) as u64;
-            let fwd = (s.start_node, Arc { to: s.end_node, segment: s.id, millicost });
-            let rev = (s.end_node, Arc { to: s.start_node, segment: s.id, millicost });
+            let fwd = (
+                s.start_node,
+                Arc {
+                    to: s.end_node,
+                    segment: s.id,
+                    millicost,
+                },
+            );
+            let rev = (
+                s.end_node,
+                Arc {
+                    to: s.start_node,
+                    segment: s.id,
+                    millicost,
+                },
+            );
             match s.travel_direction.as_str() {
                 "start_to_end" => vec![fwd],
                 "end_to_start" => vec![rev],
                 _ => vec![fwd, rev],
             }
         })
-        .fold(HashMap::new(), |mut acc: HashMap<u32, Vec<Arc>>, (from, arc)| {
-            acc.entry(from).or_default().push(arc);
-            acc
-        })
+        .fold(
+            HashMap::new(),
+            |mut acc: HashMap<u32, Vec<Arc>>, (from, arc)| {
+                acc.entry(from).or_default().push(arc);
+                acc
+            },
+        )
 }
 
 /// Cheapest directed route from `from` to `to`, or None when unreachable.
@@ -83,9 +100,14 @@ pub fn shortest_route(network: &Network, from: u32, to: u32) -> Option<Route> {
     });
     let nodes: Vec<u32> = rev_nodes.into_iter().rev().collect();
     let segments: Vec<u32> = rev_segments.into_iter().rev().collect();
-    let seg_lengths: HashMap<u32, f32> = network.segments.iter().map(|s| (s.id, s.length)).collect();
+    let seg_lengths: HashMap<u32, f32> =
+        network.segments.iter().map(|s| (s.id, s.length)).collect();
     let length_m = segments.iter().filter_map(|id| seg_lengths.get(id)).sum();
-    Some(Route { nodes, segments, length_m })
+    Some(Route {
+        nodes,
+        segments,
+        length_m,
+    })
 }
 
 #[cfg(test)]
@@ -115,7 +137,11 @@ mod tests {
     ///   seg 10: 1↔2 (both), seg 11: 2↔3 (both), seg 12: 1→3 (one-way, fast)
     fn network() -> Network {
         Network {
-            nodes: vec![node(1, 0.0, 0.0), node(2, 100.0, 0.0), node(3, 100.0, 100.0)],
+            nodes: vec![
+                node(1, 0.0, 0.0),
+                node(2, 100.0, 0.0),
+                node(3, 100.0, 100.0),
+            ],
             segments: vec![
                 seg(10, 1, 2, "both", 1.0),
                 seg(11, 2, 3, "both", 1.0),

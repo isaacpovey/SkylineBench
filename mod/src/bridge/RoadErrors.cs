@@ -15,8 +15,8 @@ namespace SkylineBench.Bridge
             if ((bits & 0x2000UL) != 0) return ErrorCode.CannotBuildOnWater;   // CannotBuildOnWater
             if ((bits & 0x20UL) != 0) return ErrorCode.OutOfArea;              // OutOfArea
             if ((bits & 0x40000UL) != 0) return ErrorCode.TooManyConnections;  // TooManyConnections
-            if ((bits & 0x100UL) != 0) return ErrorCode.InvalidArgs;           // TooShort
-            if ((bits & 0x80UL) != 0) return ErrorCode.InvalidArgs;            // InvalidShape
+            if ((bits & 0x100UL) != 0) return ErrorCode.TooShort;              // TooShort
+            if ((bits & 0x80UL) != 0) return ErrorCode.InvalidShape;           // InvalidShape
             return ErrorCode.Unknown;
         }
     }

@@ -83,14 +83,14 @@ pub struct Topology {
 
 impl Topology {
     pub fn from_network(net: &Network) -> Self {
-        let incidence = net.segments.iter().fold(
-            HashMap::<u32, Vec<u32>>::new(),
-            |mut acc, s| {
+        let incidence = net
+            .segments
+            .iter()
+            .fold(HashMap::<u32, Vec<u32>>::new(), |mut acc, s| {
                 acc.entry(s.start_node).or_default().push(s.id);
                 acc.entry(s.end_node).or_default().push(s.id);
                 acc
-            },
-        );
+            });
         Self { incidence }
     }
 }
@@ -124,12 +124,20 @@ mod tests {
     use crate::contract::{NetNode, NetSegment, Network};
 
     fn load(id: u32, density: f32, length: f32) -> SegmentLoad {
-        SegmentLoad { segment_id: id, density, length }
+        SegmentLoad {
+            segment_id: id,
+            density,
+            length,
+        }
     }
 
     #[test]
     fn instant_sums_lengths_at_or_above_threshold() {
-        let loads = vec![load(1, 0.9, 100.0), load(2, 0.7, 50.0), load(3, 0.69, 999.0)];
+        let loads = vec![
+            load(1, 0.9, 100.0),
+            load(2, 0.7, 50.0),
+            load(3, 0.69, 999.0),
+        ];
         assert_eq!(instant_congested_meters(&loads, 0.7), 150.0);
     }
 
@@ -152,7 +160,11 @@ mod tests {
         let mut w = WindowAccum::new();
         w.push(&[load(7, 0.8, 60.0)]);
         w.push(&[]); // segment bulldozed mid-window
-        assert_eq!(w.congested_meters(0.7), 60.0, "mean over existing samples only");
+        assert_eq!(
+            w.congested_meters(0.7),
+            60.0,
+            "mean over existing samples only"
+        );
     }
 
     #[test]
@@ -163,11 +175,25 @@ mod tests {
         assert_eq!(w.congested_meters(0.7), 25.0);
     }
 
-    fn node(id: u32) -> NetNode { NetNode { id, x: 0.0, y: 0.0, z: 0.0 } }
+    fn node(id: u32) -> NetNode {
+        NetNode {
+            id,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        }
+    }
     fn seg(id: u32, a: u32, b: u32) -> NetSegment {
         NetSegment {
-            id, start_node: a, end_node: b, prefab: "road".into(), lanes: 2,
-            length: 100.0, one_way: false, travel_direction: "both".into(), speed_limit: 1.0,
+            id,
+            start_node: a,
+            end_node: b,
+            prefab: "road".into(),
+            lanes: 2,
+            length: 100.0,
+            one_way: false,
+            travel_direction: "both".into(),
+            speed_limit: 1.0,
         }
     }
 
@@ -178,15 +204,24 @@ mod tests {
             segments: vec![seg(10, 1, 3), seg(11, 1, 4), seg(12, 1, 5), seg(20, 2, 3)],
         };
         let topo = Topology::from_network(&net);
-        let dense = |id: u32| match id { 10 | 11 => Some(0.9), _ => Some(0.2) };
+        let dense = |id: u32| match id {
+            10 | 11 => Some(0.9),
+            _ => Some(0.2),
+        };
         assert_eq!(congested_junctions(&topo, dense, 0.7, 3, 2), 1);
-        let one = |id: u32| match id { 10 => Some(0.9), _ => Some(0.2) };
+        let one = |id: u32| match id {
+            10 => Some(0.9),
+            _ => Some(0.2),
+        };
         assert_eq!(congested_junctions(&topo, one, 0.7, 3, 2), 0);
     }
 
     #[test]
     fn degree_two_node_is_never_a_junction_even_if_both_congested() {
-        let net = Network { nodes: vec![node(2), node(3), node(4)], segments: vec![seg(20, 2, 3), seg(21, 2, 4)] };
+        let net = Network {
+            nodes: vec![node(2), node(3), node(4)],
+            segments: vec![seg(20, 2, 3), seg(21, 2, 4)],
+        };
         let topo = Topology::from_network(&net);
         assert_eq!(congested_junctions(&topo, |_| Some(0.9), 0.7, 3, 2), 0);
     }
@@ -197,9 +232,16 @@ mod tests {
         // threshold and 12 has no density. With min_congested=2 the count is 1
         // (not a junction) — but only if a missing density is treated as
         // not-congested. If None counted as congested it would be 2 → 1 junction.
-        let net = Network { nodes: vec![node(1), node(3), node(4), node(5)], segments: vec![seg(10, 1, 3), seg(11, 1, 4), seg(12, 1, 5)] };
+        let net = Network {
+            nodes: vec![node(1), node(3), node(4), node(5)],
+            segments: vec![seg(10, 1, 3), seg(11, 1, 4), seg(12, 1, 5)],
+        };
         let topo = Topology::from_network(&net);
-        let dense = |id: u32| match id { 10 => Some(0.9), 11 => Some(0.2), _ => None };
+        let dense = |id: u32| match id {
+            10 => Some(0.9),
+            11 => Some(0.2),
+            _ => None,
+        };
         assert_eq!(congested_junctions(&topo, dense, 0.7, 3, 2), 0);
     }
 

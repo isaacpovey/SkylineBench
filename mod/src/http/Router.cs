@@ -19,6 +19,7 @@ namespace SkylineBench.Http
                 case "/network": return method == "GET" ? Handlers.Network() : MethodNotAllowed();
                 case "/buildings": return method == "GET" ? Handlers.Buildings() : MethodNotAllowed();
                 case "/zones": return method == "GET" ? Handlers.Zones() : MethodNotAllowed();
+                case "/problems": return method == "GET" ? Handlers.Problems() : MethodNotAllowed();
                 case "/metrics": return method == "GET" ? Handlers.Metrics() : MethodNotAllowed();
                 case "/road-types": return method == "GET" ? Handlers.RoadTypes() : MethodNotAllowed();
                 case "/zone-types": return method == "GET" ? Handlers.ZoneTypes() : MethodNotAllowed();

@@ -98,6 +98,21 @@ pub struct Zones {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProblemBuilding {
+    pub id: u32,
+    pub x: f32,
+    pub z: f32,
+    pub category: String,
+    /// Normalised problem names, e.g. "road_not_connected", "no_fuel", "abandoned".
+    pub problems: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Problems {
+    pub buildings: Vec<ProblemBuilding>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SegmentLoad {
     pub segment_id: u32,
     pub density: f32,
@@ -129,7 +144,6 @@ pub struct PopulationMetrics {
     /// CS1 exposes a single combined industrial+office ("workplace") demand,
     /// not separate industrial/office values — see mod DISCOVERY.md.
     pub workplace_demand: u8,
-    pub employed: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -198,18 +212,16 @@ pub struct ZoneTypes {
     pub zone_types: Vec<String>,
 }
 
-/// Normalised failure reasons for actions. Extends spec §5's mod-side set
-/// (`COLLISION`, `INSUFFICIENT_FUNDS`, `OUT_OF_BOUNDS`, `INVALID_PREFAB`,
-/// `SEGMENT_TOO_LONG`, `UNKNOWN`) with broker-side pre-validation reasons
-/// (`DEGENERATE_SEGMENT`, `INVALID_ARGS`). The placement-validation codes
+/// Normalised failure reasons for actions. Mod-side placement codes
 /// (`OBJECT_COLLISION`, `SLOPE_TOO_STEEP`, `OUT_OF_AREA`, `TOO_MANY_CONNECTIONS`,
-/// `NET_BUFFER_FULL`) come from the mod's BuildValidator. The elevation placement
-/// codes (`CANNOT_BUILD_ON_WATER`, `HEIGHT_TOO_HIGH`) come from NetTool.
+/// `NET_BUFFER_FULL`, `TOO_SHORT`, `INVALID_SHAPE`) come from the mod's RoadErrors;
+/// the elevation codes (`CANNOT_BUILD_ON_WATER`, `HEIGHT_TOO_HIGH`) come from NetTool;
+/// broker-side pre-validation adds `OUT_OF_BOUNDS`, `SEGMENT_TOO_LONG`,
+/// `INVALID_PREFAB`, `DEGENERATE_SEGMENT`, `INVALID_ARGS`. Building costs are not
+/// enforced, so no funds-related reason exists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ActionError {
-    Collision,
-    InsufficientFunds,
     OutOfBounds,
     InvalidPrefab,
     SegmentTooLong,
@@ -223,6 +235,8 @@ pub enum ActionError {
     NetBufferFull,
     CannotBuildOnWater,
     HeightTooHigh,
+    TooShort,
+    InvalidShape,
 }
 
 /// Result of a mutating action. `ok == true` ⇒ the diff fields are meaningful;
@@ -286,6 +300,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn problems_round_trips() {
+        let p = Problems {
+            buildings: vec![ProblemBuilding {
+                id: 7, x: 1.0, z: 2.0, category: "residential".into(),
+                problems: vec!["road_not_connected".into(), "no_fuel".into()],
+            }],
+        };
+        let json = serde_json::to_string(&p).unwrap();
+        let parsed: Problems = serde_json::from_str(&json).unwrap();
+        assert_eq!(p, parsed);
+    }
+
+    #[test]
     fn load_result_defaults_resolved_and_available() {
         let r: LoadResult = serde_json::from_str(r#"{"ok":true,"city_loaded":true}"#).unwrap();
         assert!(r.resolved.is_none());
@@ -304,7 +331,8 @@ mod tests {
     #[test]
     fn save_info_handles_null_city_name() {
         // The mod always emits city_name, writing JSON null for corrupt saves.
-        let s: SaveInfo = serde_json::from_str(r#"{"name":"x","city_name":null,"full_name":"y"}"#).unwrap();
+        let s: SaveInfo =
+            serde_json::from_str(r#"{"name":"x","city_name":null,"full_name":"y"}"#).unwrap();
         assert!(s.city_name.is_none());
     }
 
@@ -366,8 +394,16 @@ mod tests {
         };
         let json = serde_json::to_string(&result).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert!(!v.as_object().unwrap().contains_key("zoned_buildings_fronting"), "key must be absent when None: {json}");
-        assert!(!v.as_object().unwrap().contains_key("colliding_buildings"), "key must be absent when empty: {json}");
+        assert!(
+            !v.as_object()
+                .unwrap()
+                .contains_key("zoned_buildings_fronting"),
+            "key must be absent when None: {json}"
+        );
+        assert!(
+            !v.as_object().unwrap().contains_key("colliding_buildings"),
+            "key must be absent when empty: {json}"
+        );
     }
 
     #[test]
@@ -378,12 +414,12 @@ mod tests {
             created_segments: vec![],
             snapped_nodes: vec![],
             destroyed: vec![],
-            reason: Some(ActionError::Collision),
+            reason: Some(ActionError::ObjectCollision),
             zoned_buildings_fronting: None,
             colliding_buildings: vec![],
         };
         let json = serde_json::to_string(&err).unwrap();
-        assert!(json.contains("\"reason\":\"COLLISION\""), "got {json}");
+        assert!(json.contains("\"reason\":\"OBJECT_COLLISION\""), "got {json}");
         let parsed: ActionResult = serde_json::from_str(&json).unwrap();
         assert_eq!(err, parsed);
     }
@@ -450,25 +486,68 @@ mod tests {
 
     #[test]
     fn new_action_errors_serialize_screaming_snake() {
-        assert_eq!(serde_json::to_string(&ActionError::ObjectCollision).unwrap(), "\"OBJECT_COLLISION\"");
-        assert_eq!(serde_json::to_string(&ActionError::SlopeTooSteep).unwrap(), "\"SLOPE_TOO_STEEP\"");
-        assert_eq!(serde_json::to_string(&ActionError::OutOfArea).unwrap(), "\"OUT_OF_AREA\"");
-        assert_eq!(serde_json::to_string(&ActionError::TooManyConnections).unwrap(), "\"TOO_MANY_CONNECTIONS\"");
-        assert_eq!(serde_json::to_string(&ActionError::NetBufferFull).unwrap(), "\"NET_BUFFER_FULL\"");
+        assert_eq!(
+            serde_json::to_string(&ActionError::ObjectCollision).unwrap(),
+            "\"OBJECT_COLLISION\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ActionError::SlopeTooSteep).unwrap(),
+            "\"SLOPE_TOO_STEEP\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ActionError::OutOfArea).unwrap(),
+            "\"OUT_OF_AREA\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ActionError::TooManyConnections).unwrap(),
+            "\"TOO_MANY_CONNECTIONS\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ActionError::NetBufferFull).unwrap(),
+            "\"NET_BUFFER_FULL\""
+        );
+    }
+
+    #[test]
+    fn short_and_shape_errors_serialize_screaming_snake() {
+        assert_eq!(serde_json::to_string(&ActionError::TooShort).unwrap(), "\"TOO_SHORT\"");
+        assert_eq!(serde_json::to_string(&ActionError::InvalidShape).unwrap(), "\"INVALID_SHAPE\"");
     }
 
     #[test]
     fn elevation_action_errors_serialize_screaming_snake() {
-        assert_eq!(serde_json::to_string(&ActionError::CannotBuildOnWater).unwrap(), "\"CANNOT_BUILD_ON_WATER\"");
-        assert_eq!(serde_json::to_string(&ActionError::HeightTooHigh).unwrap(), "\"HEIGHT_TOO_HIGH\"");
+        assert_eq!(
+            serde_json::to_string(&ActionError::CannotBuildOnWater).unwrap(),
+            "\"CANNOT_BUILD_ON_WATER\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ActionError::HeightTooHigh).unwrap(),
+            "\"HEIGHT_TOO_HIGH\""
+        );
     }
 
     #[test]
     fn road_types_round_trips_with_cost_and_connectivity() {
         let original = RoadTypes {
             road_types: vec![
-                RoadType { name: "Basic Road".into(), construction_cost: 1200, allows_zoning: true, limited_access: false, one_way: false, lanes: 2, half_width: 8.0 },
-                RoadType { name: "Four Lane Highway".into(), construction_cost: 8000, allows_zoning: false, limited_access: true, one_way: false, lanes: 4, half_width: 16.0 },
+                RoadType {
+                    name: "Basic Road".into(),
+                    construction_cost: 1200,
+                    allows_zoning: true,
+                    limited_access: false,
+                    one_way: false,
+                    lanes: 2,
+                    half_width: 8.0,
+                },
+                RoadType {
+                    name: "Four Lane Highway".into(),
+                    construction_cost: 8000,
+                    allows_zoning: false,
+                    limited_access: true,
+                    one_way: false,
+                    lanes: 4,
+                    half_width: 16.0,
+                },
             ],
         };
         let json = serde_json::to_string(&original).unwrap();
@@ -486,7 +565,8 @@ mod tests {
     fn road_type_defaults_connectivity_for_old_mods() {
         // A mod that predates connectivity fields emits only name + cost; the
         // new fields must default rather than fail to parse.
-        let rt: RoadType = serde_json::from_str(r#"{"name":"Basic Road","construction_cost":1200}"#).unwrap();
+        let rt: RoadType =
+            serde_json::from_str(r#"{"name":"Basic Road","construction_cost":1200}"#).unwrap();
         assert!(!rt.allows_zoning && !rt.limited_access && !rt.one_way);
         assert_eq!(rt.lanes, 0);
     }
@@ -515,9 +595,12 @@ mod tests {
                 residential_demand: 50,
                 commercial_demand: 40,
                 workplace_demand: 30,
-                employed: 1500,
             },
-            services: ServiceMetrics { happiness: 80, abandoned_buildings: 0, ..Default::default() },
+            services: ServiceMetrics {
+                happiness: 80,
+                abandoned_buildings: 0,
+                ..Default::default()
+            },
         };
         let json = serde_json::to_string(&m).unwrap();
         let parsed: Metrics = serde_json::from_str(&json).unwrap();

@@ -130,11 +130,18 @@ async fn main() -> anyhow::Result<()> {
                 .await?;
             server.waiting().await?;
         }
-        Command::RenderTranscript { input, out, harness } => {
+        Command::RenderTranscript {
+            input,
+            out,
+            harness,
+        } => {
             let harness = skylinebench::benchmark::Harness::parse(&harness)
                 .ok_or_else(|| anyhow::anyhow!("unknown harness: {harness}"))?;
             let jsonl = std::fs::read_to_string(&input)?;
-            std::fs::write(&out, skylinebench::benchmark::render_transcript(harness, &jsonl))?;
+            std::fs::write(
+                &out,
+                skylinebench::benchmark::render_transcript(harness, &jsonl),
+            )?;
         }
         Command::FormatStream { harness } => {
             use std::io::{BufRead, Write};
@@ -152,17 +159,29 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Command::Benchmark { mod_url, map, map_source, out, renders_dir, screenshots_dir } => {
+        Command::Benchmark {
+            mod_url,
+            map,
+            map_source,
+            out,
+            renders_dir,
+            screenshots_dir,
+        } => {
+            use rmcp::ServiceExt;
+            use skylinebench::benchmark::{
+                persist, BenchConfig, BenchmarkServer, EndStatePersister, MapInfo, RunState,
+            };
+            use skylinebench::bridge_client::BridgeClient;
             use std::collections::HashMap;
             use std::sync::Arc;
             use tokio::sync::Mutex;
-            use skylinebench::benchmark::{persist, BenchConfig, BenchmarkServer, EndStatePersister, MapInfo, RunState};
-            use skylinebench::bridge_client::BridgeClient;
-            use rmcp::ServiceExt;
 
             let client = Arc::new(BridgeClient::new(mod_url));
             let health = client.health().await?;
-            anyhow::ensure!(health.city_loaded, "no city loaded — load the benchmark save first");
+            anyhow::ensure!(
+                health.city_loaded,
+                "no city loaded — load the benchmark save first"
+            );
             let started_at = persist::epoch_secs();
 
             let cfg = BenchConfig::default();
@@ -245,7 +264,10 @@ async fn main() -> anyhow::Result<()> {
             // the latest snapshot. end_reason None (the agent quit without
             // submitting) is recorded as `disconnect`.
             persister.write(&*state.lock().await)?;
-            eprintln!("benchmark: session ended; wrote end-state.json to {}", out.display());
+            eprintln!(
+                "benchmark: session ended; wrote end-state.json to {}",
+                out.display()
+            );
         }
         Command::Timelapse { run_dir, fps, out } => {
             let out = out.unwrap_or_else(|| run_dir.join("timelapse.mp4"));
@@ -256,14 +278,21 @@ async fn main() -> anyhow::Result<()> {
             use skylinebench::bridge_client::BridgeClient;
 
             let path = out.join("end-state.json");
-            let raw = std::fs::read_to_string(&path)
-                .map_err(|e| anyhow::anyhow!("cannot read {}: {e} — did the benchmark session run?", path.display()))?;
+            let raw = std::fs::read_to_string(&path).map_err(|e| {
+                anyhow::anyhow!(
+                    "cannot read {}: {e} — did the benchmark session run?",
+                    path.display()
+                )
+            })?;
             let end: EndState = serde_json::from_str(&raw)
                 .map_err(|e| anyhow::anyhow!("invalid {}: {e}", path.display()))?;
 
             let client = BridgeClient::new(mod_url);
             let health = client.health().await?;
-            anyhow::ensure!(health.city_loaded, "no city loaded — cannot run the settle/final measurement");
+            anyhow::ensure!(
+                health.city_loaded,
+                "no city loaded — cannot run the settle/final measurement"
+            );
 
             eprintln!("benchmark-finalize: settle + final window (this takes several minutes)…");
 
@@ -281,7 +310,9 @@ async fn main() -> anyhow::Result<()> {
                         let dir = base.join(format!("end_{suffix}"));
                         let dir_str = dir.to_string_lossy().to_string();
                         if let Err(e) = client.flyby(kfs, 6.0, 12, &dir_str).await {
-                            eprintln!("benchmark-finalize: end flyby '{suffix}' failed ({e}); skipping");
+                            eprintln!(
+                                "benchmark-finalize: end flyby '{suffix}' failed ({e}); skipping"
+                            );
                             break;
                         }
                     }
@@ -289,9 +320,16 @@ async fn main() -> anyhow::Result<()> {
             }
 
             finalize(&client, end, &out).await?;
-            eprintln!("benchmark-finalize: wrote run-record.json + score.json to {}", out.display());
+            eprintln!(
+                "benchmark-finalize: wrote run-record.json + score.json to {}",
+                out.display()
+            );
         }
-        Command::BuildPage { narrative, out, assets_dir } => {
+        Command::BuildPage {
+            narrative,
+            out,
+            assets_dir,
+        } => {
             let written = skylinebench::page::build(&narrative, out, &assets_dir)?;
             eprintln!("build-page: wrote {}", written.display());
         }
@@ -300,9 +338,7 @@ async fn main() -> anyhow::Result<()> {
 
             fn on_path(bin: &str) -> bool {
                 std::env::var_os("PATH")
-                    .map(|paths| {
-                        std::env::split_paths(&paths).any(|dir| dir.join(bin).is_file())
-                    })
+                    .map(|paths| std::env::split_paths(&paths).any(|dir| dir.join(bin).is_file()))
                     .unwrap_or(false)
             }
 
@@ -339,7 +375,13 @@ async fn main() -> anyhow::Result<()> {
             }
             println!("{}", plan.backend.as_str());
         }
-        Command::HarnessPrepare { harness, model, prompt_file, mcp_shell, session_dir } => {
+        Command::HarnessPrepare {
+            harness,
+            model,
+            prompt_file,
+            mcp_shell,
+            session_dir,
+        } => {
             let harness = skylinebench::benchmark::Harness::parse(&harness)
                 .ok_or_else(|| anyhow::anyhow!("unknown harness: {harness}"))?;
             let prompt = std::fs::read_to_string(&prompt_file)?;
@@ -358,18 +400,29 @@ async fn main() -> anyhow::Result<()> {
                 std::fs::write(&cf.path, &cf.contents)?;
             }
 
-            let argv_blob: Vec<u8> =
-                spec.argv.iter().flat_map(|a| a.as_bytes().iter().copied().chain(std::iter::once(0u8))).collect();
+            let argv_blob: Vec<u8> = spec
+                .argv
+                .iter()
+                .flat_map(|a| a.as_bytes().iter().copied().chain(std::iter::once(0u8)))
+                .collect();
             std::fs::write(session_dir.join("launch.argv"), argv_blob)?;
 
             let env_blob: Vec<u8> = spec
                 .env
                 .iter()
-                .flat_map(|(k, v)| format!("{k}={v}").into_bytes().into_iter().chain(std::iter::once(0u8)))
+                .flat_map(|(k, v)| {
+                    format!("{k}={v}")
+                        .into_bytes()
+                        .into_iter()
+                        .chain(std::iter::once(0u8))
+                })
                 .collect();
             std::fs::write(session_dir.join("launch.env"), env_blob)?;
 
-            std::fs::write(session_dir.join("launch.required-env"), spec.required_env.join("\n"))?;
+            std::fs::write(
+                session_dir.join("launch.required-env"),
+                spec.required_env.join("\n"),
+            )?;
         }
     }
     Ok(())

@@ -24,6 +24,7 @@ namespace SkylineBench.Tests
             tests.Add(new KeyValuePair<string, Action>("serialize: load baseline omits optional", LoadBaselineOmitsOptional));
             tests.Add(new KeyValuePair<string, Action>("serialize: saves empty", SavesEmpty));
             tests.Add(new KeyValuePair<string, Action>("serialize: road types shape", RoadTypesShape));
+            tests.Add(new KeyValuePair<string, Action>("serialize: problems", Problems));
         }
 
         static void Network()
@@ -38,13 +39,13 @@ namespace SkylineBench.Tests
 
         static void Metrics()
         {
-            var m = new MetricsDto { Tick = 42, FlowPercent = 73.5f, ActiveVehicles = 120, Balance = 0, WeeklyIncome = 500, WeeklyExpenses = 400, Funds = 50000, Population = 2000, ResidentialDemand = 50, CommercialDemand = 40, WorkplaceDemand = 30, Employed = 1500, Happiness = 80 };
+            var m = new MetricsDto { Tick = 42, FlowPercent = 73.5f, ActiveVehicles = 120, Balance = 0, WeeklyIncome = 500, WeeklyExpenses = 400, Funds = 50000, Population = 2000, ResidentialDemand = 50, CommercialDemand = 40, WorkplaceDemand = 30, Happiness = 80 };
             m.SegmentLoads.Add(new SegmentLoadDto { SegmentId = 7, Density = 0.5f });
             string json = Serialize.Metrics(m);
             Assert.True(json.StartsWith("{\"tick\":42,"), "starts with tick");
             Assert.True(json.Contains("\"traffic\":{\"flow_percent\":73.5,\"active_vehicles\":120,\"segment_loads\":[{\"segment_id\":7,\"density\":0.5,\"length\":0}]}"), "traffic group: " + json);
             Assert.True(json.Contains("\"economy\":{\"balance\":0,\"weekly_income\":500,\"weekly_expenses\":400,\"funds\":50000}"), "economy group");
-            Assert.True(json.Contains("\"population\":{\"total\":2000,\"residential_demand\":50,\"commercial_demand\":40,\"workplace_demand\":30,\"employed\":1500}"), "population group");
+            Assert.True(json.Contains("\"population\":{\"total\":2000,\"residential_demand\":50,\"commercial_demand\":40,\"workplace_demand\":30}"), "population group");
             Assert.True(json.Contains("\"services\":{\"happiness\":80,\"abandoned_buildings\":0,\"road_not_connected\":0,\"no_electricity\":0,\"no_water\":0,\"no_sewage\":0,\"garbage_piling\":0,\"no_fuel\":0}"), "services group: " + json);
         }
 
@@ -140,6 +141,18 @@ namespace SkylineBench.Tests
         static void SavesEmpty()
         {
             Assert.Equal("{\"saves\":[]}", Serialize.Saves(new List<SaveInfoDto>()));
+        }
+
+        static void Problems()
+        {
+            var p = new ProblemsDto();
+            var pb = new ProblemBuildingDto { Id = 5, X = 10f, Z = 20f, Category = "residential", Problems = new List<string>() };
+            pb.Problems.Add("road_not_connected");
+            pb.Problems.Add("no_fuel");
+            p.Buildings.Add(pb);
+            Assert.Equal(
+                "{\"buildings\":[{\"id\":5,\"x\":10,\"z\":20,\"category\":\"residential\",\"problems\":[\"road_not_connected\",\"no_fuel\"]}]}",
+                Serialize.Problems(p));
         }
 
         // Verifies the JSON object shape the handler emits; built directly with JsonWriter because game prefabs can't be loaded in the no-game test harness.

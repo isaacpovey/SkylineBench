@@ -105,6 +105,15 @@ async fn buildings(State(_s): State<MockState>) -> Json<Buildings> {
     Json(Buildings { buildings: vec![] })
 }
 
+async fn problems(State(_s): State<MockState>) -> Json<Problems> {
+    Json(Problems {
+        buildings: vec![
+            ProblemBuilding { id: 11, x: 100.0, z: 100.0, category: "residential".into(), problems: vec!["road_not_connected".into()] },
+            ProblemBuilding { id: 12, x: 200.0, z: 50.0, category: "service".into(), problems: vec!["no_fuel".into()] },
+        ],
+    })
+}
+
 async fn zones(State(s): State<MockState>) -> Json<Zones> {
     let c = s.city.lock().unwrap();
     Json(Zones {
@@ -574,6 +583,7 @@ pub fn router() -> Router {
         .route("/network", get(network))
         .route("/buildings", get(buildings))
         .route("/zones", get(zones))
+        .route("/problems", get(problems))
         .route("/metrics", get(metrics))
         .route("/road-types", get(road_types_ep))
         .route("/zone-types", get(zone_types_ep))

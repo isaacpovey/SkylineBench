@@ -77,6 +77,10 @@ impl BridgeClient {
         self.get_json("/zones").await
     }
 
+    pub async fn problems(&self) -> Result<Problems, BridgeError> {
+        self.get_json("/problems").await
+    }
+
     pub async fn metrics(&self) -> Result<Metrics, BridgeError> {
         self.get_json("/metrics").await
     }

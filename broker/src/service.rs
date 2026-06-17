@@ -840,6 +840,38 @@ pub async fn query_segments(
     Ok(json!({ "segments": segments, "total_matching": total }))
 }
 
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct QueryProblemsArgs {
+    /// Keep only buildings that currently have this problem (e.g. "road_not_connected").
+    #[serde(default)]
+    pub filter: Option<String>,
+    /// Keep only buildings inside this rectangle.
+    #[serde(default)]
+    pub bounds: Option<Bounds>,
+}
+
+pub async fn query_problems(
+    client: &BridgeClient,
+    args: QueryProblemsArgs,
+) -> Result<Value, ServiceError> {
+    let p = client.problems().await?;
+    let buildings: Vec<&crate::contract::ProblemBuilding> = p
+        .buildings
+        .iter()
+        .filter(|b| {
+            args.filter
+                .as_deref()
+                .is_none_or(|f| b.problems.iter().any(|pr| pr == f))
+        })
+        .filter(|b| {
+            args.bounds
+                .is_none_or(|bd| in_bounds(Position { x: b.x, y: 0.0, z: b.z }, bd))
+        })
+        .collect();
+    let total = buildings.len();
+    Ok(json!({ "buildings": buildings, "total_matching": total }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1807,6 +1839,40 @@ mod tests {
         assert_eq!(path.we[0].yaw, 90.0);
         assert_eq!(path.ns[0].pitch, FLYBY_PITCH_DEG);
         assert_eq!(path.ns[0].size, FLYBY_SIZE_M);
+    }
+
+    #[tokio::test]
+    async fn query_problems_lists_problem_buildings() {
+        let c = client().await;
+        let v = query_problems(&c, QueryProblemsArgs { filter: None, bounds: None }).await.unwrap();
+        assert_eq!(v["total_matching"], 2);
+        assert!(v["buildings"][0]["problems"].is_array());
+    }
+
+    #[tokio::test]
+    async fn query_problems_filters_by_problem_name() {
+        let c = client().await;
+        let v = query_problems(&c, QueryProblemsArgs { filter: Some("no_fuel".into()), bounds: None })
+            .await
+            .unwrap();
+        assert_eq!(v["total_matching"], 1);
+        assert_eq!(v["buildings"][0]["id"], 12);
+    }
+
+    #[tokio::test]
+    async fn query_problems_filters_by_bounds() {
+        let c = client().await;
+        let v = query_problems(
+            &c,
+            QueryProblemsArgs {
+                filter: None,
+                bounds: Some(crate::contract::Bounds { min_x: 150.0, min_z: 0.0, max_x: 250.0, max_z: 100.0 }),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(v["total_matching"], 1);
+        assert_eq!(v["buildings"][0]["id"], 12);
     }
 
     #[test]

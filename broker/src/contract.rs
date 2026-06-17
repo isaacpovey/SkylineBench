@@ -98,6 +98,21 @@ pub struct Zones {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProblemBuilding {
+    pub id: u32,
+    pub x: f32,
+    pub z: f32,
+    pub category: String,
+    /// Normalised problem names, e.g. "road_not_connected", "no_fuel", "abandoned".
+    pub problems: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Problems {
+    pub buildings: Vec<ProblemBuilding>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SegmentLoad {
     pub segment_id: u32,
     pub density: f32,
@@ -283,6 +298,19 @@ pub struct Saves {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn problems_round_trips() {
+        let p = Problems {
+            buildings: vec![ProblemBuilding {
+                id: 7, x: 1.0, z: 2.0, category: "residential".into(),
+                problems: vec!["road_not_connected".into(), "no_fuel".into()],
+            }],
+        };
+        let json = serde_json::to_string(&p).unwrap();
+        let parsed: Problems = serde_json::from_str(&json).unwrap();
+        assert_eq!(p, parsed);
+    }
 
     #[test]
     fn load_result_defaults_resolved_and_available() {

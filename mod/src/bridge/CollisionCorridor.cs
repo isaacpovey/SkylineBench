@@ -9,7 +9,7 @@ namespace SkylineBench.Bridge
     /// intentional superset of CreateNode's bezier-shaped quad — it never reports fewer
     /// buildings than the engine. No Colossal types, so it is unit-testable. The broker
     /// pre-splits spans and the builder uses MaxSegments=1, so each leg is one straight
-    /// segment.</summary>
+    /// segment. Intended to be verified in-game.</summary>
     public struct CorridorInput
     {
         public Vector3 Start;

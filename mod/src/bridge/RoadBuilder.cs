@@ -60,7 +60,15 @@ namespace SkylineBench.Bridge
                 string reason = RoadErrors.Reason((ulong)err);
                 var fail = ActionResultDto.Fail(reason);
                 if (reason == ErrorCode.ObjectCollision)
-                    fail.CollidingBuildings = BuildingCollision.Find(prefab, startPos, endPos);
+                {
+                    ToolBase.ToolErrors infoErr = ToolBase.ToolErrors.None;
+                    NetInfo variant = prefab.m_netAI.GetInfo(
+                        Mathf.Min(req.FromElevation, req.ToElevation),
+                        Mathf.Max(req.FromElevation, req.ToElevation),
+                        lenXZ, /*incoming*/ true, /*outgoing*/ true, /*curved*/ false,
+                        /*enableDouble*/ false, ref infoErr) ?? prefab;
+                    fail.CollidingBuildings = BuildingCollision.Find(variant, startPos, endPos);
+                }
                 return fail;
             }
 

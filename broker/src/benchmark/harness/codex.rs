@@ -62,9 +62,11 @@ const TOOL_ALLOWLIST: &[&str] = &[
     "list_zone_types",
     "render_map",
     "submit_solution",
+    "query_problems",
     "query_segments",
     "apply_plan",
     "trace_route",
+    "validate_road",
 ];
 
 /// Minimal TOML basic-string encoder (escape backslash and quote).
@@ -114,6 +116,8 @@ mod tests {
             .contents
             .contains("default_tools_approval_mode = \"approve\""));
         assert!(cf.contents.contains("\"get_city_overview\""));
+        assert!(cf.contents.contains("\"query_problems\""));
         assert!(cf.contents.contains("\"submit_solution\""));
+        assert!(cf.contents.contains("\"validate_road\""));
     }
 }

@@ -25,7 +25,8 @@ use crate::bridge_client::BridgeClient;
 use crate::geometry::horizontal_distance;
 use crate::service::{
     self, BuildRoadArgs, BulldozeArgs, ControlTimeArgs, GetMetricsArgs, ObserveAreaArgs,
-    QuerySegmentsArgs, RenderMapArgs, ServiceError, SetZoningArgs, TraceRouteArgs, UpgradeRoadArgs,
+    QueryProblemsArgs, QuerySegmentsArgs, RenderMapArgs, ServiceError, SetZoningArgs,
+    TraceRouteArgs, UpgradeRoadArgs,
 };
 
 #[derive(Clone)]
@@ -375,6 +376,22 @@ impl BenchmarkServer {
     }
 
     #[tool(
+        description = "Locate the specific buildings behind a problem-count spike: which buildings \
+        lost road access or a utility, and where (id + position + problem list). Optional `filter` \
+        (a single problem name like \"road_not_connected\") and `bounds`."
+    )]
+    async fn query_problems(
+        &self,
+        Parameters(args): Parameters<QueryProblemsArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.ensure_baseline().await;
+        match service::query_problems(&self.client, args).await {
+            Ok(v) => self.finish(v).await,
+            Err(e) => Ok(tool_err(e)),
+        }
+    }
+
+    #[tool(
         description = "Get city metrics, optionally filtered to groups: traffic, economy, population, services."
     )]
     async fn get_metrics(
@@ -652,6 +669,21 @@ impl BenchmarkServer {
                 }
                 self.finish(v).await
             }
+            Err(e) => Ok(tool_err(e)),
+        }
+    }
+
+    #[tool(
+        description = "Dry-run a road build: test placement (collisions, slope, water, height, bounds) \
+        WITHOUT committing or creating any segment. Same args as build_road. Use it before build_road."
+    )]
+    async fn validate_road(
+        &self,
+        Parameters(args): Parameters<BuildRoadArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.ensure_baseline().await;
+        match service::validate_road(&self.client, args).await {
+            Ok(v) => self.finish(v).await,
             Err(e) => Ok(tool_err(e)),
         }
     }
@@ -1320,12 +1352,14 @@ mod tests {
                 "list_road_types",
                 "list_zone_types",
                 "observe_area",
+                "query_problems",
                 "query_segments",
                 "render_map",
                 "set_zoning",
                 "submit_solution",
                 "trace_route",
                 "upgrade_road",
+                "validate_road",
                 "view_3d",
             ]
         );

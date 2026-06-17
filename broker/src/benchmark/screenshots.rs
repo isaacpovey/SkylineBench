@@ -111,12 +111,13 @@ impl ScreenshotSink {
             Stream::Overview => self.overview_seq.fetch_add(1, Ordering::Relaxed) + 1,
             Stream::Action => self.action_seq.fetch_add(1, Ordering::Relaxed) + 1,
         };
-        let (changes, flow, congested) = {
+        let (changes, congested, congested_junctions, population) = {
             let s = state.lock().await;
             (
                 s.num_changes,
-                s.flow.mean(),
                 (!s.congestion.is_empty()).then(|| s.congestion.mean()),
+                s.live_congested_junctions(),
+                s.last_population,
             )
         };
         let dir = self.dir.join(stream.subdir());
@@ -127,7 +128,8 @@ impl ScreenshotSink {
                 let action = matches!(stream, Stream::Action).then_some(trigger);
                 let line = serde_json::json!({
                     "seq": seq, "file": name, "tick": tick, "trigger": trigger,
-                    "changes": changes, "flow": flow, "congested": congested,
+                    "changes": changes, "congested": congested,
+                    "congested_junctions": congested_junctions, "population": population,
                     "action": action, "caption": caption,
                 });
                 let mut f = std::fs::OpenOptions::new()

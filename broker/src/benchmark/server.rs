@@ -132,10 +132,11 @@ impl BenchmarkServer {
         let Ok(net) = self.client.network().await else {
             return;
         };
+        let shot = self.state.lock().await.locked_overview_shot(&net);
         sink.capture(
             &self.client,
             &self.state,
-            crate::service::overview_shot(&net),
+            shot,
             crate::benchmark::screenshots::Stream::Overview,
             "step",
             None,
@@ -219,13 +220,14 @@ impl BenchmarkServer {
     /// tool call (same policy as end-state persistence).
     async fn persist_render(&self, png: &[u8], tick: u64, trigger: &str) {
         let Some(dir) = &self.renders_dir else { return };
-        let (seq, changes, flow, congested) = {
+        let (seq, changes, congested, congested_junctions, population) = {
             let mut s = self.state.lock().await;
             (
                 s.next_render_seq(),
                 s.num_changes,
-                s.flow.mean(),
                 (!s.congestion.is_empty()).then(|| s.congestion.mean()),
+                s.live_congested_junctions(),
+                s.last_population,
             )
         };
         let _ = std::fs::create_dir_all(dir);
@@ -236,7 +238,8 @@ impl BenchmarkServer {
         }
         let line = serde_json::json!({
             "seq": seq, "file": name, "tick": tick, "trigger": trigger,
-            "changes": changes, "flow": flow, "congested": congested,
+            "changes": changes, "congested": congested,
+            "congested_junctions": congested_junctions, "population": population,
         });
         let appended = std::fs::OpenOptions::new()
             .create(true)
@@ -252,7 +255,7 @@ impl BenchmarkServer {
     }
 
     /// Best-effort refresh of the live readout (population, happiness,
-    /// abandoned buildings, flow) so the `city_status` block on every tool
+    /// abandoned buildings) so the `city_status` block on every tool
     /// response reflects current sim state rather than the value cached at the
     /// last `get_metrics`/`step`. Without this the read-only observation tools
     /// (render_map, observe_area, query_segments, view_3d, trace_route) report a
@@ -315,9 +318,13 @@ impl BenchmarkServer {
                 s.end_reason = Some(EndReason::UnscorableBaseline);
             }
         }
-        // Populate the live junction count in the freshly-set baseline snapshot.
+        // Populate the live junction count in the freshly-set baseline snapshot
+        // and lock the overview camera to this untouched-baseline network so the
+        // timelapse keeps one orientation even as the agent reshapes the city.
         if let Ok(net) = self.client.network().await {
-            self.state.lock().await.observe_network(&net);
+            let mut s = self.state.lock().await;
+            s.observe_network(&net);
+            let _ = s.locked_overview_shot(&net);
         }
         self.run_flyby("start").await;
     }

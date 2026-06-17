@@ -36,6 +36,7 @@ namespace SkylineBench.Tests
             DirectionTests.Register(tests);
             FlybyMathTests.Register(tests);
             RoadErrorsTests.Register(tests);
+            CollisionCorridorTests.Register(tests);
 
             int passed = 0, failed = 0;
             foreach (var t in tests)

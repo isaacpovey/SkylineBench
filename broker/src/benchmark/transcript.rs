@@ -443,11 +443,15 @@ fn render_live_result(parts: &[String]) -> Option<String> {
                 .get("congested_junctions")
                 .and_then(|x| x.as_u64())
                 .map_or("?".to_string(), |n| n.to_string());
+            let population = p
+                .get("population")
+                .and_then(|x| x.as_u64())
+                .map_or("?".to_string(), |n| n.to_string());
             return Some(format!(
-                "    ↳ congested {}m / {} junctions  flow {}  changes {}  spent {}  {}s left{}",
+                "    ↳ congested {}m / {} junctions  pop {}  changes {}  spent {}  {}s left{}",
                 optf("congested_road_meters", "congested_meters_current", 0),
                 junctions,
-                optf("traffic_flow", "flow_current", 1),
+                population,
                 getu("changes_made", "num_changes"),
                 p.get("money_spent").and_then(|x| x.as_i64()).unwrap_or(0),
                 getu("time_remaining", "seconds_remaining"),
@@ -502,12 +506,12 @@ mod tests {
     #[test]
     fn live_surfaces_benchmark_progress() {
         let event: Value = serde_json::from_str(
-            r#"{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"{\"ok\":true,\"benchmark_progress\":{\"money_spent\":12000,\"num_changes\":3,\"congested_meters_current\":840.0,\"congested_meters_target\":50.0,\"flow_current\":12.3,\"seconds_remaining\":580}}"}]}]}}"#,
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"{\"ok\":true,\"benchmark_progress\":{\"money_spent\":12000,\"num_changes\":3,\"congested_meters_current\":840.0,\"congested_meters_target\":50.0,\"population\":30000,\"seconds_remaining\":580}}"}]}]}}"#,
         )
         .unwrap();
         let line = format_event_live(Harness::Claude, &event).unwrap();
         assert!(line.contains("congested 840m"), "congestion meters: {line}");
-        assert!(line.contains("flow 12.3"), "flow diagnostic: {line}");
+        assert!(line.contains("pop 30000"), "population: {line}");
         assert!(line.contains("changes 3"), "changes: {line}");
         assert!(line.contains("580s left"), "time: {line}");
     }
@@ -515,19 +519,20 @@ mod tests {
     #[test]
     fn live_surfaces_city_status_with_junctions() {
         let event: Value = serde_json::from_str(
-            r#"{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"{\"ok\":true,\"city_status\":{\"money_spent\":12000,\"changes_made\":3,\"congested_road_meters\":840.0,\"congested_junctions\":7,\"traffic_flow\":12.3,\"time_remaining\":580}}"}]}]}}"#,
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"{\"ok\":true,\"city_status\":{\"money_spent\":12000,\"changes_made\":3,\"congested_road_meters\":840.0,\"congested_junctions\":7,\"population\":30000,\"time_remaining\":580}}"}]}]}}"#,
         )
         .unwrap();
         let line = format_event_live(Harness::Claude, &event).unwrap();
         assert!(line.contains("840m"), "congestion meters: {line}");
         assert!(line.contains("7 junctions"), "junction count: {line}");
+        assert!(line.contains("pop 30000"), "population: {line}");
         assert!(line.contains("580s left"), "time: {line}");
     }
 
     #[test]
     fn live_renders_question_mark_for_null_current() {
         let event: Value = serde_json::from_str(
-            r#"{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"{\"ok\":true,\"benchmark_progress\":{\"money_spent\":0,\"num_changes\":0,\"congested_meters_current\":null,\"congested_meters_target\":50.0,\"flow_current\":null,\"seconds_remaining\":10800}}"}]}]}}"#,
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"{\"ok\":true,\"benchmark_progress\":{\"money_spent\":0,\"num_changes\":0,\"congested_meters_current\":null,\"congested_meters_target\":50.0,\"seconds_remaining\":10800}}"}]}]}}"#,
         )
         .unwrap();
         let line = format_event_live(Harness::Claude, &event).unwrap();
@@ -535,7 +540,7 @@ mod tests {
             line.contains("congested ?m"),
             "null current renders ?: {line}"
         );
-        assert!(line.contains("flow ?"), "null flow renders ?: {line}");
+        assert!(line.contains("pop ?"), "missing population renders ?: {line}");
     }
 
     #[test]

@@ -51,7 +51,7 @@ fn json_result(value: Value) -> Result<CallToolResult, ErrorData> {
 #[tool_router]
 impl Skyline {
     #[tool(
-        description = "Summarise the city: tick, population, funds, traffic flow, network size, \
+        description = "Summarise the city: tick, population, funds, network size, \
             and a list of any abandoned buildings (id + position) you may want to clear."
     )]
     async fn get_city_overview(&self) -> Result<CallToolResult, ErrorData> {

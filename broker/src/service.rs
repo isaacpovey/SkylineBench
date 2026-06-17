@@ -31,7 +31,6 @@ pub async fn get_city_overview(client: &BridgeClient) -> Result<Value, ServiceEr
         "forced_paused": health.forced_paused,
         "population": metrics.population.total,
         "funds": metrics.economy.funds,
-        "traffic_flow_percent": metrics.traffic.flow_percent,
         "node_count": net.nodes.len(),
         "segment_count": net.segments.len(),
         "abandoned_buildings": abandoned,
@@ -140,7 +139,12 @@ pub fn metrics_value(m: &crate::contract::Metrics, groups: &[String]) -> Value {
     let want = |g: &str| groups.is_empty() || groups.iter().any(|x| x == g);
     let mut out = json!({ "tick": m.tick });
     if want("traffic") {
-        out["traffic"] = serde_json::to_value(&m.traffic).unwrap();
+        let mut traffic = serde_json::to_value(&m.traffic).unwrap();
+        // Flow is an unreliable signal and is not scored — never surface it to the agent.
+        if let Some(obj) = traffic.as_object_mut() {
+            obj.remove("flow_percent");
+        }
+        out["traffic"] = traffic;
     }
     if want("economy") {
         out["economy"] = serde_json::to_value(&m.economy).unwrap();
@@ -919,7 +923,7 @@ mod tests {
         let c = client().await;
         let v = get_city_overview(&c).await.unwrap();
         assert_eq!(v["segment_count"], 0);
-        assert_eq!(v["traffic_flow_percent"], 100.0);
+        assert!(v.get("traffic_flow_percent").is_none());
         assert_eq!(v["forced_paused"], false);
     }
 

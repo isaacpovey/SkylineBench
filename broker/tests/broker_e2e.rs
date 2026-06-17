@@ -9,7 +9,7 @@ async fn full_observe_build_step_observe_loop() {
     tokio::spawn(server);
     let client = BridgeClient::new(format!("http://{addr}"));
 
-    // Observe: empty city, full flow.
+    // Observe: empty city.
     let before = service::get_metrics(
         &client,
         GetMetricsArgs {
@@ -18,7 +18,7 @@ async fn full_observe_build_step_observe_loop() {
     )
     .await
     .unwrap();
-    let flow_before = before["traffic"]["flow_percent"].as_f64().unwrap();
+    let vehicles_before = before["traffic"]["active_vehicles"].as_u64().unwrap();
 
     // Act: build a road.
     let built = service::build_road(
@@ -66,10 +66,10 @@ async fn full_observe_build_step_observe_loop() {
     )
     .await
     .unwrap();
-    let flow_after = after["traffic"]["flow_percent"].as_f64().unwrap();
+    let vehicles_after = after["traffic"]["active_vehicles"].as_u64().unwrap();
     assert!(
-        flow_after < flow_before,
-        "building a road should change traffic flow in the mock"
+        vehicles_after > vehicles_before,
+        "building a road should change active vehicles in the mock"
     );
 
     // The built segment is observable.

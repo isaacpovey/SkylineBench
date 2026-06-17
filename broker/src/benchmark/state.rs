@@ -47,6 +47,7 @@ pub struct RunState {
     pub start: Instant,
     pub end_reason: Option<EndReason>,
     pub render_seq: u32,
+    pub overview_camera: Option<crate::service::CameraShot>,
 }
 
 impl RunState {
@@ -71,7 +72,22 @@ impl RunState {
             start: Instant::now(),
             end_reason: None,
             render_seq: 0,
+            overview_camera: None,
         }
+    }
+
+    /// Overview camera, locked to the first network it is asked about (the
+    /// untouched baseline) and reused for every later frame. Recomputing it per
+    /// frame let the chosen yaw flip 90° mid-run as the agent's edits shifted
+    /// the city's aspect ratio, so the timelapse appeared to lose its rotation;
+    /// locking it keeps one orientation and frame throughout the run.
+    pub fn locked_overview_shot(
+        &mut self,
+        net: &crate::contract::Network,
+    ) -> crate::service::CameraShot {
+        *self
+            .overview_camera
+            .get_or_insert_with(|| crate::service::overview_shot(net))
     }
 
     pub fn next_render_seq(&mut self) -> u32 {
@@ -145,7 +161,7 @@ impl RunState {
         self.topology = Some(Topology::from_network(net));
     }
 
-    fn live_congested_junctions(&self) -> Option<u32> {
+    pub(crate) fn live_congested_junctions(&self) -> Option<u32> {
         self.topology.as_ref().map(|t| {
             congested_junctions(
                 t,
@@ -197,7 +213,6 @@ impl RunState {
             "congested_road_meters_at_start": self.baseline.as_ref().map(|b| b.congested_meters),
             "congested_junctions": self.live_congested_junctions(),
             "congested_junctions_at_start": self.baseline.as_ref().map(|b| b.congested_junctions),
-            "traffic_flow": (!self.flow.is_empty()).then(|| self.flow.mean()),
             "population": self.last_population,
             "abandoned_buildings": self.last_abandoned_buildings,
             "happiness": self.last_happiness,
@@ -280,11 +295,40 @@ mod tests {
     }
 
     #[test]
+    fn overview_camera_locks_to_baseline_and_ignores_later_reshaping() {
+        use crate::contract::{NetNode, Network};
+        let node = |id, x, z| NetNode { id, x, y: 0.0, z };
+        // Wide baseline city → a fresh overview picks yaw 0 (north-up).
+        let wide = Network {
+            nodes: vec![node(0, -1000.0, -100.0), node(1, 1000.0, 100.0)],
+            segments: vec![],
+        };
+        // After the agent's edits the network is tall → a fresh overview would
+        // pick yaw 90, which is exactly the mid-run flip we want to prevent.
+        let tall = Network {
+            nodes: vec![node(0, -100.0, -1000.0), node(1, 100.0, 1000.0)],
+            segments: vec![],
+        };
+        assert_ne!(
+            crate::service::overview_shot(&wide).yaw,
+            crate::service::overview_shot(&tall).yaw,
+            "the two shapes pick different yaw when computed fresh"
+        );
+
+        let mut s = state();
+        let locked = s.locked_overview_shot(&wide);
+        let after = s.locked_overview_shot(&tall);
+        assert_eq!(after.yaw, locked.yaw, "orientation stays put after reshaping");
+        assert_eq!(after.x, locked.x, "frame center stays put");
+        assert_eq!(after.size, locked.size, "zoom stays put");
+    }
+
+    #[test]
     fn progress_omits_score_fields() {
         let mut s = state();
         let p = s.progress();
         assert!(p["congested_road_meters"].is_null(), "no samples yet");
-        assert!(p["traffic_flow"].is_null(), "no samples yet");
+        assert!(p["traffic_flow"].is_null(), "flow is never surfaced to the agent");
         assert!(
             p["congested_road_meters_at_start"].is_null(),
             "no baseline yet"
@@ -311,7 +355,10 @@ mod tests {
             p["congested_road_meters"].is_number(),
             "current appears after first sample"
         );
-        assert!(p["traffic_flow"].is_number());
+        assert!(
+            p["traffic_flow"].is_null(),
+            "flow stays hidden from the agent even after sampling"
+        );
         assert_eq!(
             p["happiness"], 80,
             "happiness surfaced from the latest sample"

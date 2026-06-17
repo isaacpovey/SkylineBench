@@ -16,8 +16,9 @@ pub struct Frame {
     pub path: PathBuf,
     pub tick: u64,
     pub changes: u64,
-    pub flow: Option<f64>,
+    pub population: Option<u32>,
     pub congested: Option<f64>,
+    pub congested_junctions: Option<u32>,
     pub caption: Option<String>,
     pub hold: u32,
 }
@@ -27,8 +28,11 @@ struct IndexEntry {
     file: String,
     tick: u64,
     changes: u64,
-    flow: Option<f64>,
+    #[serde(default)]
+    population: Option<u32>,
     congested: Option<f64>,
+    #[serde(default)]
+    congested_junctions: Option<u32>,
     #[serde(default)]
     caption: Option<String>,
 }
@@ -43,8 +47,9 @@ pub fn parse_index(dir: &Path, hold: u32) -> Vec<Frame> {
                 path: dir.join(&e.file),
                 tick: e.tick,
                 changes: e.changes,
-                flow: e.flow,
+                population: e.population,
                 congested: e.congested,
+                congested_junctions: e.congested_junctions,
                 caption: e.caption,
                 hold,
             }),
@@ -65,18 +70,22 @@ pub fn merge_frames(overview: Vec<Frame>, actions: Vec<Frame>) -> Vec<Frame> {
 }
 
 fn hud_line(f: &Frame) -> String {
-    let flow = f
-        .flow
-        .map(|v| format!("{v:.1}%"))
+    let population = f
+        .population
+        .map(|v| v.to_string())
         .unwrap_or_else(|| "—".into());
     let congested = f
         .congested
         .map(|v| format!("{v:.0}m"))
         .unwrap_or_else(|| "—".into());
+    let junctions = f
+        .congested_junctions
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "—".into());
     let caption = f.caption.as_deref().unwrap_or("");
     format!(
-        "tick {}  flow {}  congested {}  changes {}  {}",
-        f.tick, flow, congested, f.changes, caption
+        "tick {}  pop {}  congested {}  junctions {}  changes {}  {}",
+        f.tick, population, congested, junctions, f.changes, caption
     )
 }
 
@@ -300,8 +309,9 @@ mod tests {
             path: std::path::PathBuf::from(format!("f{tick}.png")),
             tick,
             changes: 0,
-            flow: Some(50.0),
+            population: Some(30000),
             congested: Some(1000.0),
+            congested_junctions: Some(7),
             caption: None,
             hold,
         }

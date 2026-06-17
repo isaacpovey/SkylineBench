@@ -8,7 +8,7 @@ namespace SkylineBench.Bridge
     /// (reads live Building state).</summary>
     public static class BuildingProblems
     {
-        public static List<string> Names(ref Building b)
+        public static List<string> Names(Building b)
         {
             var names = new List<string>();
             if ((b.m_flags & Building.Flags.Abandoned) != Building.Flags.None) names.Add("abandoned");

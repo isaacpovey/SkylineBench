@@ -85,7 +85,7 @@ namespace SkylineBench.Bridge
                 {
                     var b = bm.m_buildings.m_buffer[i];
                     if ((b.m_flags & Building.Flags.Created) == Building.Flags.None) continue;
-                    var names = BuildingProblems.Names(ref b);
+                    var names = BuildingProblems.Names(b);
                     if (names.Count == 0) continue;
                     dto.Buildings.Add(new ProblemBuildingDto
                     {
@@ -156,7 +156,7 @@ namespace SkylineBench.Bridge
                 {
                     var b = bm.m_buildings.m_buffer[i];
                     if ((b.m_flags & Building.Flags.Created) == Building.Flags.None) continue;
-                    var names = BuildingProblems.Names(ref b);
+                    var names = BuildingProblems.Names(b);
                     if (names.Contains("abandoned")) abandoned++;
                     if (names.Contains("road_not_connected")) roadNotConnected++;
                     if (names.Contains("no_electricity")) noElec++;

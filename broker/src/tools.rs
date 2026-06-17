@@ -19,8 +19,8 @@ use serde_json::Value;
 use crate::bridge_client::BridgeClient;
 use crate::service::{
     self, BuildRoadArgs, BulldozeArgs, ControlTimeArgs, GetMetricsArgs, ObserveAreaArgs,
-    QuerySegmentsArgs, RenderMapArgs, ResetScenarioArgs, ServiceError, SetZoningArgs,
-    TraceRouteArgs, UpgradeRoadArgs, ViewArgs,
+    QueryProblemsArgs, QuerySegmentsArgs, RenderMapArgs, ResetScenarioArgs, ServiceError,
+    SetZoningArgs, TraceRouteArgs, UpgradeRoadArgs, ViewArgs,
 };
 
 #[derive(Clone)]
@@ -70,6 +70,22 @@ impl Skyline {
         Parameters(args): Parameters<ObserveAreaArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         match service::observe_area(&self.client, args).await {
+            Ok(v) => json_result(v),
+            Err(e) => Ok(tool_error(e)),
+        }
+    }
+
+    #[tool(
+        description = "Locate the specific buildings behind a problem-count spike (the leading \
+            death-spiral signal in get_metrics `services`): which buildings lost road access or a \
+            utility, and where (id + position + problem list). Optional `filter` (a single problem \
+            name like \"road_not_connected\") and `bounds`."
+    )]
+    async fn query_problems(
+        &self,
+        Parameters(args): Parameters<QueryProblemsArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match service::query_problems(&self.client, args).await {
             Ok(v) => json_result(v),
             Err(e) => Ok(tool_error(e)),
         }
@@ -296,6 +312,7 @@ mod tests {
                 "list_road_types",
                 "list_zone_types",
                 "observe_area",
+                "query_problems",
                 "query_segments",
                 "render_map",
                 "reset_scenario",

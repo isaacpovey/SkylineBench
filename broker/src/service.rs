@@ -273,13 +273,23 @@ pub async fn build_road(client: &BridgeClient, args: BuildRoadArgs) -> Result<Va
 
 /// Dry-run a build: broker-side pre-validation, then the mod's native
 /// `validate-road` (test-mode NetTool) — no segment is created.
-pub async fn validate_road(client: &BridgeClient, args: BuildRoadArgs) -> Result<Value, ServiceError> {
+pub async fn validate_road(
+    client: &BridgeClient,
+    args: BuildRoadArgs,
+) -> Result<Value, ServiceError> {
     let road_types = client.road_types().await?.road_types;
     if let Err(reason) = validate_build_road(args.from, args.to, &args.road_type, &road_types) {
         return Ok(action_error_value(reason));
     }
     let res = client
-        .validate_road_elevated(args.from, args.to, &args.road_type, args.snap, args.from_elevation, args.to_elevation)
+        .validate_road_elevated(
+            args.from,
+            args.to,
+            &args.road_type,
+            args.snap,
+            args.from_elevation,
+            args.to_elevation,
+        )
         .await?;
     Ok(serde_json::to_value(res).unwrap())
 }
@@ -864,8 +874,16 @@ pub async fn query_problems(
                 .is_none_or(|f| b.problems.iter().any(|pr| pr == f))
         })
         .filter(|b| {
-            args.bounds
-                .is_none_or(|bd| in_bounds(Position { x: b.x, y: 0.0, z: b.z }, bd))
+            args.bounds.is_none_or(|bd| {
+                in_bounds(
+                    Position {
+                        x: b.x,
+                        y: 0.0,
+                        z: b.z,
+                    },
+                    bd,
+                )
+            })
         })
         .collect();
     let total = buildings.len();
@@ -954,8 +972,16 @@ mod tests {
         let v = validate_road(
             &c,
             BuildRoadArgs {
-                from: Position { x: 0.0, y: 0.0, z: 0.0 },
-                to: Position { x: 50.0, y: 0.0, z: 0.0 },
+                from: Position {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                to: Position {
+                    x: 50.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
                 road_type: "road".into(),
                 snap: true,
                 from_elevation: 0.0,
@@ -966,7 +992,9 @@ mod tests {
         .unwrap();
         assert_eq!(v["ok"], true);
         // No segment was created — validate is a dry-run.
-        let obs = observe_area(&c, ObserveAreaArgs { bounds: None }).await.unwrap();
+        let obs = observe_area(&c, ObserveAreaArgs { bounds: None })
+            .await
+            .unwrap();
         assert_eq!(obs["network"]["segments"].as_array().unwrap().len(), 0);
     }
 
@@ -976,8 +1004,16 @@ mod tests {
         let v = validate_road(
             &c,
             BuildRoadArgs {
-                from: Position { x: 0.0, y: 0.0, z: 0.0 },
-                to: Position { x: 50.0, y: 0.0, z: 0.0 },
+                from: Position {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                to: Position {
+                    x: 50.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
                 road_type: "teleporter".into(),
                 snap: true,
                 from_elevation: 0.0,
@@ -1844,7 +1880,15 @@ mod tests {
     #[tokio::test]
     async fn query_problems_lists_problem_buildings() {
         let c = client().await;
-        let v = query_problems(&c, QueryProblemsArgs { filter: None, bounds: None }).await.unwrap();
+        let v = query_problems(
+            &c,
+            QueryProblemsArgs {
+                filter: None,
+                bounds: None,
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(v["total_matching"], 2);
         assert!(v["buildings"][0]["problems"].is_array());
     }
@@ -1852,9 +1896,15 @@ mod tests {
     #[tokio::test]
     async fn query_problems_filters_by_problem_name() {
         let c = client().await;
-        let v = query_problems(&c, QueryProblemsArgs { filter: Some("no_fuel".into()), bounds: None })
-            .await
-            .unwrap();
+        let v = query_problems(
+            &c,
+            QueryProblemsArgs {
+                filter: Some("no_fuel".into()),
+                bounds: None,
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(v["total_matching"], 1);
         assert_eq!(v["buildings"][0]["id"], 12);
     }
@@ -1866,7 +1916,12 @@ mod tests {
             &c,
             QueryProblemsArgs {
                 filter: None,
-                bounds: Some(crate::contract::Bounds { min_x: 150.0, min_z: 0.0, max_x: 250.0, max_z: 100.0 }),
+                bounds: Some(crate::contract::Bounds {
+                    min_x: 150.0,
+                    min_z: 0.0,
+                    max_x: 250.0,
+                    max_z: 100.0,
+                }),
             },
         )
         .await

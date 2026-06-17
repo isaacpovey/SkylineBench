@@ -56,7 +56,24 @@ namespace SkylineBench.Bridge
                 out node, out segment, out cost, out prod);
 
             if (err != ToolBase.ToolErrors.None)
-                return ActionResultDto.Fail(RoadErrors.Reason((ulong)err));
+            {
+                string reason = RoadErrors.Reason((ulong)err);
+                var fail = ActionResultDto.Fail(reason);
+                if (reason == ErrorCode.ObjectCollision)
+                {
+                    ToolBase.ToolErrors infoErr = ToolBase.ToolErrors.None;
+                    Vector3 actualStart = startCp.m_position;
+                    Vector3 actualEnd = endCp.m_position;
+                    float actualLenXZ = VectorUtils.LengthXZ(actualEnd - actualStart);
+                    NetInfo variant = prefab.m_netAI.GetInfo(
+                        Mathf.Min(req.FromElevation, req.ToElevation),
+                        Mathf.Max(req.FromElevation, req.ToElevation),
+                        actualLenXZ, /*incoming*/ true, /*outgoing*/ true, /*curved*/ false,
+                        /*enableDouble*/ false, ref infoErr) ?? prefab;
+                    fail.CollidingBuildings = BuildingCollision.Find(variant, actualStart, actualEnd);
+                }
+                return fail;
+            }
 
             var result = new ActionResultDto { Ok = true };
             if (!test && segment != 0)

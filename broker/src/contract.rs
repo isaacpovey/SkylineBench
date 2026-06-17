@@ -303,7 +303,10 @@ mod tests {
     fn problems_round_trips() {
         let p = Problems {
             buildings: vec![ProblemBuilding {
-                id: 7, x: 1.0, z: 2.0, category: "residential".into(),
+                id: 7,
+                x: 1.0,
+                z: 2.0,
+                category: "residential".into(),
                 problems: vec!["road_not_connected".into(), "no_fuel".into()],
             }],
         };
@@ -419,7 +422,10 @@ mod tests {
             colliding_buildings: vec![],
         };
         let json = serde_json::to_string(&err).unwrap();
-        assert!(json.contains("\"reason\":\"OBJECT_COLLISION\""), "got {json}");
+        assert!(
+            json.contains("\"reason\":\"OBJECT_COLLISION\""),
+            "got {json}"
+        );
         let parsed: ActionResult = serde_json::from_str(&json).unwrap();
         assert_eq!(err, parsed);
     }
@@ -510,8 +516,14 @@ mod tests {
 
     #[test]
     fn short_and_shape_errors_serialize_screaming_snake() {
-        assert_eq!(serde_json::to_string(&ActionError::TooShort).unwrap(), "\"TOO_SHORT\"");
-        assert_eq!(serde_json::to_string(&ActionError::InvalidShape).unwrap(), "\"INVALID_SHAPE\"");
+        assert_eq!(
+            serde_json::to_string(&ActionError::TooShort).unwrap(),
+            "\"TOO_SHORT\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ActionError::InvalidShape).unwrap(),
+            "\"INVALID_SHAPE\""
+        );
     }
 
     #[test]

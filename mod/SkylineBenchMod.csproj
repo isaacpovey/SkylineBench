@@ -45,6 +45,8 @@
 <Compile Include="src\bridge\Frontage.cs" />
     <Compile Include="src\bridge\ZoneWriter.cs" />
     <Compile Include="src\bridge\SaveLoader.cs" />
+    <Compile Include="src\bridge\CollisionCorridor.cs" />
+    <Compile Include="src\bridge\BuildingCollision.cs" />
     <Compile Include="src\probe\Probe.cs" />
     <Compile Include="src\dto\Dtos.cs" />
     <Compile Include="src\Mod.cs" />

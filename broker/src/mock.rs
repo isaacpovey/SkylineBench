@@ -108,8 +108,20 @@ async fn buildings(State(_s): State<MockState>) -> Json<Buildings> {
 async fn problems(State(_s): State<MockState>) -> Json<Problems> {
     Json(Problems {
         buildings: vec![
-            ProblemBuilding { id: 11, x: 100.0, z: 100.0, category: "residential".into(), problems: vec!["road_not_connected".into()] },
-            ProblemBuilding { id: 12, x: 200.0, z: 50.0, category: "service".into(), problems: vec!["no_fuel".into()] },
+            ProblemBuilding {
+                id: 11,
+                x: 100.0,
+                z: 100.0,
+                category: "residential".into(),
+                problems: vec!["road_not_connected".into()],
+            },
+            ProblemBuilding {
+                id: 12,
+                x: 200.0,
+                z: 50.0,
+                category: "service".into(),
+                problems: vec!["no_fuel".into()],
+            },
         ],
     })
 }

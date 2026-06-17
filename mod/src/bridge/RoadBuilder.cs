@@ -62,12 +62,15 @@ namespace SkylineBench.Bridge
                 if (reason == ErrorCode.ObjectCollision)
                 {
                     ToolBase.ToolErrors infoErr = ToolBase.ToolErrors.None;
+                    Vector3 actualStart = startCp.m_position;
+                    Vector3 actualEnd = endCp.m_position;
+                    float actualLenXZ = VectorUtils.LengthXZ(actualEnd - actualStart);
                     NetInfo variant = prefab.m_netAI.GetInfo(
                         Mathf.Min(req.FromElevation, req.ToElevation),
                         Mathf.Max(req.FromElevation, req.ToElevation),
-                        lenXZ, /*incoming*/ true, /*outgoing*/ true, /*curved*/ false,
+                        actualLenXZ, /*incoming*/ true, /*outgoing*/ true, /*curved*/ false,
                         /*enableDouble*/ false, ref infoErr) ?? prefab;
-                    fail.CollidingBuildings = BuildingCollision.Find(variant, startPos, endPos);
+                    fail.CollidingBuildings = BuildingCollision.Find(variant, actualStart, actualEnd);
                 }
                 return fail;
             }

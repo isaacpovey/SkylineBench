@@ -56,7 +56,13 @@ namespace SkylineBench.Bridge
                 out node, out segment, out cost, out prod);
 
             if (err != ToolBase.ToolErrors.None)
-                return ActionResultDto.Fail(RoadErrors.Reason((ulong)err));
+            {
+                string reason = RoadErrors.Reason((ulong)err);
+                var fail = ActionResultDto.Fail(reason);
+                if (reason == ErrorCode.ObjectCollision)
+                    fail.CollidingBuildings = BuildingCollision.Find(prefab, startPos, endPos);
+                return fail;
+            }
 
             var result = new ActionResultDto { Ok = true };
             if (!test && segment != 0)

@@ -152,9 +152,10 @@ impl Skyline {
 
     #[tool(
         description = "Dry-run a road build: test placement (collisions, slope, water, height, bounds) \
-        WITHOUT committing or creating any segment. Same args as build_road. Use it to check a placement \
-        before build_road commits it. Note: connectivity warnings (isolated island) are surfaced only by \
-        build_road, not here."
+        WITHOUT committing or creating any segment. Same args as build_road. Does not count as a change. \
+        On OBJECT_COLLISION the result includes `collisions` (id, category, position, footprint, \
+        can_bulldoze, a per-hit lateral offset) and `suggested_offset` for the whole span. \
+        Note: connectivity warnings (isolated island) are surfaced only by build_road, not here."
     )]
     async fn validate_road(
         &self,

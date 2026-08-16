@@ -3,18 +3,23 @@
 In-game C# mod exposing a localhost HTTP API for the SkylineBench broker.
 
 ## Prerequisites
-- Cities: Skylines 1 installed (Steam, macOS).
-- Mono: `brew install mono` (provides `xbuild`/`msbuild` for net35).
+- Cities: Skylines 1 installed (Steam).
+- Mono with `msbuild`/`xbuild` for net35:
+  - macOS: `brew install mono`
+  - Arch/CachyOS: `pacman -S mono mono-msbuild`
+  - Debian/Ubuntu: `apt install mono-complete`
 
-## Build & install (macOS)
+## Build & install
 
     cd mod
     ./build.sh
-    # If your game is elsewhere:
-    # MANAGED_DLL_PATH="/path/to/Cities.app/Contents/Resources/Data/Managed" ./build.sh
+    # If Steam libraries are not auto-detected:
+    # MANAGED_DLL_PATH="/path/to/Cities_Data/Managed" ./build.sh
 
-This compiles `SkylineBenchMod.dll` and copies it to
-`~/Library/Application Support/Colossal Order/Cities_Skylines/Addons/Mods/SkylineBench/`.
+This compiles `SkylineBenchMod.dll` and copies it to the OS mods folder:
+
+- macOS: `~/Library/Application Support/Colossal Order/Cities_Skylines/Addons/Mods/SkylineBench/`
+- Linux: `~/.local/share/Colossal Order/Cities_Skylines/Addons/Mods/SkylineBench/`
 
 ## Enable in-game (one-time, manual)
 1. Launch Cities: Skylines.
@@ -22,10 +27,23 @@ This compiles `SkylineBenchMod.dll` and copies it to
 3. Load (or start) a city. The HTTP server starts on `http://127.0.0.1:8787` when the city finishes loading.
 
 ## Verify
-- `curl -s http://127.0.0.1:8787/health` -> JSON with `"city_loaded":true`.
+- `curl -s http://127.0.0.1:8787/health` -> JSON with `"city_loaded":true`
+  (and `city_name` / `save_name` when a city is loaded).
 - `curl -s http://127.0.0.1:8787/probe`  -> the discovery dump (also written to the game log).
 
 ## HTTP endpoints (selected)
+
+### `POST /load-save`
+Reload a named save mid-session (`{ "save_name": "..." }`). The mod follows
+the in-game Load panel path: resolve `SaveGameMetaData`, then call
+`LoadingManager.LoadLevel(metaData.assetRef, "Game", "InGame", …)`. Passing
+the metadata asset itself (not `assetRef`) is what triggers CS1's
+`file format version not supported (N > 121034)` error on Linux.
+
+The HTTP response is kick-off only (`ok:true` before the reload finishes).
+Callers poll `/health` for `city_loaded:true`. If the native loader still
+rejects the save, load it from the main menu and start the run with
+`./benchmark/run.sh --map <id> --skip-load`.
 
 ### `POST /screenshot`
 Capture the current game framebuffer as a PNG with the UI chrome hidden (free-camera mode). Runs on Unity's main thread via a queued request.
@@ -45,8 +63,10 @@ Capture the current game framebuffer as a PNG with the UI chrome hidden (free-ca
 - `500` `{"error":"capture_failed","message":"<detail>"}` — capture did not complete within ~5 seconds (5000 ms), or another failure occurred.
 
 ## Logs
-The mod logs via the game's debug log. On macOS the player log is at
-`~/Library/Logs/Unity/Player.log` (search for `[SkylineBench]`).
+The mod logs via the game's debug log (search for `[SkylineBench]`):
+
+- macOS: `~/Library/Logs/Unity/Player.log`
+- Linux: `~/.config/unity3d/Colossal Order/Cities_Skylines/Player.log`
 
 ## Run the pure tests (no game needed)
 

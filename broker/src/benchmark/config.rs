@@ -17,7 +17,9 @@ pub struct BenchConfig {
     /// A junction is congested when >= this many incident segments are congested.
     pub junction_min_congested: u32,
     /// Graded population-health factor: 1.0 at population ratio >= health_full,
-    /// 0.0 at <= health_zero, linear between (replaces the old hard cliff).
+    /// 0.0 at <= health_zero, linear between, capped at 1.0 (no growth bonus).
+    /// `health_full` sits below 1.0 so modest death-wave / settle noise is not
+    /// a composite penalty; collapse at `health_zero` still zeros the score.
     pub health_full: f64,
     pub health_zero: f64,
     pub budget: f64,
@@ -47,7 +49,7 @@ impl Default for BenchConfig {
             blend_junctions: 0.5,
             junction_min_degree: 3,
             junction_min_congested: 2,
-            health_full: 0.95,
+            health_full: 0.85,
             health_zero: 0.75,
             budget: 10_000_000.0,
             change_cap: 300.0,
@@ -109,7 +111,7 @@ mod tests {
         assert_eq!(c.junction_min_degree, 3);
         assert_eq!(c.junction_min_congested, 2);
         assert!(c.health_full > c.health_zero);
-        assert_eq!(c.health_full, 0.95);
+        assert_eq!(c.health_full, 0.85);
         assert_eq!(c.health_zero, 0.75);
     }
 }

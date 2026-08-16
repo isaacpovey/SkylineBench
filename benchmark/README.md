@@ -3,11 +3,15 @@
 Score a Claude Code agent on improving traffic in a bad-traffic city.
 
 ## Per-run steps (spec §2, §3)
-1. Launch Cities: Skylines and load the benchmark save from the **main menu**
-   (never reload mid-session — it crashes). Confirm the city is loaded:
-   `curl -s http://127.0.0.1:8787/health` shows `"city_loaded":true`.
+1. Launch Cities: Skylines and load the benchmark save from the **main menu**.
+   Confirm the city is loaded: `curl -s http://127.0.0.1:8787/health` shows
+   `"city_loaded":true`. `run.sh` will skip `/load-save` when that health
+   payload already names the bound save (`save_name` / `city_name`).
 2. Build the broker once: `cargo build --release --manifest-path broker/Cargo.toml`.
 3. Run: `./benchmark/run.sh --map gridlock-v1`
+   - If `/load-save` still hits CS1's "file format version not supported"
+     error, load the save from the main menu and re-run with `--skip-load`.
+     A failed load no longer waits 180s; it prints that hint and exits.
    - Put harness secrets in a root `.env` file if you do not want to export
      them in your shell each time: `cp .env.example .env`, then fill in the
      keys you need. `.env` is ignored by git.
@@ -73,9 +77,10 @@ rather than the scoreboard.
 - `junction_reduction = max(0, baseline_congested_junctions − final_congested_junctions) / baseline_congested_junctions`.
   A **congested junction** is a node of degree ≥ `junction_min_degree` (3) with ≥ `junction_min_congested` (2)
   incident segments at density ≥ `congestion_threshold` (0.7), measured over the final window.
-- `health` is a graded population factor (1.0 at population ≥ `health_full`·baseline (0.95),
-  0.0 at ≤ `health_zero`·baseline (0.75), linear between) that replaces the old hard 80% cliff —
-  depopulating the city drags the score down smoothly instead of being free above 80% or zero below it.
+- `health` is a graded population factor (1.0 at population ≥ `health_full`·baseline (0.85),
+  0.0 at ≤ `health_zero`·baseline (0.75), linear between, capped at 1.0 even if population
+  grows). The 85% full-health line leaves room for normal death-wave / settle noise;
+  only a drop into the 75–85% band, or a collapse below 75%, drags the score.
 - A run is invalid (score 0) only when the baseline has no congestion to fix.
 - Money is normalised against a $10,000,000 budget; changes against a 300-change cap.
 

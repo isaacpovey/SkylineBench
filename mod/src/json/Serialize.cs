@@ -103,6 +103,34 @@ namespace SkylineBench.Json
             {
                 w.Name("reason").Value(r.Reason);
                 if (r.CollidingBuildings.Count > 0) WriteUintArray(w, "colliding_buildings", r.CollidingBuildings);
+                if (r.Collisions.Count > 0)
+                {
+                    w.Name("collisions").BeginArray();
+                    for (int i = 0; i < r.Collisions.Count; i++)
+                    {
+                        var h = r.Collisions[i];
+                        w.BeginObject()
+                            .Name("id").Value((long)h.Id)
+                            .Name("kind").Value(h.Kind)
+                            .Name("category").Value(h.Category)
+                            .Name("x").Value(h.X).Name("y").Value(h.Y).Name("z").Value(h.Z)
+                            .Name("footprint_width").Value(h.FootprintWidth)
+                            .Name("footprint_length").Value(h.FootprintLength)
+                            .Name("can_bulldoze").Value(h.CanBulldoze)
+                            .Name("offset_x").Value(h.OffsetX)
+                            .Name("offset_z").Value(h.OffsetZ)
+                         .EndObject();
+                    }
+                    w.EndArray();
+                }
+                if (r.SuggestedOffset != null)
+                {
+                    w.Name("suggested_offset").BeginObject()
+                        .Name("x").Value(r.SuggestedOffset.X)
+                        .Name("z").Value(r.SuggestedOffset.Z)
+                        .Name("clears_all").Value(r.SuggestedOffset.ClearsAll)
+                     .EndObject();
+                }
             }
             w.EndObject();
             return w.ToString();
@@ -112,6 +140,22 @@ namespace SkylineBench.Json
         {
             var w = new JsonWriter();
             w.BeginObject().Name("ok").Value(c.Ok).Name("paused").Value(c.Paused).Name("tick").Value((long)c.Tick).Name("forced_paused").Value(c.ForcedPaused).EndObject();
+            return w.ToString();
+        }
+
+        public static string Health(HealthDto h)
+        {
+            var w = new JsonWriter();
+            w.BeginObject()
+                .Name("mod_version").Value("0.1.0")
+                .Name("game_version").Value(h.GameVersion)
+                .Name("city_loaded").Value(h.CityLoaded)
+                .Name("paused").Value(h.Paused)
+                .Name("forced_paused").Value(h.ForcedPaused)
+                .Name("tick").Value((long)h.Tick)
+                .Name("city_name").Value(h.CityName)
+                .Name("save_name").Value(h.SaveName)
+             .EndObject();
             return w.ToString();
         }
 

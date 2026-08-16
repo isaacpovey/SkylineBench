@@ -27,6 +27,14 @@ pub struct Health {
     #[serde(default)]
     pub forced_paused: bool,
     pub tick: u64,
+    /// Currently loaded city name (`SimulationMetaData.m_CityName`). Defaults for
+    /// payloads from a mod predating the field.
+    #[serde(default)]
+    pub city_name: Option<String>,
+    /// Save file name (`Package.Asset.name`) matched from `/saves` against
+    /// `city_name`. Defaults for payloads from a mod predating the field.
+    #[serde(default)]
+    pub save_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -260,6 +268,46 @@ pub struct ActionResult {
     pub zoned_buildings_fronting: Option<u32>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub colliding_buildings: Vec<u32>,
+    /// Rich collision hits (position, category, whether it's safe to bulldoze,
+    /// a per-hit lateral offset). Empty when the rejection wasn't a building hit
+    /// or the mod predates the field.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub collisions: Vec<CollisionHit>,
+    /// One XZ shift of the whole span. Absent when there are no collision hits.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub suggested_offset: Option<SuggestedOffset>,
+}
+
+fn default_collision_kind() -> String {
+    "building".into()
+}
+
+/// One object a proposed road collided with. `kind` is currently always
+/// `"building"`. `can_bulldoze` is true for zoned RCIO (residential /
+/// commercial / industrial / office) and false for service/other.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CollisionHit {
+    pub id: u32,
+    #[serde(default = "default_collision_kind")]
+    pub kind: String,
+    pub category: String,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub footprint_width: f32,
+    pub footprint_length: f32,
+    pub can_bulldoze: bool,
+    pub offset_x: f32,
+    pub offset_z: f32,
+}
+
+/// A single lateral shift of the whole span. `clears_all` is false when
+/// obstacles pinch the corridor from both sides.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SuggestedOffset {
+    pub x: f32,
+    pub z: f32,
+    pub clears_all: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -375,6 +423,8 @@ mod tests {
             reason: None,
             zoned_buildings_fronting: None,
             colliding_buildings: vec![],
+            collisions: vec![],
+            suggested_offset: None,
         };
         let json = serde_json::to_string(&original).unwrap();
         let parsed: ActionResult = serde_json::from_str(&json).unwrap();
@@ -394,6 +444,8 @@ mod tests {
             reason: None,
             zoned_buildings_fronting: None,
             colliding_buildings: vec![],
+            collisions: vec![],
+            suggested_offset: None,
         };
         let json = serde_json::to_string(&result).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -420,6 +472,8 @@ mod tests {
             reason: Some(ActionError::ObjectCollision),
             zoned_buildings_fronting: None,
             colliding_buildings: vec![],
+            collisions: vec![],
+            suggested_offset: None,
         };
         let json = serde_json::to_string(&err).unwrap();
         assert!(
@@ -470,11 +524,29 @@ mod tests {
         )
         .unwrap();
         assert!(!h.forced_paused);
+        assert!(h.city_name.is_none());
+        assert!(h.save_name.is_none());
         let h: Health = serde_json::from_str(
             r#"{"mod_version":"0.1.0","game_version":"g","city_loaded":true,"paused":false,"forced_paused":true,"tick":7}"#,
         )
         .unwrap();
         assert!(h.forced_paused);
+    }
+
+    #[test]
+    fn health_parses_city_and_save_name() {
+        let h: Health = serde_json::from_str(
+            r#"{"mod_version":"0.1.0","game_version":"g","city_loaded":true,"paused":false,"tick":7,"city_name":"Gridlock City","save_name":"BasicTrafficScenarioNewPower"}"#,
+        )
+        .unwrap();
+        assert_eq!(h.city_name.as_deref(), Some("Gridlock City"));
+        assert_eq!(h.save_name.as_deref(), Some("BasicTrafficScenarioNewPower"));
+        let h: Health = serde_json::from_str(
+            r#"{"mod_version":"0.1.0","game_version":"g","city_loaded":false,"paused":false,"tick":0,"city_name":null,"save_name":null}"#,
+        )
+        .unwrap();
+        assert!(h.city_name.is_none());
+        assert!(h.save_name.is_none());
     }
 
     #[test]
@@ -488,6 +560,93 @@ mod tests {
         let r: ActionResult = serde_json::from_str(r#"{"ok": true}"#).unwrap();
         assert_eq!(r.zoned_buildings_fronting, None);
         assert!(r.colliding_buildings.is_empty());
+        assert!(r.collisions.is_empty());
+        assert_eq!(r.suggested_offset, None);
+    }
+
+    #[test]
+    fn action_result_parses_rich_collisions_from_mod_payload() {
+        // Wire shape emitted by Serialize.Action on OBJECT_COLLISION.
+        let json = r#"{
+            "ok":false,
+            "reason":"OBJECT_COLLISION",
+            "colliding_buildings":[41],
+            "collisions":[{
+                "id":41,"kind":"building","category":"residential",
+                "x":120.5,"y":10,"z":-40,
+                "footprint_width":32,"footprint_length":24,
+                "can_bulldoze":true,"offset_x":0,"offset_z":-18.5
+            }],
+            "suggested_offset":{"x":0,"z":-28,"clears_all":false}
+        }"#;
+        let r: ActionResult = serde_json::from_str(json).unwrap();
+        assert!(!r.ok);
+        assert_eq!(r.reason, Some(ActionError::ObjectCollision));
+        assert_eq!(r.colliding_buildings, vec![41]);
+        assert_eq!(r.collisions.len(), 1);
+        let h = &r.collisions[0];
+        assert_eq!(h.id, 41);
+        assert_eq!(h.kind, "building");
+        assert_eq!(h.category, "residential");
+        assert_eq!(h.x, 120.5);
+        assert_eq!(h.z, -40.0);
+        assert!(h.can_bulldoze);
+        assert_eq!(h.offset_z, -18.5);
+        let off = r.suggested_offset.unwrap();
+        assert_eq!(off.z, -28.0);
+        assert!(!off.clears_all);
+    }
+
+    #[test]
+    fn action_result_omits_collisions_when_empty() {
+        let result = ActionResult {
+            ok: false,
+            created_nodes: vec![],
+            created_segments: vec![],
+            snapped_nodes: vec![],
+            destroyed: vec![],
+            reason: Some(ActionError::ObjectCollision),
+            zoned_buildings_fronting: None,
+            colliding_buildings: vec![],
+            collisions: vec![],
+            suggested_offset: None,
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(
+            !v.as_object().unwrap().contains_key("collisions"),
+            "empty collisions must be absent: {json}"
+        );
+        assert!(
+            !v.as_object().unwrap().contains_key("suggested_offset"),
+            "absent offset must be omitted: {json}"
+        );
+    }
+
+    #[test]
+    fn collision_hit_round_trips() {
+        let hit = CollisionHit {
+            id: 7,
+            kind: "building".into(),
+            category: "service".into(),
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
+            footprint_width: 48.0,
+            footprint_length: 48.0,
+            can_bulldoze: false,
+            offset_x: 12.0,
+            offset_z: -4.0,
+        };
+        let json = serde_json::to_string(&hit).unwrap();
+        let parsed: CollisionHit = serde_json::from_str(&json).unwrap();
+        assert_eq!(hit, parsed);
+        assert!(json.contains("\"can_bulldoze\":false"));
+        let sparse: CollisionHit = serde_json::from_str(
+            r#"{"id":1,"category":"office","x":0,"y":0,"z":0,"footprint_width":8,"footprint_length":8,"can_bulldoze":true,"offset_x":0,"offset_z":0}"#,
+        )
+        .unwrap();
+        assert_eq!(sparse.kind, "building");
     }
 
     #[test]

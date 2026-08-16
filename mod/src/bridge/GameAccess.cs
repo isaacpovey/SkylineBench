@@ -14,6 +14,8 @@ namespace SkylineBench.Bridge
         public bool Paused;
         public bool ForcedPaused;
         public uint Tick;
+        public string CityName;
+        public string SaveName;
     }
 
     public static class GameAccess
@@ -21,14 +23,28 @@ namespace SkylineBench.Bridge
         public static HealthInfo ReadHealth()
         {
             var t = ModRuntime.Threading;
+            string cityName = CurrentCityName();
             return new HealthInfo
             {
                 GameVersion = GameVersionString(),
                 CityLoaded = t != null,
                 Paused = t != null && t.simulationPaused,
                 ForcedPaused = ForcedPaused(),
-                Tick = t != null ? t.simulationTick : 0u
+                Tick = t != null ? t.simulationTick : 0u,
+                CityName = cityName,
+                SaveName = t != null ? SaveLoader.SaveNameForCity(cityName) : null
             };
+        }
+
+        private static string CurrentCityName()
+        {
+            try
+            {
+                var sm = Singleton<SimulationManager>.instance;
+                if (sm != null && sm.m_metaData != null) return sm.m_metaData.m_CityName;
+            }
+            catch { }
+            return null;
         }
 
         /// <summary>Game modal dialogs set SimulationManager.ForcedSimulationPaused — a pause

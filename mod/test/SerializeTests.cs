@@ -16,8 +16,11 @@ namespace SkylineBench.Tests
             tests.Add(new KeyValuePair<string, Action>("serialize: action error omits diff", ActionErr));
             tests.Add(new KeyValuePair<string, Action>("serialize: action includes frontage when computed", ActionIncludesFrontageWhenComputed));
             tests.Add(new KeyValuePair<string, Action>("serialize: action failure includes colliding buildings", ActionFailureIncludesCollidingBuildings));
+            tests.Add(new KeyValuePair<string, Action>("serialize: action failure includes rich collisions", ActionFailureIncludesRichCollisions));
             tests.Add(new KeyValuePair<string, Action>("serialize: clock state", Clock));
             tests.Add(new KeyValuePair<string, Action>("serialize: clock state forced paused", ClockForcedPaused));
+            tests.Add(new KeyValuePair<string, Action>("serialize: health omits identity when unloaded", HealthUnloaded));
+            tests.Add(new KeyValuePair<string, Action>("serialize: health includes city and save name", HealthLoaded));
             tests.Add(new KeyValuePair<string, Action>("serialize: load result", Load));
             tests.Add(new KeyValuePair<string, Action>("serialize: load miss lists available", LoadMissListsAvailable));
             tests.Add(new KeyValuePair<string, Action>("serialize: saves list", SavesList));
@@ -94,6 +97,37 @@ namespace SkylineBench.Tests
             Assert.True(json.Contains("\"colliding_buildings\":[41,99]"), "colliding_buildings in json: " + json);
         }
 
+        static void ActionFailureIncludesRichCollisions()
+        {
+            var r = ActionResultDto.Fail("OBJECT_COLLISION");
+            r.CollidingBuildings.Add(41);
+            r.Collisions.Add(new CollisionHitDto
+            {
+                Id = 41, Kind = "building", Category = "residential",
+                X = 120.5f, Y = 10f, Z = -40f,
+                FootprintWidth = 32f, FootprintLength = 24f,
+                CanBulldoze = true, OffsetX = 0f, OffsetZ = -18.5f,
+            });
+            r.Collisions.Add(new CollisionHitDto
+            {
+                Id = 7, Kind = "building", Category = "service",
+                X = 130f, Y = 10f, Z = -38f,
+                FootprintWidth = 48f, FootprintLength = 48f,
+                CanBulldoze = false, OffsetX = 0f, OffsetZ = -28f,
+            });
+            r.SuggestedOffset = new SuggestedOffsetDto { X = 0f, Z = -28f, ClearsAll = false };
+            string json = Serialize.Action(r);
+            Assert.True(json.Contains("\"colliding_buildings\":[41]"), "ids still present: " + json);
+            Assert.True(json.Contains("\"kind\":\"building\""), "kind: " + json);
+            Assert.True(json.Contains("\"category\":\"residential\""), "zoned category: " + json);
+            Assert.True(json.Contains("\"category\":\"service\""), "service category: " + json);
+            Assert.True(json.Contains("\"can_bulldoze\":true"), "zoned can_bulldoze: " + json);
+            Assert.True(json.Contains("\"can_bulldoze\":false"), "service must not bulldoze: " + json);
+            Assert.True(json.Contains("\"x\":120.5"), "hit position: " + json);
+            Assert.True(json.Contains("\"offset_z\":-18.5"), "per-hit offset: " + json);
+            Assert.True(json.Contains("\"suggested_offset\":{\"x\":0,\"z\":-28,\"clears_all\":false}"), "combined offset: " + json);
+        }
+
         static void Clock()
         {
             Assert.Equal("{\"ok\":true,\"paused\":false,\"tick\":42,\"forced_paused\":false}",
@@ -104,6 +138,26 @@ namespace SkylineBench.Tests
         {
             Assert.Equal("{\"ok\":true,\"paused\":false,\"tick\":42,\"forced_paused\":true}",
                 Serialize.Clock(new ClockStateDto { Ok = true, Paused = false, Tick = 42, ForcedPaused = true }));
+        }
+
+        static void HealthUnloaded()
+        {
+            Assert.Equal("{\"mod_version\":\"0.1.0\",\"game_version\":\"1.21.1-f9\",\"city_loaded\":false,\"paused\":false,\"forced_paused\":false,\"tick\":0,\"city_name\":null,\"save_name\":null}",
+                Serialize.Health(new HealthDto { GameVersion = "1.21.1-f9" }));
+        }
+
+        static void HealthLoaded()
+        {
+            Assert.Equal("{\"mod_version\":\"0.1.0\",\"game_version\":\"1.21.1-f9\",\"city_loaded\":true,\"paused\":true,\"forced_paused\":false,\"tick\":7,\"city_name\":\"Gridlock City\",\"save_name\":\"BasicTrafficScenarioNewPower\"}",
+                Serialize.Health(new HealthDto
+                {
+                    GameVersion = "1.21.1-f9",
+                    CityLoaded = true,
+                    Paused = true,
+                    Tick = 7,
+                    CityName = "Gridlock City",
+                    SaveName = "BasicTrafficScenarioNewPower",
+                }));
         }
 
         static void Load()

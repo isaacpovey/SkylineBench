@@ -1,11 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# --- sleep inhibit (whole run: load + agent + settle/finalize) ---
+# Re-exec under the inhibitor so we don't touch the EXIT trap / CMD array.
+# SKYLINEBENCH_INHIBIT blocks the child from wrapping itself again.
+# Skipped for DRY_RUN (no long-running work). --skip-load is preserved via "$@".
+if [ -z "${SKYLINEBENCH_INHIBIT:-}" ] && [ "${DRY_RUN:-0}" != "1" ]; then
+  export SKYLINEBENCH_INHIBIT=1
+  case "$(uname -s)" in
+    Darwin)
+      if command -v caffeinate >/dev/null; then
+        exec caffeinate -dims "$BASH" "$0" "$@"
+      fi
+      echo "warning: caffeinate not found; machine may sleep mid-run" >&2
+      ;;
+    Linux)
+      if command -v systemd-inhibit >/dev/null; then
+        exec systemd-inhibit --what=idle:sleep --who=skylinebench --why="benchmark run" -- "$BASH" "$0" "$@"
+      fi
+      echo "warning: systemd-inhibit not found; machine may sleep mid-run" >&2
+      ;;
+  esac
+fi
+# --- end sleep inhibit ---
+
 MAP=""
 MOD_URL="http://127.0.0.1:8787"
 MAP_SOURCE="test"
 MODEL=""
 HARNESS="claude"
+SKIP_LOAD="${SKIP_LOAD:-0}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_ID="$(date +%Y%m%d-%H%M%S)"
 OUT_DIR="$ROOT/benchmark/runs/$RUN_ID"
@@ -25,11 +49,12 @@ while [ $# -gt 0 ]; do
     --out) OUT_DIR="$2"; shift 2 ;;
     --model) MODEL="$2"; shift 2 ;;
     --harness) HARNESS="$2"; shift 2 ;;
+    --skip-load) SKIP_LOAD=1; shift ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
 
-[ -n "$MAP" ] || { echo "usage: run.sh --map <id> [--harness claude|codex|gemini|opencode] [--model NAME] [--mod-url URL] [--map-source SRC] [--out DIR]" >&2; exit 2; }
+[ -n "$MAP" ] || { echo "usage: run.sh --map <id> [--harness claude|codex|gemini|opencode] [--model NAME] [--skip-load] [--mod-url URL] [--map-source SRC] [--out DIR]" >&2; exit 2; }
 case "$MAP" in
   *[!A-Za-z0-9_-]*) echo "map id must be alphanumeric, dash, or underscore" >&2; exit 2 ;;
 esac
@@ -59,10 +84,43 @@ json_str() {
   printf '"%s"' "$s"
 }
 
+# First JSON string value for key (empty if missing or JSON null).
+json_string_field() {
+  local key="$1" json="$2"
+  printf '%s' "$json" | tr -d '\n' | sed -n 's/.*"'"$key"'":"\([^"]*\)".*/\1/p'
+}
+
+# True when /health reports city_loaded and the loaded city matches the bound save
+# (save_name or city_name equals the maps.tsv save name).
+city_already_bound() {
+  local save_name="$1" h compact city save
+  h="$(curl -fsS --max-time 5 "$MOD_URL/health" 2>/dev/null || true)"
+  compact="$(printf '%s' "$h" | tr -d '[:space:]')"
+  case "$compact" in
+    *'"city_loaded":true'*) ;;
+    *) return 1 ;;
+  esac
+  save="$(json_string_field save_name "$h")"
+  city="$(json_string_field city_name "$h")"
+  [ -n "$save" ] && [ "$save" = "$save_name" ] && return 0
+  [ -n "$city" ] && [ "$city" = "$save_name" ] && return 0
+  return 1
+}
+
+load_failed_hint() {
+  local save_name="$1"
+  echo "load of save '$save_name' did not finish." >&2
+  echo "CS1 LoadLevel can fail with 'file format version not supported' (native" >&2
+  echo "deserializer vs the in-game Load panel). Load the save from the main menu," >&2
+  echo "then re-run with --skip-load:" >&2
+  echo "  ./benchmark/run.sh --map $MAP --skip-load" >&2
+}
+
 # Issue the load and wait for the level-reload bridge cycle to finish.
-# Returns non-zero on timeout (surfaces the "invalid file"/unstable-load case).
+# Returns non-zero on timeout / dead load (does not sit on a 180s poll if the
+# reload never starts, or if the bridge comes back with city_loaded:false).
 load_and_wait() {
-  local save_name="$1" deadline resp h
+  local save_name="$1" deadline resp h compact
   resp="$(curl -fsS -X POST "$MOD_URL/load-save" \
     -H 'content-type: application/json' \
     -d "$(printf '{"save_name":%s}' "$(json_str "$save_name")")" 2>/dev/null || true)"
@@ -71,29 +129,45 @@ load_and_wait() {
       echo "load rejected for save '$save_name'. Mod reported available saves:" >&2
       printf '%s\n' "$resp" >&2
       return 1 ;;
-    "") echo "mod not reachable at $MOD_URL/load-save" >&2; return 1 ;;
+    "")
+      if curl -fsS --max-time 5 "$MOD_URL/health" >/dev/null 2>&1; then
+        echo "POST /load-save failed at $MOD_URL (empty or HTTP error)." >&2
+        load_failed_hint "$save_name"
+      else
+        echo "mod not reachable at $MOD_URL/load-save" >&2
+      fi
+      return 1 ;;
   esac
-  # Phase 1: bridge goes down (reload started). Tolerate up to 30s.
-  deadline=$(( $(date +%s) + 30 ))
+  # Phase 1: bridge goes down (reload started). A real LoadLevel unloads within
+  # a few seconds. If health is still up after 15s, the load never started
+  # (typical format-version failure) — fail now, do not wait 180s.
+  deadline=$(( $(date +%s) + 15 ))
   until [ "$(date +%s)" -ge "$deadline" ]; do
-    curl -fsS "$MOD_URL/health" >/dev/null 2>&1 || break
+    curl -fsS --max-time 2 "$MOD_URL/health" >/dev/null 2>&1 || break
     sleep 1
   done
-  # If the bridge never dropped, the reload may not have started — leave a
-  # breadcrumb, since phase 2 could then pass against the stale city.
-  if curl -fsS "$MOD_URL/health" >/dev/null 2>&1; then
-    echo "note: bridge did not go down during the reload window; proceeding to phase-2 check" >&2
+  if curl -fsS --max-time 2 "$MOD_URL/health" >/dev/null 2>&1; then
+    echo "bridge did not go down after /load-save; reload never started." >&2
+    load_failed_hint "$save_name"
+    return 1
   fi
-  # Phase 2: bridge back up with a city loaded (reload finished). Up to 180s.
-  deadline=$(( $(date +%s) + 180 ))
+  # Phase 2: bridge back up with a city loaded. Fail immediately if it comes
+  # back with city_loaded:false (returned to the menu). Cap the wait at 90s.
+  deadline=$(( $(date +%s) + 90 ))
   until [ "$(date +%s)" -ge "$deadline" ]; do
-    h="$(curl -fsS "$MOD_URL/health" 2>/dev/null || true)"
-    case "$(printf '%s' "$h" | tr -d '[:space:]')" in
+    h="$(curl -fsS --max-time 2 "$MOD_URL/health" 2>/dev/null || true)"
+    compact="$(printf '%s' "$h" | tr -d '[:space:]')"
+    case "$compact" in
       *'"city_loaded":true'*) return 0 ;;
+      *'"city_loaded":false'*)
+        echo "bridge came back without a city loaded." >&2
+        load_failed_hint "$save_name"
+        return 1 ;;
     esac
     sleep 2
   done
   echo "timed out waiting for save '$save_name' to finish loading" >&2
+  load_failed_hint "$save_name"
   return 1
 }
 
@@ -101,9 +175,22 @@ SAVE_NAME="$(resolve_save_name "$MAP")" || exit 1
 
 # Preflight + load (skipped under DRY_RUN, which only inspects the resolved
 # command). Reachability is implied by load_and_wait's first curl.
-if [ "${DRY_RUN:-0}" != "1" ]; then
-  echo "loading map '$MAP' (save '$SAVE_NAME')…" >&2
-  load_and_wait "$SAVE_NAME" || exit 1
+# --skip-load: operator loaded from the main menu; do not call /load-save.
+# Auto-skip: if /health already shows the bound save loaded, skip without
+# requiring --skip-load (avoids bricking a good session on a LoadLevel miss).
+if [ "${DRY_RUN:-0}" != "1" ] && [ "$SKIP_LOAD" != "1" ]; then
+  if city_already_bound "$SAVE_NAME"; then
+    echo "city already loaded ($SAVE_NAME); skipping load-save" >&2
+  else
+    echo "loading map '$MAP' (save '$SAVE_NAME')…" >&2
+    load_and_wait "$SAVE_NAME" || exit 1
+  fi
+elif [ "${DRY_RUN:-0}" != "1" ]; then
+  h="$(curl -fsS --max-time 5 "$MOD_URL/health" 2>/dev/null || true)"
+  case "$(printf '%s' "$h" | tr -d '[:space:]')" in
+    *'"city_loaded":true'*) echo "skipping load-save; city already loaded ($SAVE_NAME)" >&2 ;;
+    *) echo " --skip-load set but no city is loaded at $MOD_URL (load the save from the main menu first)" >&2; exit 1 ;;
+  esac
 fi
 
 mkdir -p "$OUT_DIR"
@@ -127,9 +214,12 @@ trap 'rm -rf "${SESSION_DIR:-}"; rmdir "$LOCK_DIR" 2>/dev/null' EXIT
 # Everything the harness must read or exec therefore lives here: the broker
 # binary copy, the harness config, and the scratch workspace. The agent may
 # freely write/run code in its workspace; only repo reads die.
-# Lives under ~/Library/Caches (not TMPDIR): macOS periodically reaps
+# Lives under a durable cache dir (not TMPDIR): macOS periodically reaps
 # /var/folders temp dirs, which deleted a live workspace mid-run on 2026-06-09.
-SESSION_BASE="$HOME/Library/Caches/skylinebench"
+case "$(uname -s)" in
+  Darwin) SESSION_BASE="$HOME/Library/Caches/skylinebench" ;;
+  *) SESSION_BASE="${XDG_CACHE_HOME:-$HOME/.cache}/skylinebench" ;;
+esac
 mkdir -p "$SESSION_BASE"
 SESSION_DIR="$(mktemp -d "$SESSION_BASE/$RUN_ID.XXXXXX")"
 WORKSPACE="$SESSION_DIR/workspace"
@@ -164,9 +254,22 @@ export MCP_TOOL_TIMEOUT="${MCP_TOOL_TIMEOUT:-600000}"
 # transfer from the operator's config (macOS keeps them keyed to it), so the
 # operator logs into this dir ONCE and every run reuses it.
 if [ "$HARNESS" = "claude" ]; then
-  CLAUDE_CONFIG_DIR="${BENCH_CLAUDE_CONFIG:-$HOME/Library/Application Support/skylinebench/claude-config}"
+  case "$(uname -s)" in
+    Darwin) _claude_default="$HOME/Library/Application Support/skylinebench/claude-config" ;;
+    *) _claude_default="${XDG_CONFIG_HOME:-$HOME/.config}/skylinebench/claude-config" ;;
+  esac
+  CLAUDE_CONFIG_DIR="${BENCH_CLAUDE_CONFIG:-$_claude_default}"
   mkdir -p "$CLAUDE_CONFIG_DIR"
   [ -f "$CLAUDE_CONFIG_DIR/.claude.json" ] || printf '{"hasCompletedOnboarding": true}\n' > "$CLAUDE_CONFIG_DIR/.claude.json"
+  # Linux stores OAuth on disk (not in the macOS keychain). Seed the isolated
+  # benchmark config from the operator login so the first Linux run does not
+  # require a second /login.
+  if [ ! -f "$CLAUDE_CONFIG_DIR/.credentials.json" ] && [ -f "$HOME/.claude/.credentials.json" ]; then
+    cp "$HOME/.claude/.credentials.json" "$CLAUDE_CONFIG_DIR/.credentials.json"
+  fi
+  if ! grep -q oauthAccount "$CLAUDE_CONFIG_DIR/.claude.json" 2>/dev/null && [ -f "$HOME/.claude.json" ]; then
+    cp "$HOME/.claude.json" "$CLAUDE_CONFIG_DIR/.claude.json"
+  fi
   if [ "${DRY_RUN:-0}" != "1" ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then
     if ! grep -q oauthAccount "$CLAUDE_CONFIG_DIR/.claude.json" 2>/dev/null; then
       echo "benchmark Claude config is not logged in. One-time setup:" >&2
@@ -178,7 +281,10 @@ if [ "$HARNESS" = "claude" ]; then
 fi
 
 # The MCP broker command the harness will spawn over stdio.
-MCP_SHELL="$BROKER_BIN benchmark --map $MAP --map-source $MAP_SOURCE --mod-url $MOD_URL --out $OUT_DIR --renders-dir $SESSION_DIR/renders --screenshots-dir $SESSION_DIR/screenshots"
+# --persist-dir / --renders-dir / --screenshots-dir all point at SESSION_DIR
+# (outside the repo). Linux bwrap overlays the repo with a tmpfs, so writes
+# to --out ($OUT_DIR, under the repo) vanish when the sandbox exits.
+MCP_SHELL="$BROKER_BIN benchmark --map $MAP --map-source $MAP_SOURCE --mod-url $MOD_URL --out $OUT_DIR --persist-dir $SESSION_DIR --renders-dir $SESSION_DIR/renders --screenshots-dir $SESSION_DIR/screenshots"
 
 # Resolve the harness launch plan (config files + argv + env + required env).
 "$REPO_BIN" harness-prepare \
@@ -244,6 +350,11 @@ fi
 
 if [ -d "$SESSION_DIR/screenshots" ]; then
   mv "$SESSION_DIR/screenshots" "$OUT_DIR/screenshots"
+fi
+
+# end-state.json was written to SESSION_DIR (Linux bwrap tmpfs hides the repo).
+if [ -f "$SESSION_DIR/end-state.json" ]; then
+  cp "$SESSION_DIR/end-state.json" "$OUT_DIR/end-state.json"
 fi
 
 "$REPO_BIN" render-transcript --input "$OUT_DIR/transcript.jsonl" --out "$OUT_DIR/transcript.md" --harness "$HARNESS" || true

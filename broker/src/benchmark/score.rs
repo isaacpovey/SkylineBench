@@ -43,6 +43,8 @@ pub fn score_run(record: &RunRecord, cfg: &BenchConfig) -> Score {
     } else {
         1.0
     };
+    // Full health at/above `health_full` (including any pop ≥ baseline). Cap
+    // at 1.0: a growth bonus would dominate the congestion term.
     let health = clamp01((pop_ratio - cfg.health_zero) / (cfg.health_full - cfg.health_zero));
 
     let norm = ScoreNorms {
@@ -197,9 +199,48 @@ mod tests {
     }
 
     #[test]
+    fn modest_settle_dip_has_full_health() {
+        // 91% of baseline (the Opus 5 settle snapshot was ~91%) sits above
+        // health_full (0.85) and must not multiply the composite down.
+        let s = score_run(
+            &record(1000.0, 0.0, 0, 0, 30_000, 27_300),
+            &BenchConfig::default(),
+        );
+        assert!((s.health - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn health_is_full_at_the_threshold() {
+        let s = score_run(
+            &record(1000.0, 0.0, 0, 0, 30_000, 25_500),
+            &BenchConfig::default(),
+        );
+        assert!((s.health - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn health_is_half_midway_down_the_ramp() {
+        let s = score_run(
+            &record(1000.0, 0.0, 0, 0, 30_000, 24_000),
+            &BenchConfig::default(),
+        );
+        assert!((s.health - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn population_above_baseline_does_not_bonus() {
+        let s = score_run(
+            &record(1000.0, 0.0, 0, 0, 30_000, 35_000),
+            &BenchConfig::default(),
+        );
+        assert!((s.health - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
     fn depopulation_for_a_small_congestion_gain_nets_below_do_nothing() {
+        // 80% of baseline sits at the midpoint of the 75–85% ramp (health 0.5).
         let depop = score_run(
-            &record_j(1000.0, 800.0, 10, 9, 0, 20, 30_000, 25_200),
+            &record_j(1000.0, 800.0, 10, 9, 0, 20, 30_000, 24_000),
             &BenchConfig::default(),
         );
         let do_nothing = score_run(

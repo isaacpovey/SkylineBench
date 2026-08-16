@@ -70,7 +70,11 @@ namespace SkylineBench.Bridge
                         Mathf.Max(req.FromElevation, req.ToElevation),
                         actualLenXZ, /*incoming*/ true, /*outgoing*/ true, /*curved*/ false,
                         /*enableDouble*/ false, ref infoErr) ?? prefab;
-                    fail.CollidingBuildings = BuildingCollision.Find(variant, actualStart, actualEnd);
+                    fail.Collisions = BuildingCollision.Describe(variant, actualStart, actualEnd);
+                    for (int i = 0; i < fail.Collisions.Count; i++)
+                        fail.CollidingBuildings.Add(fail.Collisions[i].Id);
+                    fail.SuggestedOffset = BuildingCollision.CombinedOffset(
+                        variant, actualStart, actualEnd, fail.Collisions);
                 }
                 return fail;
             }

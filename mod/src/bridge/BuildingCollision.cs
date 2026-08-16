@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using ColossalFramework;
 using ColossalFramework.Math;
 using UnityEngine;
+using SkylineBench.Dto;
 
 namespace SkylineBench.Bridge
 {
@@ -20,17 +21,29 @@ namespace SkylineBench.Bridge
     {
         public static List<uint> Find(NetInfo prefab, Vector3 startPos, Vector3 endPos)
         {
-            var result = new List<uint>();
+            var hits = Describe(prefab, startPos, endPos);
+            var ids = new List<uint>(hits.Count);
+            for (int i = 0; i < hits.Count; i++) ids.Add(hits[i].Id);
+            return ids;
+        }
+
+        /// <summary>Rich collision hits plus a combined lateral offset. Empty list
+        /// when nothing overlaps / prefab is invalid.</summary>
+        public static List<CollisionHitDto> Describe(NetInfo prefab, Vector3 startPos, Vector3 endPos)
+        {
+            var result = new List<CollisionHitDto>();
             if (prefab == null || prefab.m_netAI == null) return result;
 
-            var corridor = CollisionCorridor.Compute(new CorridorInput
+            float halfWidth = prefab.m_netAI.GetCollisionHalfWidth();
+            var input = new CorridorInput
             {
                 Start = startPos,
                 End = endPos,
-                HalfWidth = prefab.m_netAI.GetCollisionHalfWidth(),
+                HalfWidth = halfWidth,
                 MinHeight = prefab.m_minHeight,
                 MaxHeight = prefab.m_maxHeight,
-            });
+            };
+            var corridor = CollisionCorridor.Compute(input);
             var quad = new Quad2 { a = corridor.A, b = corridor.B, c = corridor.C, d = corridor.D };
 
             var bm = Singleton<BuildingManager>.instance;
@@ -47,9 +60,55 @@ namespace SkylineBench.Bridge
 
             for (uint id = 1; id < (uint)count; id++)
             {
-                if ((mask[id >> 6] & (1UL << (int)(id & 0x3f))) != 0UL) result.Add(id);
+                if ((mask[id >> 6] & (1UL << (int)(id & 0x3f))) == 0UL) continue;
+                var b = bm.m_buildings.m_buffer[id];
+                var info = b.Info;
+                string category = GameReads.Category(info);
+                float w = info != null ? info.m_cellWidth * 8f : 0f;
+                float l = info != null ? info.m_cellLength * 8f : 0f;
+                var obstacle = new Obstacle
+                {
+                    Position = b.m_position,
+                    FootprintWidth = w,
+                    FootprintLength = l,
+                };
+                Vector2 offset = CollisionCorridor.LateralOffset(input, obstacle);
+                result.Add(new CollisionHitDto
+                {
+                    Id = id,
+                    Kind = "building",
+                    Category = category,
+                    X = b.m_position.x, Y = b.m_position.y, Z = b.m_position.z,
+                    FootprintWidth = w, FootprintLength = l,
+                    CanBulldoze = CollisionCorridor.IsZonedCategory(category),
+                    OffsetX = offset.x, OffsetZ = offset.y,
+                });
             }
             return result;
+        }
+
+        public static SuggestedOffsetDto CombinedOffset(NetInfo prefab, Vector3 startPos, Vector3 endPos, List<CollisionHitDto> hits)
+        {
+            if (hits == null || hits.Count == 0) return null;
+            float halfWidth = (prefab != null && prefab.m_netAI != null)
+                ? prefab.m_netAI.GetCollisionHalfWidth() : 8f;
+            var input = new CorridorInput
+            {
+                Start = startPos, End = endPos, HalfWidth = halfWidth,
+                MinHeight = 0f, MaxHeight = 0f,
+            };
+            var obstacles = new Obstacle[hits.Count];
+            for (int i = 0; i < hits.Count; i++)
+            {
+                obstacles[i] = new Obstacle
+                {
+                    Position = new Vector3(hits[i].X, hits[i].Y, hits[i].Z),
+                    FootprintWidth = hits[i].FootprintWidth,
+                    FootprintLength = hits[i].FootprintLength,
+                };
+            }
+            OffsetAdvice advice = CollisionCorridor.CombinedOffset(input, obstacles);
+            return new SuggestedOffsetDto { X = advice.X, Z = advice.Z, ClearsAll = advice.ClearsAll };
         }
     }
 }

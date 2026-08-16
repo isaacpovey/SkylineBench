@@ -540,7 +540,10 @@ mod tests {
             line.contains("congested ?m"),
             "null current renders ?: {line}"
         );
-        assert!(line.contains("pop ?"), "missing population renders ?: {line}");
+        assert!(
+            line.contains("pop ?"),
+            "missing population renders ?: {line}"
+        );
     }
 
     #[test]

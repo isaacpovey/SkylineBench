@@ -47,10 +47,46 @@ namespace SkylineBench.Dto
         public string Reason; // null when Ok
         public int ZonedBuildingsFronting = -1; // -1 = not computed / not applicable
         public List<uint> CollidingBuildings = new List<uint>();
+        public List<CollisionHitDto> Collisions = new List<CollisionHitDto>();
+        public SuggestedOffsetDto SuggestedOffset; // null when no collision geometry
         public static ActionResultDto Fail(string reason) { return new ActionResultDto { Ok = false, Reason = reason }; }
     }
 
+    /// <summary>One object a proposed road hit. Kind is currently always "building".
+    /// CanBulldoze is true for zoned RCIO; false for service/other (route around).</summary>
+    public sealed class CollisionHitDto
+    {
+        public uint Id;
+        public string Kind = "building";
+        public string Category;
+        public float X, Y, Z;
+        public float FootprintWidth, FootprintLength;
+        public bool CanBulldoze;
+        public float OffsetX, OffsetZ;
+    }
+
+    /// <summary>A single lateral shift of the whole span. ClearsAll is false when
+    /// obstacles pinch from both sides.</summary>
+    public sealed class SuggestedOffsetDto
+    {
+        public float X, Z;
+        public bool ClearsAll;
+    }
+
     public sealed class ClockStateDto { public bool Ok; public bool Paused; public ulong Tick; public bool ForcedPaused; }
+
+    /// <summary>/health payload. CityName/SaveName are null when no city is loaded
+    /// or the listing cannot be matched; JSON null on the wire.</summary>
+    public sealed class HealthDto
+    {
+        public string GameVersion;
+        public bool CityLoaded;
+        public bool Paused;
+        public bool ForcedPaused;
+        public uint Tick;
+        public string CityName;
+        public string SaveName;
+    }
     // Identity of a savegame asset, mirroring the CS1 API: Name = Package.Asset.name
     // (save file name), CityName = SaveGameMetaData.cityName, FullName = Package.Asset.fullName
     // (package-qualified id).

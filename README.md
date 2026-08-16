@@ -80,12 +80,16 @@ Three pieces:
 
 ## Running a benchmark
 
-You need Cities: Skylines (Steam, macOS), [Rust](https://rustup.rs), and Mono
-(`brew install mono`) to build the mod.
+You need Cities: Skylines (Steam), [Rust](https://rustup.rs), and Mono
+(`msbuild`/`xbuild`) to build the mod. On Linux also install `bubblewrap`
+(or `firejail`) so the agent sandbox can deny repo reads.
 
 1. **Install and enable the mod**, then load the benchmark save from the game's
    main menu — see [`mod/README.md`](mod/README.md). Confirm it's up:
    `curl -s http://127.0.0.1:8787/health` should report `"city_loaded":true`.
+   If that city is already the bound save, `run.sh` skips `/load-save`
+   automatically. If a mid-session load fails, load from the menu and re-run
+   with `--skip-load`.
 2. **Build the broker:** `cargo build --release --manifest-path broker/Cargo.toml`
 3. **Run:** `./benchmark/run.sh --map gridlock-v1` (add `--harness codex`
    etc. to run a non-Claude agent).

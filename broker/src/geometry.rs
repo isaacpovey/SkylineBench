@@ -34,6 +34,39 @@ pub fn in_bounds(p: Position, bounds: Bounds) -> bool {
     p.x >= bounds.min_x && p.x <= bounds.max_x && p.z >= bounds.min_z && p.z <= bounds.max_z
 }
 
+/// Axis-aligned intersection of two rectangles. Degenerate (inverted) input
+/// yields an inverted result; callers should prefer well-formed bounds.
+pub fn intersect_bounds(a: Bounds, b: Bounds) -> Bounds {
+    Bounds {
+        min_x: a.min_x.max(b.min_x),
+        max_x: a.max_x.min(b.max_x),
+        min_z: a.min_z.max(b.min_z),
+        max_z: a.max_z.min(b.max_z),
+    }
+}
+
+/// Shrink `bounds` by `inset` metres on each side. The inset is capped at half
+/// the span so a small city collapses to its centre instead of inverting.
+pub fn inset_bounds(bounds: Bounds, inset: f32) -> Bounds {
+    let dx = (bounds.max_x - bounds.min_x).max(0.0);
+    let dz = (bounds.max_z - bounds.min_z).max(0.0);
+    let ix = inset.max(0.0).min(dx * 0.5);
+    let iz = inset.max(0.0).min(dz * 0.5);
+    Bounds {
+        min_x: bounds.min_x + ix,
+        max_x: bounds.max_x - ix,
+        min_z: bounds.min_z + iz,
+        max_z: bounds.max_z - iz,
+    }
+}
+
+pub fn clamp_to_bounds(x: f32, z: f32, bounds: Bounds) -> (f32, f32) {
+    (
+        x.clamp(bounds.min_x, bounds.max_x),
+        z.clamp(bounds.min_z, bounds.max_z),
+    )
+}
+
 /// Returns the id of the nearest node within `SNAP_TOLERANCE_M` of `p`, if any.
 pub fn nearest_node_within_tolerance(p: Position, nodes: &[NetNode]) -> Option<u32> {
     nodes
@@ -89,6 +122,43 @@ mod tests {
         let b = playable_bounds();
         assert!(in_bounds(pos(0.0, 0.0), b));
         assert!(!in_bounds(pos(PLAYABLE_HALF_EXTENT_M + 1.0, 0.0), b));
+    }
+
+    #[test]
+    fn inset_bounds_shrinks_each_side_and_will_not_invert() {
+        let b = Bounds {
+            min_x: -1000.0,
+            max_x: 1000.0,
+            min_z: -400.0,
+            max_z: 400.0,
+        };
+        let inset = inset_bounds(b, 200.0);
+        assert_eq!(
+            inset,
+            Bounds {
+                min_x: -800.0,
+                max_x: 800.0,
+                min_z: -200.0,
+                max_z: 200.0,
+            }
+        );
+        let collapsed = inset_bounds(b, 10_000.0);
+        assert_eq!(collapsed.min_x, collapsed.max_x);
+        assert_eq!(collapsed.min_z, collapsed.max_z);
+        assert_eq!(collapsed.min_x, 0.0);
+        assert_eq!(collapsed.min_z, 0.0);
+    }
+
+    #[test]
+    fn clamp_to_bounds_pins_each_axis() {
+        let b = Bounds {
+            min_x: -10.0,
+            max_x: 10.0,
+            min_z: -5.0,
+            max_z: 5.0,
+        };
+        assert_eq!(clamp_to_bounds(0.0, 0.0, b), (0.0, 0.0));
+        assert_eq!(clamp_to_bounds(50.0, -50.0, b), (10.0, -5.0));
     }
 
     #[test]

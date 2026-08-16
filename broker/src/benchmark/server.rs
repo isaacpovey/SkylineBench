@@ -68,6 +68,27 @@ fn default_stop_on_error() -> bool {
     true
 }
 
+/// Copy game-check facts from a validate-road ActionResult onto an apply_plan
+/// result row so the agent sees collisions without committing.
+pub fn merge_game_check(row: &mut Value, check: &crate::contract::ActionResult) {
+    row["valid"] = serde_json::json!(check.ok);
+    if let Some(r) = check.reason {
+        row["reason"] = serde_json::to_value(r).unwrap();
+    }
+    if let Some(n) = check.zoned_buildings_fronting {
+        row["zoned_buildings_fronting"] = serde_json::json!(n);
+    }
+    if !check.colliding_buildings.is_empty() {
+        row["colliding_buildings"] = serde_json::to_value(&check.colliding_buildings).unwrap();
+    }
+    if !check.collisions.is_empty() {
+        row["collisions"] = serde_json::to_value(&check.collisions).unwrap();
+    }
+    if let Some(off) = &check.suggested_offset {
+        row["suggested_offset"] = serde_json::to_value(off).unwrap();
+    }
+}
+
 /// Merge the agent-facing telemetry block into a JSON object result (spec §7).
 pub fn with_progress(mut value: Value, state: &RunState) -> Value {
     if let Value::Object(ref mut map) = value {
@@ -682,7 +703,10 @@ impl BenchmarkServer {
 
     #[tool(
         description = "Dry-run a road build: test placement (collisions, slope, water, height, bounds) \
-        WITHOUT committing or creating any segment. Same args as build_road. Use it before build_road."
+        WITHOUT committing or creating any segment. Same args as build_road. Does not count as a change. \
+        On OBJECT_COLLISION the result includes `collisions` (id, category, position, footprint, \
+        can_bulldoze, a per-hit lateral offset) and `suggested_offset` for the whole span — use those \
+        to reroute or bulldoze zoned buildings before build_road / apply_plan."
     )]
     async fn validate_road(
         &self,
@@ -856,7 +880,9 @@ impl BenchmarkServer {
         Every op is validated and priced up front — any structurally invalid op rejects the WHOLE plan \
         before anything executes. Set validate_only=true for a free dry-run (no changes recorded) — \
         build ops are also checked against the game's placement rules (collision/slope/area) and report \
-        `zoned_buildings_fronting`. \
+        `zoned_buildings_fronting` plus, on OBJECT_COLLISION, `collisions` (id, category, position, \
+        can_bulldoze, offset) and `suggested_offset`. Prefer validate_only (or validate_road) to iterate \
+        geometry; a rejected commit is the same information at higher wall-clock cost. \
         Each executed op counts as one change, identical to the single-op tools. The game can still \
         reject an op at execution time (e.g. OBJECT_COLLISION); stop_on_error (default true) then skips the rest; \
         with stop_on_error=false execution continues and `first_failed_at` reports the earliest failing op. \
@@ -973,19 +999,7 @@ impl BenchmarkServer {
                             )
                             .await
                         {
-                            Ok(check) => {
-                                row["valid"] = serde_json::json!(check.ok);
-                                if let Some(r) = check.reason {
-                                    row["reason"] = serde_json::to_value(r).unwrap();
-                                }
-                                if let Some(n) = check.zoned_buildings_fronting {
-                                    row["zoned_buildings_fronting"] = serde_json::json!(n);
-                                }
-                                if !check.colliding_buildings.is_empty() {
-                                    row["colliding_buildings"] =
-                                        serde_json::to_value(&check.colliding_buildings).unwrap();
-                                }
-                            }
+                            Ok(check) => merge_game_check(&mut row, &check),
                             Err(e) => {
                                 row["game_check_error"] = serde_json::json!(e.to_string());
                             }
@@ -1948,6 +1962,53 @@ mod tests {
         // row must carry the game-check fact through.
         assert_eq!(row["zoned_buildings_fronting"], 0, "row: {row}");
         assert_eq!(v["city_status"]["changes_made"], 0);
+    }
+
+    #[test]
+    fn merge_game_check_forwards_rich_collisions() {
+        use crate::contract::{ActionError, ActionResult, CollisionHit, SuggestedOffset};
+        let check = ActionResult {
+            ok: false,
+            created_nodes: vec![],
+            created_segments: vec![],
+            snapped_nodes: vec![],
+            destroyed: vec![],
+            reason: Some(ActionError::ObjectCollision),
+            zoned_buildings_fronting: None,
+            colliding_buildings: vec![41],
+            collisions: vec![CollisionHit {
+                id: 41,
+                kind: "building".into(),
+                category: "residential".into(),
+                x: 120.5,
+                y: 10.0,
+                z: -40.0,
+                footprint_width: 32.0,
+                footprint_length: 24.0,
+                can_bulldoze: true,
+                offset_x: 0.0,
+                offset_z: -18.5,
+            }],
+            suggested_offset: Some(SuggestedOffset {
+                x: 0.0,
+                z: -18.5,
+                clears_all: true,
+            }),
+        };
+        let mut row = serde_json::json!({
+            "op_index": 0,
+            "valid": true,
+            "executed": false,
+        });
+        super::merge_game_check(&mut row, &check);
+        assert_eq!(row["valid"], false);
+        assert_eq!(row["reason"], "OBJECT_COLLISION");
+        assert_eq!(row["colliding_buildings"], serde_json::json!([41]));
+        assert_eq!(row["collisions"][0]["category"], "residential");
+        assert_eq!(row["collisions"][0]["can_bulldoze"], true);
+        assert_eq!(row["collisions"][0]["z"], -40.0);
+        assert_eq!(row["suggested_offset"]["z"], -18.5);
+        assert_eq!(row["suggested_offset"]["clears_all"], true);
     }
 
     #[tokio::test]

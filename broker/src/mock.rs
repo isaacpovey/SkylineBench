@@ -90,6 +90,8 @@ async fn health(State(s): State<MockState>) -> Json<Health> {
         paused: c.paused,
         forced_paused: false,
         tick: c.tick,
+        city_name: Some("Gridlock City".into()),
+        save_name: Some("BasicTrafficScenarioNewPower".into()),
     })
 }
 
@@ -235,6 +237,8 @@ async fn build_road(
             reason: Some(ActionError::InvalidPrefab),
             zoned_buildings_fronting: None,
             colliding_buildings: vec![],
+            collisions: vec![],
+            suggested_offset: None,
         });
     }
 
@@ -289,6 +293,8 @@ async fn build_road(
         reason: None,
         zoned_buildings_fronting: Some(0),
         colliding_buildings: vec![],
+        collisions: vec![],
+        suggested_offset: None,
     })
 }
 
@@ -310,6 +316,8 @@ async fn validate_road(
         },
         zoned_buildings_fronting: if known { Some(0) } else { None },
         colliding_buildings: vec![],
+        collisions: vec![],
+        suggested_offset: None,
     })
 }
 
@@ -347,6 +355,8 @@ async fn bulldoze(
             reason: None,
             zoned_buildings_fronting: None,
             colliding_buildings: vec![],
+            collisions: vec![],
+            suggested_offset: None,
         })
     } else {
         Json(ActionResult {
@@ -358,6 +368,8 @@ async fn bulldoze(
             reason: Some(ActionError::InvalidArgs),
             zoned_buildings_fronting: None,
             colliding_buildings: vec![],
+            collisions: vec![],
+            suggested_offset: None,
         })
     }
 }
@@ -383,6 +395,8 @@ async fn upgrade_road(
             reason: Some(ActionError::InvalidPrefab),
             zoned_buildings_fronting: None,
             colliding_buildings: vec![],
+            collisions: vec![],
+            suggested_offset: None,
         });
     }
     match c.segments.iter_mut().find(|sg| sg.id == body.segment_id) {
@@ -397,6 +411,8 @@ async fn upgrade_road(
                 reason: None,
                 zoned_buildings_fronting: None,
                 colliding_buildings: vec![],
+                collisions: vec![],
+                suggested_offset: None,
             })
         }
         None => Json(ActionResult {
@@ -408,6 +424,8 @@ async fn upgrade_road(
             reason: Some(ActionError::InvalidArgs),
             zoned_buildings_fronting: None,
             colliding_buildings: vec![],
+            collisions: vec![],
+            suggested_offset: None,
         }),
     }
 }
@@ -430,6 +448,8 @@ async fn set_zone(State(s): State<MockState>, Json(body): Json<SetZoneBody>) -> 
             reason: Some(ActionError::InvalidArgs),
             zoned_buildings_fronting: None,
             colliding_buildings: vec![],
+            collisions: vec![],
+            suggested_offset: None,
         });
     }
     c.zones.push(ZoneCell {
@@ -446,6 +466,8 @@ async fn set_zone(State(s): State<MockState>, Json(body): Json<SetZoneBody>) -> 
         reason: None,
         zoned_buildings_fronting: None,
         colliding_buildings: vec![],
+        collisions: vec![],
+        suggested_offset: None,
     })
 }
 

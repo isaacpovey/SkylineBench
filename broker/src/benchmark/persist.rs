@@ -12,9 +12,25 @@ pub fn epoch_secs() -> String {
 
 /// Writes the current `RunState` snapshot to `<out_dir>/end-state.json` so
 /// `benchmark-finalize` can score the run in a separate process. Written on
-/// every tool response: claude kills the MCP server on exit (no graceful
+/// every tool response: the harness kills the MCP server on exit (no graceful
 /// stdin close), so the snapshot must already be on disk by the time the
 /// final tool result reaches the client.
+///
+/// `out_dir` must live **outside the repo**. Production `run.sh` points it at
+/// the per-run session dir (`--persist-dir`), matching `--renders-dir` /
+/// `--screenshots-dir`. Two sandbox backends make an in-repo path unusable:
+///
+/// - **Linux bubblewrap** mounts `--tmpfs <repo_root>`, so writes into
+///   `benchmark/runs/` exist only inside the overlay and vanish when the
+///   sandbox exits.
+/// - **macOS Seatbelt** denies `file-read*` (including metadata) on the repo,
+///   so `create_dir_all` on an in-repo `--out` errors even when the dir
+///   already exists. Plain writes/renames to an existing in-repo dir still
+///   work on Seatbelt, but Linux bwrap does not — hence session-dir persist
+///   for both.
+///
+/// `run.sh` copies `end-state.json` from the session dir into the run dir
+/// after the agent exits, then runs `benchmark-finalize`.
 pub struct EndStatePersister {
     pub out_dir: PathBuf,
     pub map: MapInfo,
@@ -26,10 +42,11 @@ impl EndStatePersister {
         let end = state.end_state(self.map.clone(), self.started_at.clone(), epoch_secs());
         let tmp = self.out_dir.join("end-state.json.tmp");
         let dest = self.out_dir.join("end-state.json");
-        // Best-effort: inside the agent's Seatbelt sandbox metadata reads on
-        // out_dir are denied, so create_dir_all errors even when the dir
-        // exists (run.sh pre-creates it). Plain writes and renames are still
-        // permitted; if the dir truly doesn't exist the write below fails.
+        // Best-effort: the session dir is fully writable under Seatbelt and
+        // bwrap. If a misconfigured in-repo path is used, Seatbelt still
+        // denies metadata reads so create_dir_all errors even when the dir
+        // exists; the write/rename below may still succeed on macOS. On
+        // Linux bwrap an in-repo dest is tmpfs and will not survive.
         let _ = std::fs::create_dir_all(&self.out_dir);
         std::fs::write(&tmp, serde_json::to_string_pretty(&end)?)?;
         std::fs::rename(&tmp, &dest)?;

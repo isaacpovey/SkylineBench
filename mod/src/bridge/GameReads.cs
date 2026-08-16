@@ -97,7 +97,7 @@ namespace SkylineBench.Bridge
             }, TimeoutMs);
         }
 
-        private static string Category(BuildingInfo info)
+        public static string Category(BuildingInfo info)
         {
             if (info == null || info.m_class == null) return "other";
             switch (info.m_class.m_service)

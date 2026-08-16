@@ -1,5 +1,6 @@
 using System;
 using SkylineBench.Bridge;
+using SkylineBench.Dto;
 using SkylineBench.Json;
 
 namespace SkylineBench.Http
@@ -9,16 +10,16 @@ namespace SkylineBench.Http
         public static HttpReply Health()
         {
             var h = GameAccess.ReadHealth();
-            var w = new JsonWriter();
-            w.BeginObject()
-                .Name("mod_version").Value("0.1.0")
-                .Name("game_version").Value(h.GameVersion)
-                .Name("city_loaded").Value(h.CityLoaded)
-                .Name("paused").Value(h.Paused)
-                .Name("forced_paused").Value(h.ForcedPaused)
-                .Name("tick").Value((long)h.Tick)
-             .EndObject();
-            return HttpReply.Json(200, w.ToString());
+            return HttpReply.Json(200, Serialize.Health(new HealthDto
+            {
+                GameVersion = h.GameVersion,
+                CityLoaded = h.CityLoaded,
+                Paused = h.Paused,
+                ForcedPaused = h.ForcedPaused,
+                Tick = h.Tick,
+                CityName = h.CityName,
+                SaveName = h.SaveName
+            }));
         }
 
         public static HttpReply Probe()

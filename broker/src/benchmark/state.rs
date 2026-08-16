@@ -318,7 +318,10 @@ mod tests {
         let mut s = state();
         let locked = s.locked_overview_shot(&wide);
         let after = s.locked_overview_shot(&tall);
-        assert_eq!(after.yaw, locked.yaw, "orientation stays put after reshaping");
+        assert_eq!(
+            after.yaw, locked.yaw,
+            "orientation stays put after reshaping"
+        );
         assert_eq!(after.x, locked.x, "frame center stays put");
         assert_eq!(after.size, locked.size, "zoom stays put");
     }
@@ -328,7 +331,10 @@ mod tests {
         let mut s = state();
         let p = s.progress();
         assert!(p["congested_road_meters"].is_null(), "no samples yet");
-        assert!(p["traffic_flow"].is_null(), "flow is never surfaced to the agent");
+        assert!(
+            p["traffic_flow"].is_null(),
+            "flow is never surfaced to the agent"
+        );
         assert!(
             p["congested_road_meters_at_start"].is_null(),
             "no baseline yet"

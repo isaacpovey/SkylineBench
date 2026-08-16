@@ -51,6 +51,12 @@ enum Command {
         map_source: String,
         #[arg(long)]
         out: std::path::PathBuf,
+        /// Directory for `end-state.json`. Must be outside the repo so Linux
+        /// bubblewrap's `--tmpfs <repo_root>` does not discard it. `run.sh`
+        /// uses the session dir (same pattern as `--renders-dir` /
+        /// `--screenshots-dir`). Omit to write into `--out`.
+        #[arg(long)]
+        persist_dir: Option<std::path::PathBuf>,
         /// Directory for per-run render frames (timelapse). Omit to disable.
         #[arg(long)]
         renders_dir: Option<std::path::PathBuf>,
@@ -164,6 +170,7 @@ async fn main() -> anyhow::Result<()> {
             map,
             map_source,
             out,
+            persist_dir,
             renders_dir,
             screenshots_dir,
         } => {
@@ -204,8 +211,15 @@ async fn main() -> anyhow::Result<()> {
                 source: map_source,
                 game_version: health.game_version,
             };
+            // Must-survive writes during the sandboxed session cannot target
+            // `--out` when that is inside the repo: Linux bwrap overlays the
+            // repo with a tmpfs. End-state goes to `--persist-dir` (session
+            // dir); renders/screenshots already have their own session-dir
+            // flags. `--out` is still the run dir for `benchmark-finalize`
+            // after the sandbox exits.
+            let persist_dir = persist_dir.unwrap_or_else(|| out.clone());
             let persister = Arc::new(EndStatePersister {
-                out_dir: out.clone(),
+                out_dir: persist_dir.clone(),
                 map: map_info,
                 started_at,
             });
@@ -266,7 +280,7 @@ async fn main() -> anyhow::Result<()> {
             persister.write(&*state.lock().await)?;
             eprintln!(
                 "benchmark: session ended; wrote end-state.json to {}",
-                out.display()
+                persist_dir.display()
             );
         }
         Command::Timelapse { run_dir, fps, out } => {

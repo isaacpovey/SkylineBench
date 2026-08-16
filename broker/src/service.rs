@@ -3,7 +3,9 @@ use serde_json::{json, Value};
 
 use crate::bridge_client::{BridgeClient, BridgeError};
 use crate::contract::{ActionError, Bounds, Position};
-use crate::geometry::{in_bounds, playable_bounds};
+use crate::geometry::{
+    clamp_to_bounds, in_bounds, inset_bounds, intersect_bounds, playable_bounds,
+};
 use crate::graph::build_connectivity;
 use crate::render::{render_network, RenderOptions};
 use crate::validate::validate_build_road;
@@ -618,6 +620,10 @@ pub fn region_shot(positions: &[(f32, f32)]) -> Option<CameraShot> {
 pub const FLYBY_KEYFRAMES_PER_PASS: usize = 8;
 pub const FLYBY_SIZE_M: f32 = 500.0;
 pub const FLYBY_PITCH_DEG: f32 = 32.0;
+/// Pull flyby keyframes this far inside the city's network AABB so the camera
+/// stays over built area instead of riding outside-connection highways to the
+/// map edge. Capped per-axis at half the span (see `inset_bounds`).
+pub const FLYBY_BOUNDS_INSET_M: f32 = 200.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
 pub struct CameraKeyframe {
@@ -636,6 +642,66 @@ pub struct FlybyPath {
 
 fn is_highway(prefab: &str) -> bool {
     prefab.to_lowercase().contains("highway")
+}
+
+fn aabb_of_points(pts: impl Iterator<Item = (f32, f32)>) -> Option<Bounds> {
+    pts.fold(None, |acc, (x, z)| {
+        let (min_x, max_x, min_z, max_z) = acc.unwrap_or((x, x, z, z));
+        Some((min_x.min(x), max_x.max(x), min_z.min(z), max_z.max(z)))
+    })
+    .map(|(min_x, max_x, min_z, max_z)| Bounds {
+        min_x,
+        max_x,
+        min_z,
+        max_z,
+    })
+}
+
+fn trimmed_network_bounds(net: &crate::contract::Network) -> Option<Bounds> {
+    let ((min_x, max_x), (min_z, max_z)) = trimmed_bounds(net.nodes.iter().map(|n| n.x))
+        .zip(trimmed_bounds(net.nodes.iter().map(|n| n.z)))?;
+    Some(Bounds {
+        min_x,
+        min_z,
+        max_x,
+        max_z,
+    })
+}
+
+/// Axis-aligned bounds of the loaded city, not the hardcoded ±8640 m map square.
+///
+/// Prefers the AABB of local (non-highway) roads — that's the built city.
+/// Highway outside-connections run to the map edge and must not define the
+/// frame. Highway-only networks fall back to the same percentile trim
+/// `overview_shot` uses. Always intersected with `playable_bounds`.
+fn city_network_bounds(net: &crate::contract::Network) -> Bounds {
+    let playable = playable_bounds();
+    let node_xz: std::collections::HashMap<u32, (f32, f32)> =
+        net.nodes.iter().map(|n| (n.id, (n.x, n.z))).collect();
+    let local_pts = net
+        .segments
+        .iter()
+        .filter(|s| !is_highway(&s.prefab))
+        .flat_map(|s| {
+            [s.start_node, s.end_node]
+                .into_iter()
+                .filter_map(|id| node_xz.get(&id).copied())
+        });
+    let raw = aabb_of_points(local_pts)
+        .or_else(|| trimmed_network_bounds(net))
+        .unwrap_or(playable);
+    intersect_bounds(raw, playable)
+}
+
+fn clamp_keyframes(kfs: Vec<CameraKeyframe>, bounds: Bounds) -> Vec<CameraKeyframe> {
+    kfs.into_iter()
+        .map(|mut kf| {
+            let (x, z) = clamp_to_bounds(kf.x, kf.z, bounds);
+            kf.x = x;
+            kf.z = z;
+            kf
+        })
+        .collect()
 }
 
 /// Reduce a point cloud to a smoothed centerline of keyframes along one axis.
@@ -676,11 +742,15 @@ fn flyby_pass(mut pts: Vec<(f32, f32)>, along_z: bool) -> Vec<CameraKeyframe> {
 }
 
 /// Build N/S and W/E flyby keyframe passes along the main highways, restricted
-/// to the playable city bounds so the camera never wanders out to connector
-/// stubs at the map edge. Falls back to the whole (in-bounds) network when the
-/// city has no highway segments.
+/// to the loaded city's network AABB (with a small inset) so the camera never
+/// wanders out along outside-connection stubs to the map edge. Falls back to
+/// the whole in-city network when there are no highway segments.
+///
+/// Start (`ensure_baseline`) and end (`benchmark-finalize`) flybys both call
+/// this; clamping lives here so both passes stay over the city.
 pub fn highway_flyby_path(net: &crate::contract::Network) -> FlybyPath {
-    let bounds = playable_bounds();
+    let city = city_network_bounds(net);
+    let camera = inset_bounds(city, FLYBY_BOUNDS_INSET_M);
     let node_xz: std::collections::HashMap<u32, (f32, f32)> =
         net.nodes.iter().map(|n| (n.id, (n.x, n.z))).collect();
     let collect = |highway_only: bool| -> Vec<(f32, f32)> {
@@ -689,7 +759,7 @@ pub fn highway_flyby_path(net: &crate::contract::Network) -> FlybyPath {
             .filter(|s| !highway_only || is_highway(&s.prefab))
             .flat_map(|s| [s.start_node, s.end_node])
             .filter_map(|id| node_xz.get(&id).copied())
-            .filter(|&(x, z)| in_bounds(Position { x, y: 0.0, z }, bounds))
+            .filter(|&(x, z)| in_bounds(Position { x, y: 0.0, z }, city))
             .collect()
     };
     let pts = {
@@ -701,8 +771,8 @@ pub fn highway_flyby_path(net: &crate::contract::Network) -> FlybyPath {
         }
     };
     FlybyPath {
-        ns: flyby_pass(pts.clone(), true),
-        we: flyby_pass(pts, false),
+        ns: clamp_keyframes(flyby_pass(pts.clone(), true), camera),
+        we: clamp_keyframes(flyby_pass(pts, false), camera),
     }
 }
 
@@ -1968,6 +2038,75 @@ mod tests {
             !highway_flyby_path(&net).ns.is_empty(),
             "falls back to all segments"
         );
+    }
+
+    #[test]
+    fn highway_flyby_path_clamps_to_city_network_not_map_edge() {
+        use crate::contract::{NetNode, NetSegment, Network};
+        let node = |id: u32, x: f32, z: f32| NetNode { id, x, y: 0.0, z };
+        let seg = |id: u32, a: u32, b: u32, prefab: &str| NetSegment {
+            id,
+            start_node: a,
+            end_node: b,
+            prefab: prefab.into(),
+            lanes: 2,
+            length: 100.0,
+            one_way: false,
+            travel_direction: "both".into(),
+            speed_limit: 1.0,
+        };
+        // City of local roads (x 0..2000, z 0..1600) plus a highway that runs
+        // through downtown and continues to an outside connection at x=8000.
+        // Filtering only to hardcoded playable_bounds (±8640) would keep that
+        // stub and send the W/E flyby out over empty land.
+        let mut nodes = vec![
+            node(0, 0.0, 0.0),
+            node(1, 2000.0, 0.0),
+            node(2, 2000.0, 1600.0),
+            node(3, 0.0, 1600.0),
+        ];
+        let mut segments = vec![
+            seg(0, 0, 1, "Basic Road"),
+            seg(1, 1, 2, "Basic Road"),
+            seg(2, 2, 3, "Basic Road"),
+            seg(3, 3, 0, "Basic Road"),
+        ];
+        // In-city highway (x 0..2000) then connector stubs out to the map edge.
+        for i in 0..9 {
+            nodes.push(node(10 + i, i as f32 * 1000.0, 800.0));
+            if i > 0 {
+                segments.push(seg(10 + i, 9 + i, 10 + i, "Highway"));
+            }
+        }
+        let net = Network { nodes, segments };
+        let path = highway_flyby_path(&net);
+        assert!(!path.ns.is_empty() && !path.we.is_empty());
+        let city = Bounds {
+            min_x: 0.0,
+            max_x: 2000.0,
+            min_z: 0.0,
+            max_z: 1600.0,
+        };
+        let camera = crate::geometry::inset_bounds(city, FLYBY_BOUNDS_INSET_M);
+        for kf in path.ns.iter().chain(path.we.iter()) {
+            assert!(
+                kf.x >= camera.min_x - 1e-3 && kf.x <= camera.max_x + 1e-3,
+                "keyframe x={} outside inset city bounds {:?}",
+                kf.x,
+                camera
+            );
+            assert!(
+                kf.z >= camera.min_z - 1e-3 && kf.z <= camera.max_z + 1e-3,
+                "keyframe z={} outside inset city bounds {:?}",
+                kf.z,
+                camera
+            );
+            assert!(
+                kf.x < 2500.0,
+                "keyframe x={} followed the map-edge connector",
+                kf.x
+            );
+        }
     }
 
     #[tokio::test]

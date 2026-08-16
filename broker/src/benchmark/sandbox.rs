@@ -144,6 +144,45 @@ mod tests {
         assert!(plan.wrapper_argv.contains(&"--blacklist=/repo".to_string()));
     }
 
+    /// Linux bwrap overlays the repo with a tmpfs. Must-survive broker writes
+    /// (end-state.json, matching --renders-dir/--screenshots-dir) go to the
+    /// session dir, which must not be under that overlay.
+    #[test]
+    fn linux_bwrap_tmpfs_hides_repo_persist_lives_in_session_dir() {
+        let mut i = base(Os::Linux);
+        i.bwrap_available = true;
+        i.repo_root = PathBuf::from("/home/u/SkylineBench");
+        i.session_dir = PathBuf::from("/home/u/.cache/skylinebench/run.XXXX");
+        let plan = select(&i);
+        assert_eq!(plan.backend, Backend::Bubblewrap);
+
+        let tmpfs_at = plan
+            .wrapper_argv
+            .iter()
+            .position(|a| a == "--tmpfs")
+            .expect("bwrap plan must tmpfs the repo root");
+        assert_eq!(
+            plan.wrapper_argv.get(tmpfs_at + 1).map(String::as_str),
+            Some(i.repo_root.to_str().unwrap()),
+            "tmpfs overlay must be the repo root, got {:?}",
+            plan.wrapper_argv
+        );
+
+        let persist = &i.session_dir;
+        assert!(
+            !persist.starts_with(&i.repo_root),
+            "persist target {:?} must be outside tmpfs overlay {:?}",
+            persist,
+            i.repo_root
+        );
+        assert!(
+            i.repo_root
+                .join("benchmark/runs/id")
+                .starts_with(&i.repo_root),
+            "sanity: in-repo --out is under the overlay and would be lost"
+        );
+    }
+
     #[test]
     fn no_backend_warns_and_is_unsandboxed() {
         let plan = select(&base(Os::Other));
